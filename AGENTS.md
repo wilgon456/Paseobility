@@ -1,7 +1,11 @@
 # Paseobility Agent Install Guide
 
-Use this file when a user gives you this repository and asks you to install or
-set up Paseobility for their local Paseo environment.
+Use this file when a user gives you this repository URL and asks you to install
+or set up Paseobility for their local Paseo environment.
+
+This repository is designed for an AI-agent install flow: the user gives Codex,
+Claude, or a Paseo agent the GitHub URL, and the agent reads this file before
+copying the bundled skills into the local skill directory.
 
 Paseobility is a skill document package. Installation means copying every
 directory under `skills/` into the user's local skills directory. It does not
@@ -21,16 +25,20 @@ Optional Claude Code install target:
 
 ## Agent workflow
 
-1. Confirm the local checkout root.
-2. Confirm the repository contains `skills/*/SKILL.md`.
-3. Detect the user OS.
-4. Before overwriting an existing same-name skill directory, record a backup
+1. Clone or check out the repository or PR branch the user provided.
+2. Confirm the local checkout root.
+3. Confirm the repository contains `skills/*/SKILL.md`.
+4. Detect the user OS.
+5. Before overwriting an existing same-name skill directory, record a backup
    path or ask the user whether to replace it.
-5. Create the target skills directory if it does not exist.
-6. Copy `skills/*` into the target skills directory.
-7. If the user also wants Claude Code support, copy the same `skills/*` into
+6. Prefer a temporary-home install test first when the user asks for validation.
+7. Create the target skills directory if it does not exist.
+8. Copy `skills/*` into the target skills directory.
+9. If the user also wants Claude Code support, copy the same `skills/*` into
    the Claude skills directory.
-8. Tell the user to start a new agent session or reload integrations if the
+10. If Paseo CLI is available, start a fresh read-only test agent to verify that
+    `/paseo-session-brief` is recognized, then archive the test agent.
+11. Tell the user to start a new agent session or reload integrations if the
    skills do not appear immediately.
 
 ## macOS/Linux commands

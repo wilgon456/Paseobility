@@ -2,7 +2,7 @@
 
 <h1>Paseobility</h1>
 
-<p><strong>Paseo에서도 Orca처럼. 브라우저 손, 멀티에이전트 지휘, 세션 브리프, 프로젝트 bootstrap을 더하는 스킬팩</strong></p>
+<p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
@@ -24,11 +24,29 @@
 
 ## 한 줄 요약
 
-Paseobility는 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap 흐름을 슬래쉬 스킬과 작은 설치/진단 스크립트로 정리한 스킬팩입니다.
+Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에게 던져 설치하게 만든 **agent-installable Paseo 슬래쉬 스킬팩**입니다.
+
+설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
 
 기본 Paseo만으로도 내장 도구를 조합하면 비슷한 일을 할 수 있습니다. 다만 매번 에이전트가 그 조합을 새로 판단하게 두면 느리고 결과가 들쭉날쭉할 수 있어서, 자주 쓰는 패턴을 바로 꺼내 쓰기 쉽게 묶었습니다.
 
 이 repo는 실행형 프레임워크가 아니라 **Paseo 내장 도구를 반복 가능하게 조합하기 위한 스킬 문서 패키지**입니다. macOS/Linux용 bootstrap helper와 Windows PowerShell 설치 helper를 함께 제공합니다.
+
+---
+
+## 사용 방식
+
+이 프로젝트의 기본 사용자는 shell에서 직접 설치하는 사람이 아니라, **AI 에이전트에게 GitHub URL을 주고 설치와 검증을 맡기는 사람**입니다.
+
+```text
+https://github.com/wilgon456/Paseobility
+
+이 repo를 읽고 AGENTS.md 지침대로 내 로컬 Paseo skills 디렉터리에 설치해줘.
+먼저 임시 HOME/TargetHome으로 설치 테스트하고, 통과하면 실제 skills 디렉터리에 설치해줘.
+설치 후 새 Paseo 세션에서 /paseo-session-brief가 인식되는지도 확인해줘.
+```
+
+에이전트는 [AGENTS.md](./AGENTS.md)를 읽고 OS별 경로와 설치 절차를 따라갑니다. 설치가 끝난 뒤 새 Paseo 세션이나 통합 reload 후 아래 슬래쉬 스킬을 사용할 수 있습니다.
 
 즉, "코드 짜줘"에서 끝나는 게 아니라:
 
@@ -56,7 +74,7 @@ Paseobility는 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이
 
 ## 설치
 
-가장 편한 방식은 AI 에이전트에게 이 저장소 URL을 주고 설치를 맡기는 것입니다.
+권장 설치 방식은 AI 에이전트에게 이 저장소 URL을 주고 설치를 맡기는 것입니다.
 
 ```text
 https://github.com/wilgon456/Paseobility
@@ -66,7 +84,7 @@ Windows/Mac 환경에 맞춰 skills/*를 복사하고, 설치 후 필요한 relo
 
 에이전트는 [AGENTS.md](./AGENTS.md)를 기준으로 Mac/Windows의 skills 경로를 확인해 설치하면 됩니다.
 
-직접 설치하려면:
+직접 설치도 가능합니다.
 
 ```bash
 git clone https://github.com/wilgon456/Paseobility.git
