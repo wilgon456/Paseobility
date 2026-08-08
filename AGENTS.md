@@ -24,11 +24,13 @@ Optional Claude Code install target:
 1. Confirm the local checkout root.
 2. Confirm the repository contains `skills/*/SKILL.md`.
 3. Detect the user OS.
-4. Create the target skills directory if it does not exist.
-5. Copy `skills/*` into the target skills directory.
-6. If the user also wants Claude Code support, copy the same `skills/*` into
+4. Before overwriting an existing same-name skill directory, record a backup
+   path or ask the user whether to replace it.
+5. Create the target skills directory if it does not exist.
+6. Copy `skills/*` into the target skills directory.
+7. If the user also wants Claude Code support, copy the same `skills/*` into
    the Claude skills directory.
-7. Tell the user to start a new agent session or reload integrations if the
+8. Tell the user to start a new agent session or reload integrations if the
    skills do not appear immediately.
 
 ## macOS/Linux commands
@@ -55,15 +57,15 @@ Convenience installer:
 ## Windows PowerShell commands
 
 ```powershell
-New-Item -ItemType Directory -Force "$HOME\.agents\skills" | Out-Null
-Copy-Item -Recurse -Force ".\skills\*" "$HOME\.agents\skills\"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.agents\skills" | Out-Null
+Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 ```
 
 Optional Claude Code:
 
 ```powershell
-New-Item -ItemType Directory -Force "$HOME\.claude\skills" | Out-Null
-Copy-Item -Recurse -Force ".\skills\*" "$HOME\.claude\skills\"
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills" | Out-Null
+Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.claude\skills\"
 ```
 
 Convenience installer:
@@ -71,6 +73,9 @@ Convenience installer:
 ```powershell
 .\scripts\paseobility-install.ps1
 .\scripts\paseobility-install.ps1 -WithClaude
+
+# Temp-home install test:
+.\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
 ```
 
 ## Paseo CLI detection

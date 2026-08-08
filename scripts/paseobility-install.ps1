@@ -1,4 +1,5 @@
 param(
+  [string]$TargetHome = $env:USERPROFILE,
   [switch]$WithClaude,
   [switch]$NoPaseoCheck
 )
@@ -8,6 +9,10 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $SkillsDir = Join-Path $RepoRoot "skills"
+
+if ([string]::IsNullOrWhiteSpace($TargetHome)) {
+  throw "TargetHome is empty. Pass -TargetHome or ensure USERPROFILE is set."
+}
 
 function Write-Status {
   param(
@@ -56,13 +61,14 @@ function Find-PaseoCli {
 }
 
 Write-Status "repo" $RepoRoot
+Write-Status "target_home" $TargetHome
 Write-Status "os" ([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)
 Write-Status "arch" ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString())
 
-Copy-Skills (Join-Path $HOME ".agents\skills")
+Copy-Skills (Join-Path $TargetHome ".agents\skills")
 
 if ($WithClaude) {
-  Copy-Skills (Join-Path $HOME ".claude\skills")
+  Copy-Skills (Join-Path $TargetHome ".claude\skills")
 } else {
   Write-Status "skip" "Claude skills not touched. Pass -WithClaude to install there."
 }
