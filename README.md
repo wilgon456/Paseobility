@@ -128,6 +128,18 @@ Copy-Item -Recurse -Force ".\skills\*" "$HOME\.agents\skills\"
 
 ---
 
+## 검증 상태
+
+| 환경 | 상태 | 확인한 내용 |
+| --- | --- | --- |
+| Apple Silicon macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/arm64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
+| Intel macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/x86_64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
+| Windows | Pending | PowerShell installer는 포함되어 있으나 실제 Windows + Paseo 환경 검증은 아직 필요 |
+
+Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
+
+---
+
 ## 빠른 사용 예시
 
 ### 웹 UI를 직접 다루기

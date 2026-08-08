@@ -84,7 +84,7 @@ status "arch" "$ARCH"
 
 if [ "$OS" = "Darwin" ]; then
   if [ "$ARCH" = "x86_64" ]; then
-    status "mac" "Intel detected"
+    status "mac" "Intel Mac detected"
   elif [ "$ARCH" = "arm64" ]; then
     status "mac" "Apple Silicon detected"
   else
