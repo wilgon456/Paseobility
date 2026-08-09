@@ -6,12 +6,14 @@ const DEFAULT_PATTERN = "test|verify|validation|retest|recognition|paseobility|\
 
 function usage() {
   console.log(`Usage:
+  agent-cleanup.js [--auto] [--pattern <regex>]
   agent-cleanup.js --dry-run [--pattern <regex>] [--include-workspaces]
   agent-cleanup.js --agent <id> [--agent <id>] --archive --yes
   agent-cleanup.js --workspace <id> [--workspace <id>] --archive --yes
 
 Options:
-  --dry-run              Show candidates. This is the default.
+  --auto                 Archive safe non-running agent candidates. This is the default.
+  --dry-run              Show candidates without changing state.
   --archive              Archive selected candidates. Requires --yes.
   --yes                  Confirm archive execution.
   --pattern <regex>      Candidate regex for names/titles/cwd/provider/id.
@@ -24,8 +26,9 @@ Options:
 
 function parseArgs(argv) {
   const opts = {
-    dryRun: true,
-    archive: false,
+    dryRun: false,
+    archive: true,
+    auto: true,
     yes: false,
     pattern: DEFAULT_PATTERN,
     agentIds: [],
@@ -36,10 +39,19 @@ function parseArgs(argv) {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--dry-run") opts.dryRun = true;
+    if (arg === "--dry-run") {
+      opts.dryRun = true;
+      opts.archive = false;
+      opts.auto = false;
+    } else if (arg === "--auto") {
+      opts.dryRun = false;
+      opts.archive = true;
+      opts.auto = true;
+    }
     else if (arg === "--archive") {
       opts.archive = true;
       opts.dryRun = false;
+      opts.auto = false;
     } else if (arg === "--yes") opts.yes = true;
     else if (arg === "--pattern") opts.pattern = argv[++i] || "";
     else if (arg === "--agent") opts.agentIds.push(argv[++i] || "");
@@ -167,10 +179,10 @@ function main() {
   const agentRows = selectAgents(agents, opts, regex);
   const workspaceRows = selectWorkspaces(workspaces, opts, regex);
   const selectedAgents = agentRows.filter((row) => row.selected);
-  const selectedWorkspaces = workspaceRows.filter((row) => row.selected);
+  const selectedWorkspaces = opts.auto ? [] : workspaceRows.filter((row) => row.selected);
 
   const summary = {
-    mode: opts.archive ? "archive" : "dry-run",
+    mode: opts.dryRun ? "dry-run" : opts.auto ? "auto-archive" : "archive",
     pattern: opts.pattern,
     agentsConsidered: agents.length,
     agentsSelected: selectedAgents.map((row) => row.item.id),
@@ -190,11 +202,11 @@ function main() {
   }
 
   if (!opts.archive) {
-    if (!opts.json) console.log("\n[dry-run] No changes made. Add --archive --yes to archive selected items.");
+    if (!opts.json) console.log("\n[dry-run] No changes made. Run without --dry-run to auto-archive safe agent candidates.");
     return;
   }
 
-  if (!opts.yes) {
+  if (!opts.auto && !opts.yes) {
     throw new Error("--archive requires --yes");
   }
 

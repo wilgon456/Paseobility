@@ -4,22 +4,26 @@ description: >-
   Clean up Paseo test agents and workspaces safely. Use when the user wants to
   archive old, idle, validation, test, PR, or temporary Paseo agents/workspaces,
   reduce clutter after testing skills, or inspect what can be cleaned up. The
-  default mode is dry-run; never archive running agents, never delete anything,
-  and only perform archive actions after explicit approval.
+  default mode auto-archives clearly safe non-running test/validation agents;
+  never archive running agents, never delete anything, and require explicit
+  approval for workspace cleanup or ambiguous targets.
 ---
 
 # Paseo Agent Cleanup
 
 This skill keeps Paseo agent/workspace lists manageable after validation runs.
-It is intentionally conservative: dry-run first, archive only, never delete.
+It is intentionally conservative: safe agent candidates can be archived
+automatically, workspaces require explicit approval, and delete is never used.
 
 ## Core rules
 
-- Default to dry-run.
+- Default to auto-archive only clearly safe non-running test/validation agents.
+- Use dry-run when the user asks to preview first.
 - Never delete agents or workspaces.
 - Never archive running agents.
 - Never stop or interrupt agents automatically.
-- Archive only after the user explicitly approves the exact cleanup plan.
+- Archive workspaces only after the user explicitly approves the exact cleanup
+  plan or provides explicit workspace IDs.
 - Prefer explicit IDs when the user gives them.
 - Report every archive attempt and failure.
 
@@ -30,14 +34,17 @@ It is intentionally conservative: dry-run first, archive only, never delete.
    paseo ls --json
    paseo workspace ls --json
    ```
-2. Build a dry-run plan:
+2. Auto-archive safe finished test/validation agents:
+   ```bash
+   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto
+   ```
+3. Use dry-run when previewing candidates:
    ```bash
    node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run
    ```
-3. Review candidates with the user.
-4. Archive only approved candidates:
+4. Archive explicit workspace or ambiguous targets only after approval:
    ```bash
-   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --archive --yes
+   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
    ```
 5. Verify cleanup:
    ```bash
@@ -50,6 +57,8 @@ It is intentionally conservative: dry-run first, archive only, never delete.
 Use:
 
 ```bash
+node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto
+node skills/paseo-agent-cleanup/scripts/agent-cleanup.js
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run --pattern 'test|verify|validation|paseobility'
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive --yes
@@ -61,8 +70,9 @@ Defaults:
 
 - candidates must be non-running agents
 - default pattern is `test|verify|validation|retest|recognition|paseobility|\bpr\b|pr[-_ ]?\d+`
-- workspaces are not auto-selected unless `--include-workspaces` or explicit
-  `--workspace <id>` is used
+- auto mode archives selected agents only
+- workspaces are never auto-archived; use `--include-workspaces --dry-run` to
+  preview and explicit `--workspace <id> --archive --yes` to archive
 - `--archive` without `--yes` still refuses to modify state
 
 ## Candidate policy
@@ -81,7 +91,7 @@ Do not clean up automatically:
 - running agents
 - unclear production/task agents
 - agents with active user work
-- workspaces that look like normal project workspaces
+- workspaces, unless explicitly specified with `--workspace <id> --archive --yes`
 - anything requiring delete rather than archive
 
 ## Manual fallback
