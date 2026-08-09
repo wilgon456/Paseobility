@@ -10,6 +10,7 @@
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
   <img alt="Project Bootstrap" src="https://img.shields.io/badge/Project-Bootstrap-059669?style=for-the-badge">
   <img alt="Agent Tournament" src="https://img.shields.io/badge/Agent-Tournament-db2777?style=for-the-badge">
+  <img alt="AI CLI Update" src="https://img.shields.io/badge/AI%20CLI-Update%20Helper-f59e0b?style=for-the-badge">
 </p>
 
 <p>
@@ -69,6 +70,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-agent-tournament` | 멀티 모델 비교/심사 | GPT vs Claude vs DeepSeek, 찬반 토론, 설계안 비교, judge 기반 winner 선정 |
 | `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
+| `/paseo-ai-update` | AI CLI 업데이트 도우미 | Codex, Claude Code, Grok Build, agy 버전 확인, 업데이트 제안, 승인 후 선택/일괄 업데이트 |
 
 ---
 
@@ -248,6 +250,28 @@ package scripts를 읽어서 작업 맥락을 만들어줘.
 ├── project-map.md    # 주요 파일/디렉터리 지도
 └── bootstrap-log.md  # OS, arch, Paseo 상태, 경고
 ```
+
+### AI CLI 업데이트 확인하기
+
+```text
+/paseo-ai-update
+Codex, Claude Code, Grok Build, agy 버전 차이를 확인하고
+업데이트 가능한 항목을 제안해줘.
+```
+
+기본 동작은 진단만 합니다. 실제 업데이트는 사용자가 승인한 뒤에만 실행합니다.
+
+```text
+설치 여부 확인 -> 현재 버전 확인 -> 최신/업데이트 가능 여부 확인
+-> 업데이트 명령 제안 -> 사용자 승인 -> 선택/일괄 업데이트
+-> 업데이트 후 버전 재확인
+```
+
+안전 규칙:
+
+- 승인 없이 업데이트하지 않습니다.
+- `sudo`, `brew upgrade` 전체, `winget upgrade --all`, `npm update -g`를 쓰지 않습니다.
+- 실행 중인 agent나 daemon을 강제로 종료하지 않습니다.
 
 ---
 
