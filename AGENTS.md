@@ -29,8 +29,8 @@ Optional Claude Code install target:
 2. Confirm the local checkout root.
 3. Confirm the repository contains `skills/*/SKILL.md`.
 4. Detect the user OS.
-5. Before overwriting an existing same-name skill directory, record a backup
-   path or ask the user whether to replace it.
+5. Before overwriting an existing same-name skill directory, record the backup
+   path. The convenience installers back up by default.
 6. Prefer a temporary-home install test first when the user asks for validation.
 7. Create the target skills directory if it does not exist.
 8. Copy `skills/*` into the target skills directory.
@@ -60,7 +60,12 @@ Convenience installer:
 ```bash
 ./scripts/paseobility-init.sh --no-context
 ./scripts/paseobility-init.sh --with-claude --no-context
+./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
 ```
+
+Existing same-name skills are backed up to
+`~/.agents/skills-backups/Paseobility-<version>-<timestamp>/` unless
+`--no-backup` is passed.
 
 ## Windows PowerShell commands
 
@@ -89,6 +94,10 @@ Convenience installer:
 
 Use `-Skill <name>` when the user asks to update or validate one bundled skill
 without touching the other installed skills.
+
+Existing same-name skills are backed up to
+`%USERPROFILE%\.agents\skills-backups\Paseobility-<version>-<timestamp>\`
+unless `-NoBackup` is passed.
 
 ## Paseo CLI detection
 

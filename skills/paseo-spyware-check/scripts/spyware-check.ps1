@@ -51,9 +51,7 @@ function Get-Severity {
     [string]$Line
   )
 
-  if (
-    $RelativePath -match '^(README\.md|README\..*|skills[\\/]paseo-spyware-check[\\/]SKILL\.md|skills[\\/]paseo-spyware-check[\\/]scripts[\\/]spyware-check\.(sh|ps1))$'
-  ) {
+  if ($RelativePath -match '^(README\.md|README\..*|skills[\\/]paseo-spyware-check[\\/]SKILL\.md|skills[\\/]paseo-spyware-check[\\/]scripts[\\/].*)$') {
     return @("Info", "self-reference or scanner documentation")
   }
 
@@ -182,11 +180,7 @@ try {
 
   $scanResults = $files | Select-String -Pattern $pattern
 
-  Write-ReportLine
-  Write-ReportLine "## Classified Findings"
-  Write-ReportLine
-  Write-ReportLine "| Severity | Evidence | Reason |"
-  Write-ReportLine "| --- | --- | --- |"
+  $classifiedRows = @()
   if ($scanResults) {
     foreach ($match in $scanResults) {
       $relative = $match.Path
@@ -196,7 +190,43 @@ try {
       $evidence = "${relative}:$($match.LineNumber):$($match.Line.Trim())"
       $safeEvidence = $evidence.Replace("|", "\|")
       $classification = Get-Severity -RelativePath $relative -Line $match.Line
-      Write-ReportLine "| $($classification[0]) | ``$safeEvidence`` | $($classification[1]) |"
+      $classifiedRows += [PSCustomObject]@{
+        Severity = $classification[0]
+        Evidence = $safeEvidence
+        Reason = $classification[1]
+      }
+    }
+  }
+
+  $highCount = @($classifiedRows | Where-Object { $_.Severity -eq "High" }).Count
+  $mediumCount = @($classifiedRows | Where-Object { $_.Severity -eq "Medium" }).Count
+  $infoCount = @($classifiedRows | Where-Object { $_.Severity -eq "Info" }).Count
+  if ($highCount -gt 0) {
+    $verdictHint = "High"
+  } elseif ($mediumCount -gt 0) {
+    $verdictHint = "Medium"
+  } else {
+    $verdictHint = "Low"
+  }
+
+  Write-ReportLine
+  Write-ReportLine "## Finding Summary"
+  Write-ReportLine
+  Write-ReportLine "- Verdict hint: ``$verdictHint``"
+  Write-ReportLine "- High: ``$highCount``"
+  Write-ReportLine "- Medium: ``$mediumCount``"
+  Write-ReportLine "- Info: ``$infoCount``"
+  Write-ReportLine
+  Write-ReportLine "Treat this as triage output. Final judgement still requires manual review of the evidence and optional scanner logs."
+
+  Write-ReportLine
+  Write-ReportLine "## Classified Findings"
+  Write-ReportLine
+  Write-ReportLine "| Severity | Evidence | Reason |"
+  Write-ReportLine "| --- | --- | --- |"
+  if ($classifiedRows.Count -gt 0) {
+    foreach ($row in $classifiedRows) {
+      Write-ReportLine "| $($row.Severity) | ``$($row.Evidence)`` | $($row.Reason) |"
     }
   } else {
     Write-ReportLine "| Info | No fallback pattern matches found. | Static fallback scan was clean. |"
