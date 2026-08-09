@@ -130,11 +130,39 @@ Inventory and static search:
 ```powershell
 git -C $repo remote -v
 git -C $repo status --short
+$pattern = @(
+  'postinstall'
+  'preinstall'
+  'prepare'
+  'curl .*\|.*sh'
+  'wget .*\|.*sh'
+  'Invoke-Expression'
+  '\biex\b'
+  'DownloadString'
+  'EncodedCommand'
+  'Start-Process.*Hidden'
+  'New-ScheduledTask'
+  'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+  'child_process'
+  'eval\('
+  'Function\('
+  'base64'
+  'atob'
+  'Buffer\.from'
+  'process\.env'
+  '\.ssh'
+  '\.aws'
+  'GITHUB_TOKEN'
+  'NPM_TOKEN'
+  'OPENAI_API_KEY'
+  'ANTHROPIC_API_KEY'
+) -join '|'
+
 Get-ChildItem -LiteralPath $repo -Recurse -File |
   Where-Object {
     $_.FullName -match 'package\.json$|pnpm-lock\.yaml$|yarn\.lock$|package-lock\.json$|Cargo\.toml$|go\.mod$|pyproject\.toml$|requirements.*\.txt$|Makefile$|Dockerfile$|\.github\\workflows\\.*\.ya?ml$|\.sh$|\.ps1$|\.js$|\.ts$|\.py$'
   } |
-  Select-String -Pattern 'postinstall|preinstall|prepare|curl .*\\|.*sh|wget .*\\|.*sh|Invoke-Expression|iex|DownloadString|EncodedCommand|Start-Process.*Hidden|New-ScheduledTask|HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run|child_process|eval\\(|Function\\(|base64|atob|Buffer\.from|process\.env|\.ssh|\.aws|GITHUB_TOKEN|NPM_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY' |
+  Select-String -Pattern $pattern |
   Select-Object Path, LineNumber, Line
 ```
 
