@@ -57,7 +57,10 @@ binaries or rule sets.
    ```bash
    bash <skill-dir>/scripts/spyware-check.sh --target <url-or-path>
    ```
-4. On Windows, use the PowerShell workflow below.
+4. On Windows, run the bundled PowerShell helper when available:
+   ```powershell
+   .\<skill-dir>\scripts\spyware-check.ps1 -Target <url-or-path>
+   ```
 5. Review high-signal files manually.
 6. Produce a verdict with evidence and limitations.
 
@@ -69,6 +72,8 @@ The helper never executes target project code. It:
 - inventories risky files
 - runs optional scanners if installed
 - runs `rg` fallback heuristics
+- classifies fallback findings as `High`, `Medium`, or `Info`
+- marks scanner documentation/self-reference matches as `Info`
 - writes a Markdown report
 
 Use:
@@ -110,6 +115,34 @@ The installer prefers Homebrew when present and never uses `sudo`, remote shell
 pipes, or target-repo code.
 
 ## Windows PowerShell workflow
+
+Prefer the bundled helper:
+
+```powershell
+.\skills\paseo-spyware-check\scripts\spyware-check.ps1 -Target https://github.com/owner/repo
+.\skills\paseo-spyware-check\scripts\spyware-check.ps1 -Target C:\path\to\repo -Out $env:TEMP\paseo-spyware-report
+```
+
+The PowerShell helper follows the same safety model: clone or inspect, do not
+execute target project code, run optional scanners only when installed, and
+write `report.md`.
+
+To preview Windows scanner installation commands:
+
+```powershell
+.\skills\paseo-spyware-check\scripts\install-scanners.ps1 -DryRun
+```
+
+Only after approval:
+
+```powershell
+.\skills\paseo-spyware-check\scripts\install-scanners.ps1 -Yes
+```
+
+The installer does not use remote shell pipes. It only runs planned package
+manager commands and leaves uncertain tools as manual guidance.
+
+Manual fallback:
 
 Use a temp clone for URLs:
 
@@ -209,6 +242,14 @@ Treat these as high risk until explained:
 - GitHub Actions using `pull_request_target` with untrusted checkout/scripts
 - unpinned remote scripts, unpinned third-party actions, or install-time curl
   pipes
+
+## Self-reference handling
+
+Scanner docs and scanner source may contain strings like `GITHUB_TOKEN`,
+`child_process`, `curl | sh`, or `EncodedCommand` because they describe what to
+find. Do not hide those matches. Classify them as `Info` when the path is this
+skill's README/SKILL/script documentation, and explain that they are
+self-references rather than target-repo behavior.
 
 ## Verdict format
 

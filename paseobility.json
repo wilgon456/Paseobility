@@ -1,0 +1,24 @@
+{
+  "name": "Paseobility",
+  "version": "2.1.0",
+  "skillPath": "skills",
+  "installTargets": {
+    "paseo": {
+      "macosLinux": "~/.agents/skills",
+      "windows": "%USERPROFILE%\\.agents\\skills"
+    },
+    "claude": {
+      "macosLinux": "~/.claude/skills",
+      "windows": "%USERPROFILE%\\.claude\\skills"
+    }
+  },
+  "skills": [
+    "paseo-agent-cleanup",
+    "paseo-agent-tournament",
+    "paseo-computer-use",
+    "paseo-orchestration",
+    "paseo-project-bootstrap",
+    "paseo-session-brief",
+    "paseo-spyware-check"
+  ]
+}

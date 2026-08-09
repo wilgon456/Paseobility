@@ -87,7 +87,9 @@ fi
 
 REPORT="$OUT_DIR/report.md"
 RAW="$OUT_DIR/raw-findings.txt"
+CLASSIFIED="$OUT_DIR/classified-findings.tsv"
 : >"$RAW"
+: >"$CLASSIFIED"
 
 has_cmd() {
   command -v "$1" >/dev/null 2>&1
@@ -113,6 +115,42 @@ run_optional() {
     echo
   } >>"$OUT_DIR/tools.log"
   return 0
+}
+
+classify_finding_line() {
+  line="$1"
+  rel_line="$(printf '%s\n' "$line" | sed "s#^$REPO_DIR/##")"
+  path="${rel_line%%:*}"
+  text="${rel_line#*:}"
+  text="${text#*:}"
+
+  severity="Medium"
+  reason="suspicious static pattern"
+
+  case "$path" in
+    README.md|README.*|skills/paseo-spyware-check/SKILL.md|skills/paseo-spyware-check/scripts/spyware-check.sh)
+      severity="Info"
+      reason="self-reference or scanner documentation"
+      ;;
+  esac
+
+  if [ "$severity" != "Info" ]; then
+    if printf '%s\n' "$text" | grep -Eq 'curl .*\|.*(sh|bash|zsh)|wget .*\|.*(sh|bash|zsh)|EncodedCommand|DownloadString|Invoke-Expression|Start-Process.*Hidden|New-ScheduledTask|CurrentVersion\\Run|launchctl|LaunchAgents|crontab|systemctl'; then
+      severity="High"
+      reason="remote execution, hidden execution, or persistence indicator"
+    elif printf '%s\n' "$text" | grep -Eq '\.ssh|\.aws|\.npmrc|GITHUB_TOKEN|NPM_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|api[_-]?key|webhook|pastebin|discord(app)?\.com/api/webhooks'; then
+      severity="High"
+      reason="credential or exfiltration indicator"
+    elif printf '%s\n' "$text" | grep -Eq 'preinstall|postinstall|prepare|prepublish'; then
+      severity="Medium"
+      reason="install-time script indicator"
+    elif printf '%s\n' "$text" | grep -Eq 'child_process|eval\(|Function\(|base64|atob|Buffer\.from|process\.env'; then
+      severity="Medium"
+      reason="dynamic execution, obfuscation, or environment access indicator"
+    fi
+  fi
+
+  printf '%s\t%s\t%s\n' "$severity" "$rel_line" "$reason" >>"$CLASSIFIED"
 }
 
 {
@@ -193,6 +231,24 @@ if has_cmd rg; then
     "$REPO_DIR" >"$RAW" 2>/dev/null || true
 
   if [ -s "$RAW" ]; then
+    while IFS= read -r line; do
+      classify_finding_line "$line"
+    done <"$RAW"
+
+    {
+      echo "## Classified Findings"
+      echo
+      echo "| Severity | Evidence | Reason |"
+      echo "| --- | --- | --- |"
+      while IFS="$(printf '\t')" read -r severity evidence reason; do
+        escaped_evidence="$(printf '%s\n' "$evidence" | sed 's/|/\\|/g')"
+        printf '| %s | `%s` | %s |\n' "$severity" "$escaped_evidence" "$reason"
+      done <"$CLASSIFIED"
+      echo
+    } >>"$REPORT"
+
+    echo "## Raw Pattern Matches" >>"$REPORT"
+    echo >>"$REPORT"
     sed "s#^$REPO_DIR/##" "$RAW" | sed 's/^/- `/' | sed 's/$/`/' >>"$REPORT"
   else
     echo "- No fallback pattern matches found." >>"$REPORT"

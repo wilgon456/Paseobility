@@ -1,5 +1,6 @@
 param(
   [string]$TargetHome = $env:USERPROFILE,
+  [string[]]$Skill = @(),
   [switch]$WithClaude,
   [switch]$NoPaseoCheck
 )
@@ -30,8 +31,29 @@ function Copy-Skills {
   }
 
   New-Item -ItemType Directory -Force $Target | Out-Null
-  Copy-Item -Recurse -Force (Join-Path $SkillsDir "*") $Target
-  Write-Status "install" "copied skills to $Target"
+  $skillDirs = @()
+  if ($Skill.Count -gt 0) {
+    foreach ($name in $Skill) {
+      if ([string]::IsNullOrWhiteSpace($name)) {
+        continue
+      }
+      $source = Join-Path $SkillsDir $name
+      $skillFile = Join-Path $source "SKILL.md"
+      if (-not (Test-Path $skillFile)) {
+        throw "skill not found or missing SKILL.md: $name"
+      }
+      $skillDirs += $source
+    }
+  } else {
+    $skillDirs = Get-ChildItem -LiteralPath $SkillsDir -Directory | Where-Object {
+      Test-Path (Join-Path $_.FullName "SKILL.md")
+    } | ForEach-Object { $_.FullName }
+  }
+
+  foreach ($source in $skillDirs) {
+    Copy-Item -LiteralPath $source -Destination $Target -Recurse -Force
+    Write-Status "install" ("copied {0} to {1}" -f (Split-Path -Leaf $source), $Target)
+  }
 }
 
 function Find-PaseoCli {

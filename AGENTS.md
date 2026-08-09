@@ -81,10 +81,14 @@ Convenience installer:
 ```powershell
 .\scripts\paseobility-install.ps1
 .\scripts\paseobility-install.ps1 -WithClaude
+.\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
 
 # Temp-home install test:
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
 ```
+
+Use `-Skill <name>` when the user asks to update or validate one bundled skill
+without touching the other installed skills.
 
 ## Paseo CLI detection
 

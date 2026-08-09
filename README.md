@@ -131,6 +131,10 @@ cd Paseobility
 # Paseo / Codex 계열 스킬 설치
 .\scripts\paseobility-install.ps1
 
+# 특정 스킬만 업데이트하고 싶다면
+.\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
+.\scripts\paseobility-install.ps1 -Skill paseo-spyware-check
+
 # 임시 홈에 먼저 테스트 설치하고 싶다면
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
 
@@ -288,8 +292,10 @@ install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위
 
 - repo 코드를 실행하지 않고 읽기 전용으로 검사합니다.
 - macOS/Linux에서는 bundled helper가 있으면 temp clone 후 정적 리포트를 만듭니다.
+- Windows에서는 bundled PowerShell helper로 native 정적 리포트를 만들 수 있습니다.
 - `gitleaks`, `trufflehog`, `semgrep`, `osv-scanner`, `trivy`, `shellcheck`, `yara`가 설치되어 있으면 사용하고, 없으면 `rg` 기반 휴리스틱으로 내려갑니다.
 - scanner가 없으면 포함된 helper로 설치 명령을 먼저 보여주고, 승인 후 Homebrew 기반으로 설치할 수 있습니다.
+- 결과는 severity별로 `High`, `Medium`, `Info`로 분류하고, scanner 문서/정규식에 들어 있는 self-reference는 `Info`로 표시합니다.
 - 결과는 `Low / Medium / High / Critical` verdict와 파일/라인 근거로 정리합니다.
 
 ### 테스트 agent 정리하기
@@ -396,6 +402,8 @@ GitHub URL이나 로컬 repo를 설치하기 전에 spyware, 악성 install scri
 - `eval`, `Function`, `base64`, `EncodedCommand`, `child_process` 같은 obfuscation/실행 패턴
 - GitHub Actions의 `pull_request_target`, unpinned action, secret 노출 위험
 - optional scanner 결과: `gitleaks`, `trufflehog`, `semgrep`, `osv-scanner`, `trivy`, `shellcheck`, `PSScriptAnalyzer`, `yara`
+- helper report의 severity 분류: `High`, `Medium`, `Info`
+- scanner 문서/스크립트에 들어 있는 self-reference 패턴
 
 핵심 규칙:
 
@@ -403,11 +411,26 @@ GitHub URL이나 로컬 repo를 설치하기 전에 spyware, 악성 install scri
 - dependency install/build/test를 돌리지 않습니다.
 - 민감 값은 출력하지 않고 파일/라인/키 이름 중심으로 redaction합니다.
 - 깨끗한 결과도 "절대 안전"이 아니라 "정적 검사에서 고위험 신호가 보이지 않음"으로 표현합니다.
+- scanner 자체 문서나 정규식 설명에서 잡힌 self-reference는 숨기지 않고 `Info`로 분류합니다.
 
 Third-party scanner note:
 
 - `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 스캐너 CLI를 호출해 사용하는 방식입니다.
 - Paseobility는 해당 스캐너의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
+
+포함된 helper:
+
+```bash
+# macOS/Linux
+skills/paseo-spyware-check/scripts/spyware-check.sh --target https://github.com/owner/repo
+skills/paseo-spyware-check/scripts/install-scanners.sh --dry-run
+```
+
+```powershell
+# Windows PowerShell
+.\skills\paseo-spyware-check\scripts\spyware-check.ps1 -Target https://github.com/owner/repo
+.\skills\paseo-spyware-check\scripts\install-scanners.ps1 -DryRun
+```
 
 ---
 
@@ -522,6 +545,8 @@ Coordinator -> 작업 분해 / 진행 관리 / 최종 합성
 ## 저장소 구조
 
 ```text
+VERSION
+paseobility.json
 skills/
 ├── paseo-agent-tournament/
 │   └── SKILL.md
@@ -537,6 +562,8 @@ skills/
 │   ├── SKILL.md
 │   └── scripts/
 │       ├── install-scanners.sh
+│       ├── install-scanners.ps1
+│       ├── spyware-check.ps1
 │       └── spyware-check.sh
 ├── paseo-session-brief/
 │   └── SKILL.md
