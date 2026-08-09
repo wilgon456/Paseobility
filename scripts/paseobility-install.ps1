@@ -2,6 +2,7 @@ param(
   [string]$TargetHome = $env:USERPROFILE,
   [string[]]$Skill = @(),
   [switch]$WithClaude,
+  [switch]$NoBackup,
   [switch]$NoPaseoCheck
 )
 
@@ -10,6 +11,11 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $SkillsDir = Join-Path $RepoRoot "skills"
+$VersionFile = Join-Path $RepoRoot "VERSION"
+$Version = "dev"
+if (Test-Path $VersionFile) {
+  $Version = (Get-Content -LiteralPath $VersionFile -TotalCount 1).Trim()
+}
 
 if ([string]::IsNullOrWhiteSpace($TargetHome)) {
   throw "TargetHome is empty. Pass -TargetHome or ensure USERPROFILE is set."
@@ -24,13 +30,19 @@ function Write-Status {
 }
 
 function Copy-Skills {
-  param([string]$Target)
+  param(
+    [string]$Target,
+    [string]$BackupParent
+  )
 
   if (-not (Test-Path $SkillsDir)) {
     throw "skills directory not found: $SkillsDir"
   }
 
   New-Item -ItemType Directory -Force $Target | Out-Null
+  $timestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
+  $backupRoot = Join-Path $BackupParent "Paseobility-$Version-$timestamp"
+  $backupCount = 0
   $skillDirs = @()
   if ($Skill.Count -gt 0) {
     foreach ($name in $Skill) {
@@ -51,8 +63,22 @@ function Copy-Skills {
   }
 
   foreach ($source in $skillDirs) {
+    $name = Split-Path -Leaf $source
+    $dest = Join-Path $Target $name
+    if ((Test-Path $dest) -and (-not $NoBackup)) {
+      New-Item -ItemType Directory -Force $backupRoot | Out-Null
+      Copy-Item -LiteralPath $dest -Destination $backupRoot -Recurse -Force
+      $backupCount += 1
+    }
+    if (Test-Path $dest) {
+      Remove-Item -LiteralPath $dest -Recurse -Force
+    }
     Copy-Item -LiteralPath $source -Destination $Target -Recurse -Force
-    Write-Status "install" ("copied {0} to {1}" -f (Split-Path -Leaf $source), $Target)
+    Write-Status "install" ("copied {0} to {1}" -f $name, $Target)
+  }
+
+  if ($backupCount -gt 0) {
+    Write-Status "backup" ("saved {0} existing skill(s) to {1}" -f $backupCount, $backupRoot)
   }
 }
 
@@ -87,10 +113,10 @@ Write-Status "target_home" $TargetHome
 Write-Status "os" ([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)
 Write-Status "arch" ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString())
 
-Copy-Skills (Join-Path $TargetHome ".agents\skills")
+Copy-Skills (Join-Path $TargetHome ".agents\skills") (Join-Path $TargetHome ".agents\skills-backups")
 
 if ($WithClaude) {
-  Copy-Skills (Join-Path $TargetHome ".claude\skills")
+  Copy-Skills (Join-Path $TargetHome ".claude\skills") (Join-Path $TargetHome ".claude\skills-backups")
 } else {
   Write-Status "skip" "Claude skills not touched. Pass -WithClaude to install there."
 }

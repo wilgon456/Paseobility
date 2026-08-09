@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.1-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.1.1-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -39,12 +39,14 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ## v2.1 업데이트
 
-v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했습니다.
+v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했습니다. v2.1.1에서는 설치 안정성과 리포트 가독성을 보강했습니다.
 
-| 추가 기능 | 역할 |
+| 추가/보강 기능 | 역할 |
 | --- | --- |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
 | `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
+| Installer backup | 기존 같은 이름의 skill 디렉터리를 덮어쓰기 전에 `skills-backups/` 아래로 자동 백업 |
+| Report summary | spyware helper report에 `High / Medium / Info` count와 verdict hint 추가 |
 
 `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 scanner CLI를 호출하는 방식입니다. Paseobility는 해당 scanner의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
@@ -115,6 +117,10 @@ cd Paseobility
 # Paseo / Codex 계열 스킬만 설치
 ./scripts/paseobility-init.sh --no-context
 
+# 특정 스킬만 업데이트하고 싶다면
+./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
+./scripts/paseobility-init.sh --skill paseo-spyware-check --no-context
+
 # Claude Code에서도 같이 쓰고 싶다면
 ./scripts/paseobility-init.sh --with-claude --no-context
 
@@ -141,6 +147,15 @@ cd Paseobility
 # Claude Code에서도 같이 쓰고 싶다면
 .\scripts\paseobility-install.ps1 -WithClaude
 ```
+
+installer는 기존 같은 이름의 skill이 있으면 덮어쓰기 전에 백업합니다.
+
+| OS | Backup path |
+| --- | --- |
+| macOS/Linux | `~/.agents/skills-backups/Paseobility-<version>-<timestamp>/` |
+| Windows | `%USERPROFILE%\.agents\skills-backups\Paseobility-<version>-<timestamp>\` |
+
+백업 없이 강제로 교체해야 하는 경우 macOS/Linux는 `--no-backup`, Windows는 `-NoBackup`을 사용할 수 있습니다.
 
 설치 후 Paseo 앱에서 새 에이전트를 시작하거나, Settings에서 통합/스킬을 다시 로드하세요.
 
@@ -296,6 +311,7 @@ install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위
 - `gitleaks`, `trufflehog`, `semgrep`, `osv-scanner`, `trivy`, `shellcheck`, `yara`가 설치되어 있으면 사용하고, 없으면 `rg` 기반 휴리스틱으로 내려갑니다.
 - scanner가 없으면 포함된 helper로 설치 명령을 먼저 보여주고, 승인 후 Homebrew 기반으로 설치할 수 있습니다.
 - 결과는 severity별로 `High`, `Medium`, `Info`로 분류하고, scanner 문서/정규식에 들어 있는 self-reference는 `Info`로 표시합니다.
+- helper report에는 `Finding Summary`가 포함되어 `High / Medium / Info` 개수와 verdict hint를 먼저 보여줍니다.
 - 결과는 `Low / Medium / High / Critical` verdict와 파일/라인 근거로 정리합니다.
 
 ### 테스트 agent 정리하기
@@ -403,6 +419,7 @@ GitHub URL이나 로컬 repo를 설치하기 전에 spyware, 악성 install scri
 - GitHub Actions의 `pull_request_target`, unpinned action, secret 노출 위험
 - optional scanner 결과: `gitleaks`, `trufflehog`, `semgrep`, `osv-scanner`, `trivy`, `shellcheck`, `PSScriptAnalyzer`, `yara`
 - helper report의 severity 분류: `High`, `Medium`, `Info`
+- helper report의 `Finding Summary` count와 verdict hint
 - scanner 문서/스크립트에 들어 있는 self-reference 패턴
 
 핵심 규칙:

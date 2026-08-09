@@ -74,6 +74,7 @@ The helper never executes target project code. It:
 - runs `rg` fallback heuristics
 - classifies fallback findings as `High`, `Medium`, or `Info`
 - marks scanner documentation/self-reference matches as `Info`
+- summarizes `High`, `Medium`, and `Info` counts with a verdict hint
 - writes a Markdown report
 
 Use:
@@ -125,7 +126,7 @@ Prefer the bundled helper:
 
 The PowerShell helper follows the same safety model: clone or inspect, do not
 execute target project code, run optional scanners only when installed, and
-write `report.md`.
+write `report.md` with the same `Finding Summary` and classified findings table.
 
 To preview Windows scanner installation commands:
 
@@ -285,3 +286,6 @@ Recommendation
 
 Do not claim "safe" absolutely. Prefer "no high-risk indicators found in this
 static pass" when the scan is clean.
+
+When a bundled helper report exists, start from its `Finding Summary` counts but
+do not treat the helper's verdict hint as final without reviewing the evidence.

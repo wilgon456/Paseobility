@@ -128,7 +128,7 @@ classify_finding_line() {
   reason="suspicious static pattern"
 
   case "$path" in
-    README.md|README.*|skills/paseo-spyware-check/SKILL.md|skills/paseo-spyware-check/scripts/spyware-check.sh)
+    README.md|README.*|skills/paseo-spyware-check/SKILL.md|skills/paseo-spyware-check/scripts/*)
       severity="Info"
       reason="self-reference or scanner documentation"
       ;;
@@ -235,6 +235,29 @@ if has_cmd rg; then
       classify_finding_line "$line"
     done <"$RAW"
 
+    high_count="$(awk -F '\t' '$1 == "High" { count++ } END { print count + 0 }' "$CLASSIFIED")"
+    medium_count="$(awk -F '\t' '$1 == "Medium" { count++ } END { print count + 0 }' "$CLASSIFIED")"
+    info_count="$(awk -F '\t' '$1 == "Info" { count++ } END { print count + 0 }' "$CLASSIFIED")"
+    if [ "$high_count" -gt 0 ]; then
+      verdict_hint="High"
+    elif [ "$medium_count" -gt 0 ]; then
+      verdict_hint="Medium"
+    else
+      verdict_hint="Low"
+    fi
+
+    {
+      echo "## Finding Summary"
+      echo
+      echo "- Verdict hint: \`$verdict_hint\`"
+      echo "- High: \`$high_count\`"
+      echo "- Medium: \`$medium_count\`"
+      echo "- Info: \`$info_count\`"
+      echo
+      echo "Treat this as triage output. Final judgement still requires manual review of the evidence and optional scanner logs."
+      echo
+    } >>"$REPORT"
+
     {
       echo "## Classified Findings"
       echo
@@ -251,6 +274,15 @@ if has_cmd rg; then
     echo >>"$REPORT"
     sed "s#^$REPO_DIR/##" "$RAW" | sed 's/^/- `/' | sed 's/$/`/' >>"$REPORT"
   else
+    {
+      echo "## Finding Summary"
+      echo
+      echo "- Verdict hint: \`Low\`"
+      echo "- High: \`0\`"
+      echo "- Medium: \`0\`"
+      echo "- Info: \`0\`"
+      echo
+    } >>"$REPORT"
     echo "- No fallback pattern matches found." >>"$REPORT"
   fi
 else
