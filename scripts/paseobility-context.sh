@@ -94,7 +94,7 @@ instruction_files() {
   project_files | while IFS= read -r file; do
     rel="$(relpath "$file")"
     case "$rel" in
-      README|README.*|AGENTS.md|CLAUDE.md|GEMINI.md|.github/copilot-instructions.md|.cursor/rules/*|docs/*.md|docs/**/*.md)
+      README|README.*|AGENTS.md|CLAUDE.md|GEMINI.md|.github/copilot-instructions.md|.cursor/rules/*|docs/*.md|docs/*/*.md)
         printf '%s\n' "$file"
         ;;
     esac
@@ -190,9 +190,7 @@ EOF
 ## Instruction Sources
 
 EOF
-  found=0
   instruction_files | while IFS= read -r file; do
-    found=1
     rel="$(relpath "$file")"
     printf '\n### `%s`\n\n' "$rel"
     headings="$(headings_for "$file")"

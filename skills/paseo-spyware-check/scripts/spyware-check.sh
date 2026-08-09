@@ -105,11 +105,13 @@ append_cmd_status() {
 run_optional() {
   name="$1"
   shift
-  echo "== $name ==" >>"$OUT_DIR/tools.log"
-  "$@" >>"$OUT_DIR/tools.log" 2>&1
-  status=$?
-  echo "exit=$status" >>"$OUT_DIR/tools.log"
-  echo >>"$OUT_DIR/tools.log"
+  {
+    echo "== $name =="
+    "$@" 2>&1
+    status=$?
+    echo "exit=$status"
+    echo
+  } >>"$OUT_DIR/tools.log"
   return 0
 }
 
