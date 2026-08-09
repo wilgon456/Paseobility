@@ -75,6 +75,7 @@ function parseArgs(argv) {
 function run(command, args) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
+    shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"],
   });
   return {
