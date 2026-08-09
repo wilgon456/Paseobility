@@ -182,11 +182,10 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
 | `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, safe agent auto-archive, temp HOME 설치, 실제 skill 인식 확인 |
+| `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
-
-`/paseo-agent-cleanup`은 Node 기반 helper라 Windows에서도 동작할 가능성이 높지만, 아직 Windows tested 문구는 붙이지 않았습니다.
 
 ---
 

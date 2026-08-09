@@ -73,9 +73,10 @@ function parseArgs(argv) {
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, {
+  const spawnCommand = process.platform === "win32" && command === "paseo" ? "cmd.exe" : command;
+  const spawnArgs = process.platform === "win32" && command === "paseo" ? ["/d", "/s", "/c", command, ...args] : args;
+  const result = spawnSync(spawnCommand, spawnArgs, {
     encoding: "utf8",
-    shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"],
   });
   return {
