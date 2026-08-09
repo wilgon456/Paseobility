@@ -10,6 +10,7 @@
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
   <img alt="Project Bootstrap" src="https://img.shields.io/badge/Project-Bootstrap-059669?style=for-the-badge">
   <img alt="Agent Tournament" src="https://img.shields.io/badge/Agent-Tournament-db2777?style=for-the-badge">
+  <img alt="Spyware Check" src="https://img.shields.io/badge/Spyware-Check-dc2626?style=for-the-badge">
 </p>
 
 <p>
@@ -53,6 +54,7 @@ https://github.com/wilgon456/Paseobility
 - 웹페이지를 열고, 읽고, 클릭하고, 입력하고, 스크린샷으로 검증합니다.
 - 작업을 여러 에이전트에게 나눠 맡기고 결과를 합성합니다.
 - GPT/Claude/DeepSeek/Grok 같은 여러 모델의 답을 비교해 winner 또는 merged plan을 고릅니다.
+- GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
 - 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
 - 새 프로젝트에 들어갈 때 README, docs, Claude/Codex/Cursor 계열 지침을 모아 작업 맥락을 만듭니다.
 - Codex로 구현하고 Claude로 리뷰하는 식의 크로스 프로바이더 협업을 설계합니다.
@@ -69,6 +71,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-agent-tournament` | 멀티 모델 비교/심사 | GPT vs Claude vs DeepSeek, 찬반 토론, 설계안 비교, judge 기반 winner 선정 |
 | `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
+| `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
 
 ---
 
@@ -249,6 +252,22 @@ package scripts를 읽어서 작업 맥락을 만들어줘.
 └── bootstrap-log.md  # OS, arch, Paseo 상태, 경고
 ```
 
+### 설치 전 스파이웨어 체크하기
+
+```text
+/paseo-spyware-check
+https://github.com/owner/repo 설치해도 되는지,
+install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위주로 검사해줘.
+```
+
+기본 원칙:
+
+- repo 코드를 실행하지 않고 읽기 전용으로 검사합니다.
+- macOS/Linux에서는 bundled helper가 있으면 temp clone 후 정적 리포트를 만듭니다.
+- `gitleaks`, `trufflehog`, `semgrep`, `osv-scanner`, `trivy`, `shellcheck`, `yara`가 설치되어 있으면 사용하고, 없으면 `rg` 기반 휴리스틱으로 내려갑니다.
+- scanner가 없으면 포함된 helper로 설치 명령을 먼저 보여주고, 승인 후 Homebrew 기반으로 설치할 수 있습니다.
+- 결과는 `Low / Medium / High / Critical` verdict와 파일/라인 근거로 정리합니다.
+
 ---
 
 ## `/paseo-agent-tournament`
@@ -322,6 +341,33 @@ Workspace hygiene:
 - 현재 프로젝트 루트 안에서 작업하는 것을 우선합니다.
 - 외부 clone, sibling project, 새 workspace는 사용자가 요청했거나 명확히 필요할 때만 씁니다.
 - 외부 경로에서 작업했다면 최종 보고에 경로와 이유를 남깁니다.
+
+---
+
+## `/paseo-spyware-check`
+
+GitHub URL이나 로컬 repo를 설치하기 전에 spyware, 악성 install script, secret 탈취, 원격 코드 실행, supply-chain 위험 신호를 정적으로 점검합니다.
+
+확인하는 것:
+
+- `package.json`의 `preinstall`, `install`, `postinstall`, `prepare`
+- shell/PowerShell script의 remote download/execute, hidden process, persistence
+- `.ssh`, `.aws`, `.npmrc`, browser profile, keychain, API token 접근
+- `eval`, `Function`, `base64`, `EncodedCommand`, `child_process` 같은 obfuscation/실행 패턴
+- GitHub Actions의 `pull_request_target`, unpinned action, secret 노출 위험
+- optional scanner 결과: `gitleaks`, `trufflehog`, `semgrep`, `osv-scanner`, `trivy`, `shellcheck`, `PSScriptAnalyzer`, `yara`
+
+핵심 규칙:
+
+- 검사 대상 repo의 코드는 실행하지 않습니다.
+- dependency install/build/test를 돌리지 않습니다.
+- 민감 값은 출력하지 않고 파일/라인/키 이름 중심으로 redaction합니다.
+- 깨끗한 결과도 "절대 안전"이 아니라 "정적 검사에서 고위험 신호가 보이지 않음"으로 표현합니다.
+
+Third-party scanner note:
+
+- `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 스캐너 CLI를 호출해 사용하는 방식입니다.
+- Paseobility는 해당 스캐너의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
 ---
 
@@ -414,6 +460,11 @@ skills/
 │   └── SKILL.md
 ├── paseo-project-bootstrap/
 │   └── SKILL.md
+├── paseo-spyware-check/
+│   ├── SKILL.md
+│   └── scripts/
+│       ├── install-scanners.sh
+│       └── spyware-check.sh
 ├── paseo-session-brief/
 │   └── SKILL.md
 └── paseo-orchestration/
