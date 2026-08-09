@@ -5,6 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.1-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -28,11 +29,26 @@
 
 Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에게 던져 설치하게 만든 **agent-installable Paseo 슬래쉬 스킬팩**입니다.
 
-설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
+설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 테스트 agent 정리 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
 
 기본 Paseo만으로도 내장 도구를 조합하면 비슷한 일을 할 수 있습니다. 다만 매번 에이전트가 그 조합을 새로 판단하게 두면 느리고 결과가 들쭉날쭉할 수 있어서, 자주 쓰는 패턴을 바로 꺼내 쓰기 쉽게 묶었습니다.
 
 이 repo는 실행형 프레임워크가 아니라 **Paseo 내장 도구를 반복 가능하게 조합하기 위한 스킬 문서 패키지**입니다. macOS/Linux용 bootstrap helper와 Windows PowerShell 설치 helper를 함께 제공합니다.
+
+---
+
+## v2.1 업데이트
+
+v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했습니다.
+
+| 추가 기능 | 역할 |
+| --- | --- |
+| `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
+| `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 Paseo agent/workspace를 dry-run으로 확인하고, 승인 후 archive-only 방식으로 정리 |
+
+`/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 scanner CLI를 호출하는 방식입니다. Paseobility는 해당 scanner의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
+
+`/paseo-agent-cleanup`은 기본이 dry-run이며, running agent는 건드리지 않고, delete가 아니라 archive만 수행하도록 제한했습니다.
 
 ---
 
@@ -162,9 +178,15 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | Apple Silicon macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/arm64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Intel macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/x86_64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Windows | Tested | Windows 11 x64, Windows PowerShell 5.1, Paseo CLI 0.2.5에서 PowerShell installer, `-TargetHome` 임시 설치, 실제 `%USERPROFILE%\.agents\skills` 설치, 새 Paseo agent의 `/paseo-session-brief` 인식 확인. Native bash context script는 미검증 |
+| `/paseo-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인 |
+| `/paseo-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
+| `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
+| `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, explicit agent archive, temp HOME 설치, 실제 skill 인식 확인 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
+
+`/paseo-agent-cleanup`은 Node 기반 helper라 Windows에서도 동작할 가능성이 높지만, 아직 Windows tested 문구는 붙이지 않았습니다.
 
 ---
 
