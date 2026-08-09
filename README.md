@@ -44,11 +44,11 @@ v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했
 | 추가 기능 | 역할 |
 | --- | --- |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
-| `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 Paseo agent/workspace를 dry-run으로 확인하고, 승인 후 archive-only 방식으로 정리 |
+| `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
 
 `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 scanner CLI를 호출하는 방식입니다. Paseobility는 해당 scanner의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
-`/paseo-agent-cleanup`은 기본이 dry-run이며, running agent는 건드리지 않고, delete가 아니라 archive만 수행하도록 제한했습니다.
+`/paseo-agent-cleanup`은 명확한 테스트/검증용 완료 agent를 기본으로 archive합니다. running agent는 건드리지 않고, workspace cleanup과 애매한 대상은 승인 후 archive-only 방식으로만 처리합니다.
 
 ---
 
@@ -72,7 +72,7 @@ https://github.com/wilgon456/Paseobility
 - 작업을 여러 에이전트에게 나눠 맡기고 결과를 합성합니다.
 - GPT/Claude/DeepSeek/Grok 같은 여러 모델의 답을 비교해 winner 또는 merged plan을 고릅니다.
 - GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
-- 테스트 후 쌓인 agent/workspace를 dry-run으로 확인하고 승인 후 archive합니다.
+- 테스트 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive합니다.
 - 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
 - 새 프로젝트에 들어갈 때 README, docs, Claude/Codex/Cursor 계열 지침을 모아 작업 맥락을 만듭니다.
 - Codex로 구현하고 Claude로 리뷰하는 식의 크로스 프로바이더 협업을 설계합니다.
@@ -90,7 +90,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
-| `/paseo-agent-cleanup` | 테스트 agent/workspace 정리 | dry-run 후보 확인, running agent 보호, 승인 후 archive |
+| `/paseo-agent-cleanup` | 테스트 agent/workspace 정리 | 완료된 테스트 agent 자동 archive, running agent 보호, workspace는 승인 후 archive |
 
 ---
 
@@ -181,7 +181,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인 |
 | `/paseo-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
-| `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, explicit agent archive, temp HOME 설치, 실제 skill 인식 확인 |
+| `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, safe agent auto-archive, temp HOME 설치, 실제 skill 인식 확인 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -298,16 +298,16 @@ install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위
 ```text
 /paseo-agent-cleanup
 테스트용 agent랑 workspace 정리해줘.
-먼저 dry-run으로 후보 보여주고, 승인하면 archive만 해.
+완료된 테스트 agent는 바로 archive하고, workspace는 후보만 보여줘.
 running agent는 건드리지 마.
 ```
 
 기본 원칙:
 
-- 기본은 dry-run입니다.
+- 명확한 테스트/검증용 완료 agent는 자동 archive합니다.
 - `delete`는 하지 않고 `archive`만 합니다.
 - running agent는 자동으로 정리하지 않습니다.
-- 실제 archive는 사용자 승인 후에만 진행합니다.
+- workspace archive와 애매한 대상은 사용자 승인 후에만 진행합니다.
 
 ---
 
@@ -425,14 +425,15 @@ Third-party scanner note:
 
 핵심 규칙:
 
-- 기본은 dry-run입니다.
+- 명확한 테스트/검증용 완료 agent는 기본으로 archive합니다.
 - running agent는 archive하지 않습니다.
 - delete는 지원하지 않습니다.
-- 실제 archive는 `--archive --yes` 또는 명확한 사용자 승인 후에만 실행합니다.
+- workspace archive와 애매한 대상은 `--archive --yes` 또는 명확한 사용자 승인 후에만 실행합니다.
 
 포함된 helper:
 
 ```bash
+node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive --yes
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
