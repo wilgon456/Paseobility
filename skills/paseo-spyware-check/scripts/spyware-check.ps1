@@ -82,8 +82,18 @@ try {
   if (Test-Url $Target) {
     $Repo = Join-Path $WorkDir "repo"
     $CloneLog = Join-Path $Out "git-clone.log"
-    git clone --depth 1 $Target $Repo *> $CloneLog
-    if ($LASTEXITCODE -ne 0) {
+    # Windows PowerShell 5.1 wraps native stderr as ErrorRecord objects when
+    # ErrorActionPreference is Stop. Git writes normal clone progress to stderr,
+    # so judge this native command by its exit code instead.
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = "Continue"
+      & git clone --depth 1 $Target $Repo *> $CloneLog
+      $CloneExitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($CloneExitCode -ne 0) {
       throw "git clone failed; see $CloneLog"
     }
   } else {
