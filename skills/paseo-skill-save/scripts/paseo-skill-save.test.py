@@ -5,6 +5,8 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -13,6 +15,7 @@ SCRIPT = Path(__file__).with_name("paseo-skill-save.py")
 SPEC = importlib.util.spec_from_file_location("paseo_skill_save", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
@@ -46,6 +49,13 @@ def selected_match(
     }
 
 
+def fake_runtime() -> object:
+    return MODULE.ManagerRuntime(
+        command=(MODULE.sys.executable, "-m", "skillhub"),
+        details={"mode": "test"},
+    )
+
+
 class PaseoSkillSaveTests(unittest.TestCase):
     def test_add_verify_search_and_match_use_argv_without_shell(self) -> None:
         replies = [
@@ -77,7 +87,9 @@ class PaseoSkillSaveTests(unittest.TestCase):
             response({"results": [{"catalog_id": "overlay.demo"}]}),
             response(selected_match()),
         ]
-        with mock.patch.object(MODULE.subprocess, "run", side_effect=replies) as run:
+        with mock.patch.object(
+            MODULE, "_bootstrap_manager", return_value=fake_runtime()
+        ), mock.patch.object(MODULE.subprocess, "run", side_effect=replies) as run:
             args = MODULE.build_parser().parse_args(
                 [
                     "https://github.com/example/repo/tree/main/skills/demo",
@@ -114,13 +126,15 @@ class PaseoSkillSaveTests(unittest.TestCase):
 
     def test_missing_manager_has_clear_error(self) -> None:
         failed = response({}, returncode=1, stderr="No module named skillhub")
-        with mock.patch.object(MODULE.subprocess, "run", return_value=failed):
+        with mock.patch.object(
+            MODULE, "_bootstrap_manager", return_value=fake_runtime()
+        ), mock.patch.object(MODULE.subprocess, "run", return_value=failed):
             args = MODULE.build_parser().parse_args(
                 ["https://github.com/example/repo"]
             )
             with self.assertRaises(MODULE.SaveError) as raised:
                 MODULE.save_skill(args)
-        self.assertEqual(raised.exception.code, "skillnload-unavailable")
+        self.assertEqual(raised.exception.code, "manager-runtime-unavailable")
 
     def test_main_reports_match_failure(self) -> None:
         replies = [
@@ -162,8 +176,10 @@ class PaseoSkillSaveTests(unittest.TestCase):
         ]
         output = io.StringIO()
         with mock.patch.object(
-            MODULE.subprocess, "run", side_effect=replies
-        ), mock.patch("sys.stdout", output):
+            MODULE, "_bootstrap_manager", return_value=fake_runtime()
+        ), mock.patch.object(MODULE.subprocess, "run", side_effect=replies), mock.patch(
+            "sys.stdout", output
+        ):
             code = MODULE.main(["https://github.com/example/repo"])
         payload = json.loads(output.getvalue())
         self.assertEqual(code, 1)
@@ -206,7 +222,9 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 )
             ),
         ]
-        with mock.patch.object(MODULE.subprocess, "run", side_effect=replies):
+        with mock.patch.object(
+            MODULE, "_bootstrap_manager", return_value=fake_runtime()
+        ), mock.patch.object(MODULE.subprocess, "run", side_effect=replies):
             args = MODULE.build_parser().parse_args(
                 ["https://github.com/example/repo/tree/main/skills/scripted"]
             )
@@ -214,6 +232,67 @@ class PaseoSkillSaveTests(unittest.TestCase):
         self.assertTrue(result["natural_language_ready"])
         self.assertTrue(result["automatic_use_ready"])
         self.assertTrue(result["matches"][0]["requires_user_confirmation"])
+
+    def test_auto_bootstrap_fetches_reuses_and_detects_tampering(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            (source / "scripts").mkdir(parents=True)
+            (source / "skillhub").mkdir()
+            (source / "scripts" / "skillhub.py").write_text(
+                "print('manager')\n", encoding="utf-8"
+            )
+            (source / "skillhub" / "__init__.py").write_text("", encoding="utf-8")
+            subprocess.run(["git", "init", str(source)], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "-C", str(source), "config", "user.email", "test@example.com"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(source), "config", "user.name", "Test"], check=True
+            )
+            subprocess.run(
+                ["git", "-C", str(source), "add", "."], check=True
+            )
+            subprocess.run(
+                ["git", "-C", str(source), "commit", "-m", "fixture"],
+                check=True,
+                capture_output=True,
+            )
+            revision = subprocess.run(
+                ["git", "-C", str(source), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tree = subprocess.run(
+                ["git", "-C", str(source), "rev-parse", "HEAD^{tree}"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            args = MODULE.build_parser().parse_args(
+                ["https://github.com/example/skill", "--home", str(root / "home")]
+            )
+            with mock.patch.object(MODULE, "MANAGER_REPOSITORY", str(source)), mock.patch.object(
+                MODULE, "MANAGER_REVISION", revision
+            ), mock.patch.object(MODULE, "MANAGER_TREE", tree):
+                runtime = MODULE._bootstrap_manager(args)
+                self.assertEqual(runtime.details["mode"], "auto-pinned")
+                self.assertEqual(runtime.details["revision"], revision)
+                checkout = Path(runtime.details["path"])
+                self.assertTrue((checkout / "scripts" / "skillhub.py").is_file())
+
+                source.rename(root / "source-offline")
+                reused = MODULE._bootstrap_manager(args)
+                self.assertEqual(reused.details["path"], runtime.details["path"])
+
+                (checkout / "scripts" / "skillhub.py").write_text(
+                    "print('tampered')\n", encoding="utf-8"
+                )
+                with self.assertRaises(MODULE.SaveError) as raised:
+                    MODULE._bootstrap_manager(args)
+                self.assertEqual(raised.exception.code, "manager-verification-failed")
 
 
 if __name__ == "__main__":

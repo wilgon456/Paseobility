@@ -10,10 +10,11 @@ copying the bundled skills into the local skill directory.
 ## Paseo Skill Save fast path
 
 When the user asks to install or test `/paseo-skill-save`, install both the
-`paseo-skill-save` and `paseo-spyware-check` skill directories. The save skill
-is a thin client for the separately installed public skillNload manager at
-`https://github.com/wilgon456/skillNload`; Paseobility does not bundle that
-manager or any user-saved third-party skills.
+`paseo-skill-save` and `paseo-spyware-check` skill directories. On first use,
+the save wrapper automatically fetches and commit/tree-verifies its pinned
+public skillNload engine under the user's `.paseo` directory. Do not ask the
+user to install or invoke skillNload separately. Paseobility does not bundle
+the manager source or any user-saved third-party skills.
 
 Before saving a target skill, run the read-only spyware workflow. Never execute
 the target repository's code during inspection or registration. Use a temporary
