@@ -206,6 +206,25 @@ function addRhythmFindings(text, stats, findings) {
       message: "Sentence lengths are unusually uniform; read aloud before changing anything.",
     });
   }
+
+  paragraphList.forEach((paragraph, paragraphIndex) => {
+    const sentenceLengths = sentences(paragraph).map((item) => words(item).length);
+    let currentRun = 0;
+    let longestRun = 0;
+    for (const length of sentenceLengths) {
+      currentRun = length <= 8 ? currentRun + 1 : 0;
+      longestRun = Math.max(longestRun, currentRun);
+    }
+    if (longestRun >= 4) {
+      findings.push({
+        id: "staccato-short-sentence-run",
+        severity: "warning",
+        paragraph: paragraphIndex + 1,
+        evidence: `${longestRun} consecutive sentences with <=8 words`,
+        message: "Several short declarative sentences run together; inspect whether the cadence reads as deliberate prose or reformatted notes.",
+      });
+    }
+  });
 }
 
 function matchedSignals(text, pattern) {

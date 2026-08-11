@@ -58,6 +58,10 @@ for mode selection, questions, agent routing, and review because outputs vary.
 - when enough material exists, at least one passage paragraph has two or more connected sentences
 - a requested length never causes repetition, unsupported expansion, or invented material
 - when material is insufficient, the workflow returns a shorter draft and discloses the tradeoff
+- four or more consecutive short declarative sentences trigger a rhythm signal
+- unsupported first-person retrospective interpretation is a blocker
+- a conclusion that merely re-lists three or more body examples is a blocker
+- the final user-visible article is byte-for-byte identical to the verified candidate
 - silence or missing passage feedback never creates a lock
 - only explicit user, source, or legal wording is locked
 - long-form or public Studio work receives all four Editor lanes

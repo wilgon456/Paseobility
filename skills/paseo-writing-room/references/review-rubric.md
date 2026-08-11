@@ -21,6 +21,8 @@ Return `blocked` when any of these remain:
 - a material factual claim is unsupported or contradicted by reliable evidence
 - a source is cited for a claim it does not support
 - personal experience, quotation, customer, statistic, or event was invented
+- a first-person motive, habit, or retrospective interpretation has no direct
+  user atom, even when it seems inferable from chronology
 - an explicitly locked passage changed without approval
 - the document violates a required format or publication rule
 - private or sensitive information appears without a clear need
@@ -74,6 +76,8 @@ Flag exact excerpts for:
 - unexplained tone shifts
 - polish that erases user vocabulary or meaningful irregularity
 - invented slang, quirks, memories, or errors added to appear human
+- four or more consecutive short declarative sentences that create staccato
+  rhythm without voice-sample support
 
 Output:
 
@@ -102,6 +106,8 @@ Return `blocked` for:
 - a paragraph with no claim, evidence, example, scene, decision, or useful link
   to the surrounding argument
 - a transition that announces contrast or conclusion but adds no meaning
+- a conclusion that re-lists three or more body examples without a supported
+  decision, implication, or reader action
 
 Flag as `revise` when the draft repeatedly relies on antithesis, slogans,
 fragment-like paragraph beats, abstract nouns, or restated thesis sentences.
@@ -153,6 +159,7 @@ Return `ready-for-human` only when:
 - Reader lane has no major comprehension failure
 - locked passages are accounted for
 - the review-loop budget has not been exceeded
+- the verified candidate is exactly the article text returned to the user
 
 When Lead Writer and Editor disagree on taste, preserve the Writer's choice and
 report the tradeoff only when it materially affects the user's direction. Do

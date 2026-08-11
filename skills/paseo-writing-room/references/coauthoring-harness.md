@@ -155,6 +155,7 @@ Editor findings: excerpt | lane | severity | required action
 Writer response: accept | partly accept | reject with reason
 Patched sections:
 Verification: pass | blockers remain
+Verified candidate hash or identifier:
 New issues introduced:
 ```
 
@@ -162,6 +163,10 @@ Keep this exchange internal unless the user asks to see it. The Editor does not
 rewrite the complete piece. The Writer cannot dismiss a factual or clarity
 blocker merely as a matter of taste. Stop after the second round and disclose
 any unresolved blocker instead of looping indefinitely.
+
+Freeze the article after a passing verification. Provider and source metadata
+may be appended outside the article, but any article edit requires another
+verification of the exact changed candidate.
 
 ## Section ledger
 

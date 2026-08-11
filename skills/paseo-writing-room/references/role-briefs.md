@@ -103,12 +103,15 @@ Review four lanes separately:
 - fidelity to supplied wording, samples, direction, and emotional distance
 - generic or inflated language, rhythm flattening, and over-explanation
 - unsupported motive, feeling, habit, or retrospective interpretation
+- first-person retrospective phrases such as "처음부터 그러려던 건 아니다"
+  unless a user atom directly supports them
 
 ### Clarity
 
 - literal meaning, named subjects, antecedents, attribution, and paragraph logic
 - slogans, repeated antithesis, abstract transitions, and reformatted-note rhythm
 - whether each material paragraph has a plain claim and concrete support
+- conclusions that repeat three or more earlier examples without adding meaning
 
 ### Reader
 
@@ -128,6 +131,10 @@ No complete rewrite
 On verification, inspect the patches and nearby transitions. Confirm which
 blockers resolved, identify regressions, and return `pass` when no blocker
 remains. Do not manufacture disagreement to force another round.
+
+Verify the exact candidate that will be shown to the user. Return a stable hash
+or an unambiguous complete-candidate identifier with the verdict. If article
+text changes after verification, the prior verdict is invalid; verify again.
 
 ## Optional specialist
 

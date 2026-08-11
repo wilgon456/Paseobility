@@ -213,6 +213,8 @@ The Lead Writer must:
 - use connective tissue only to clarify order and reference
 - never infer a motive, feeling, habit, causal story, or retrospective judgment
 - avoid slogans, unsupported general theories, and vague unnamed sources
+- avoid a conclusion that merely re-lists three or more examples from the body
+  without adding a supported decision, implication, or reader action
 - keep internal atoms, gap maps, ledgers, and provider discussion out of draft
 - treat requested length as subordinate to supported material: never repeat,
   inflate, or invent content merely to hit a word or character target
@@ -243,6 +245,12 @@ The default exchange is automatic:
 4. Model B verifies that blocking findings are resolved and that revisions did
    not introduce new factual or voice problems.
 5. Run one additional critique/patch exchange only when blocking issues remain.
+
+The verification candidate must be byte-for-byte identical to the article
+later shown to the user. After the Editor returns `pass`, freeze that draft.
+The coordinator may add a clearly separated provider/source footer, but it may
+not change article wording, punctuation, or ordering. Any article change after
+verification invalidates the verdict and must return to the same Editor.
 
 The user sees the reviewed draft, not the internal debate, unless they ask for
 it. Do not stop after step 1 to request approval. Do not let Model B replace the

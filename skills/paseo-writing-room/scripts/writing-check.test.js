@@ -55,6 +55,11 @@ assert(koreanIds.has("vague-source-attribution"));
 assert(koreanIds.has("transition-scaffold-density"));
 assert(koreanIds.has("mechanical-short-paragraph-rhythm"));
 
+const staccatoDraft = `지금은 서비스를 역할별로 나눠 쓴다. 일상 업무에는 Grok을 쓴다. 속도가 빠르다. 이미지 제작에도 자주 쓴다. 긴 판단은 다른 도구에 맡긴다.`;
+const staccatoReport = analyze({ draft: staccatoDraft });
+const staccatoIds = new Set(staccatoReport.findings.map((item) => item.id));
+assert(staccatoIds.has("staccato-short-sentence-run"));
+
 assert.deepEqual(parseArgs(["--draft", "draft.md", "--json", "--strict"]), {
   draft: "draft.md",
   json: true,
