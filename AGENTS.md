@@ -7,6 +7,57 @@ This repository is designed for an AI-agent install flow: the user gives Codex,
 Claude, or a Paseo agent the GitHub URL, and the agent reads this file before
 copying the bundled skills into the local skill directory.
 
+## Paseo Share fast path
+
+If the user gives this repository URL and asks to install `paseo-share`, share
+files between Paseo computers, or enable mobile artifact viewing, proceed with
+the single-skill installation without asking them to choose among the bundled
+skills.
+
+Do not confuse the two repositories involved:
+
+- This Paseobility repository is the **skill source** used for installation.
+- The user's separate private repository is the **artifact repository** used
+  later by `paseo-share`.
+
+Installing the skill does not require the artifact repository. If the user has
+not supplied one, finish installation first and then tell them that initial
+`/paseo-share` setup will ask for a dedicated private GitHub or Forgejo URL.
+
+Use the convenience installer so an existing installation is backed up:
+
+```bash
+./scripts/paseobility-init.sh --skill paseo-share --no-context
+```
+
+On Windows PowerShell:
+
+```powershell
+.\scripts\paseobility-install.ps1 -Skill paseo-share
+```
+
+When running under Claude Code or when the user requests Claude support, also
+install the same skill into the Claude directory:
+
+```bash
+./scripts/paseobility-init.sh --skill paseo-share --with-claude --no-context
+```
+
+```powershell
+.\scripts\paseobility-install.ps1 -Skill paseo-share -WithClaude
+```
+
+After installation, verify the installed `SKILL.md` and
+`scripts/paseo-share.js` exist. When Node.js is available, run the installed
+`paseo-share.test.js`. Do not restart the Paseo daemon. Tell the user to open a
+new agent session or reload integrations, and give this first-use prompt:
+
+```text
+/paseo-share 전용 private 저장소를 이 컴퓨터에 연결해줘.
+저장소: <private artifact repository URL>
+컴퓨터 이름: <friendly machine name>
+```
+
 Paseobility is a skill document package. Installation means copying every
 directory under `skills/` into the user's local skills directory. It does not
 require a package build.
@@ -87,6 +138,7 @@ Convenience installer:
 .\scripts\paseobility-install.ps1
 .\scripts\paseobility-install.ps1 -WithClaude
 .\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
+.\scripts\paseobility-install.ps1 -Skill paseo-share
 
 # Temp-home install test:
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
