@@ -1,20 +1,24 @@
 ---
 name: paseo-writing-room
 description: >-
-  Research, plan, draft, cross-review, and revise source-backed writing with a
-  human approval loop and multiple Paseo agents. Use for blog posts, essays,
+  Plan, research when needed, draft, cross-review, and revise source-guided or
+  creative writing with a human approval loop and multiple Paseo agents. Use
+  for blog posts, essays,
   newsletters, reports, proposals, contributed articles, press releases,
   speeches, video or podcast scripts, website copy, letters, and social
-  threads when the user provides a topic, reference links, notes, or a rough
-  draft and wants follow-up questions, web research, fact checking, a natural
-  voice, cross-provider editorial review, citations, or iterative revisions.
+  threads when the user provides a topic or direction, with any number of
+  optional reference links, notes, or a rough draft, and wants natural prose,
+  web research or fact checking when needed, cross-provider editorial review,
+  citations, creative development, or iterative revisions.
 ---
 
 # Paseo Writing Room
 
-Turn a topic and source material into a reviewed piece of writing. Preserve the
-user's intent and voice while separating research, drafting, and editing so one
-model does not silently reinforce its own mistakes.
+Turn a topic or direction into a reviewed piece of writing. Use every supplied
+link as part of the working context; when no link is supplied, allow original
+creative development without forcing research. Preserve the user's intent and
+voice while separating drafting and editing so one model does not silently
+reinforce its own mistakes.
 
 Read `references/document-types.md` after the user chooses a format. Read
 `references/review-rubric.md` before briefing the editor.
@@ -22,10 +26,10 @@ Read `references/document-types.md` after the user chooses a format. Read
 ## Core workflow
 
 ```text
-Topic + references
--> source ledger
--> focused interview
--> research and fact check
+Topic or direction (required) + optional references
+-> choose source-guided or creative mode
+-> ask only material questions
+-> optional research and fact check
 -> outline approval when useful
 -> writer draft
 -> editor review
@@ -41,10 +45,20 @@ and confirmation at the point of action.
 
 ## 1. Establish the assignment
 
-Extract anything the user already supplied, then ask only for missing,
-high-value information. Ask no more than five questions in one message.
+Extract anything the user already supplied. Require at least one of these before
+drafting:
 
-Required assignment fields:
+- a topic
+- a direction, thesis, scene, question, or intended message
+
+If neither exists, ask for it and stop. Do not replace the user's creative
+direction with a topic invented by an agent.
+
+Everything else is optional. Ask only when the answer would materially change
+the result, and ask no more than three questions in one message. Do not turn
+intake into a mandatory questionnaire.
+
+Useful optional fields:
 
 - subject and intended claim or takeaway
 - document type
@@ -55,23 +69,17 @@ Required assignment fields:
 - required facts, stories, links, or calls to action
 - forbidden claims, phrases, topics, or stylistic habits
 
-Request a previous writing sample when matching the user's voice matters. Treat
-the sample as style evidence, not as text to copy. If the user says to decide
-for them, state concise defaults and continue.
-
-For evidence-heavy writing, request at least three useful references. If fewer
-are available, offer to find additional sources and clearly distinguish
-user-provided references from discovered sources.
+Request a previous writing sample only when close voice matching matters. Treat
+the sample as style evidence, not as text to copy. If the topic or direction is
+clear and missing details can be inferred safely, state concise assumptions and
+continue without questions.
 
 Example invocation:
 
 ```text
 /paseo-writing-room
 주제: AI 에이전트가 새 프로젝트를 이해하는 방법
-참고 글:
-- https://example.com/source-1
-- https://example.com/source-2
-- https://example.com/source-3
+참고 글: <없어도 되고, 개수 제한 없이 제공 가능>
 형식: 뉴스레터
 독자: AI 코딩 도구를 처음 쓰는 개발자
 톤: 경험담 중심, 과장 없이
@@ -83,13 +91,28 @@ Minimal invocation is also valid:
 ```text
 /paseo-writing-room
 이 세 링크 바탕으로 기고문 쓰는 것부터 같이 시작하자.
-<three URLs>
+<URLs>
 ```
 
-## 2. Build a source ledger
+Creative invocation without links is valid:
+
+```text
+/paseo-writing-room
+퇴근길에 문득 모든 신호등이 파란색으로 보이기 시작한 사람의 단편소설.
+불안하지만 지나치게 어둡지는 않은 방향으로 써줘.
+```
+
+## 2. Choose the operating mode
+
+### Source-guided mode
+
+Use this mode whenever the user supplies one or more links. There is no minimum
+or maximum link count. Open every supplied link and carry it into the working
+context. Do not silently select only the first three or the most convenient
+sources.
 
 Open and read every user-provided source before drafting. For each source,
-record:
+record a source ledger:
 
 | Field | Content |
 | --- | --- |
@@ -103,19 +126,38 @@ record:
 Never imply that an inaccessible link was read. Ask for pasted text when a
 paywall, login, robots rule, deleted page, or unsupported format blocks access.
 
-Use web search to fill factual gaps, verify unstable claims, and find primary
-sources. Prefer official documentation, original research, public records, and
-first-party statements over summaries. Keep exact URLs beside every sourced
-claim. Do not fabricate citations or attach a source to a claim it does not
-support.
+If the source set is too large for one pass, explain a batch plan, process every
+batch, and merge the ledger before drafting. Preserve the distinction between
+user-provided links and sources discovered by agents.
+
+Use web search only to fill factual gaps, verify unstable claims, or satisfy an
+explicit research request. Prefer official documentation, original research,
+public records, and first-party statements over summaries. Keep exact URLs
+beside every sourced claim. Do not fabricate citations or attach a source to a
+claim it does not support.
 
 Paraphrase and synthesize. Do not assemble the draft from lightly modified
-source sentences. Keep quotations short and clearly attributed.
+source sentences. Keep quotations short and clearly attributed. Include the
+supplied links in the researcher, writer, and editor briefings so they remain
+part of deliberation through the complete workflow.
 
-## 3. Interview after reading
+### Creative mode
 
-Read the sources first, then ask a second, focused question set about decisions
-the sources cannot answer. Useful questions include:
+Use this mode when the user supplies no links. Do not require references and do
+not browse merely to make the process look researched. Develop the supplied
+topic or direction through original structure, scenes, arguments, imagery, or
+examples appropriate to the requested document type.
+
+Create a researcher only when the user asks for research or the draft depends
+on externally verifiable facts. Otherwise proceed with writer and editor roles.
+Do not invent real-world facts, personal memories, quotations, credentials, or
+living people's statements. Clearly mark placeholders that require user input.
+
+## 3. Ask only necessary follow-up questions
+
+In source-guided mode, read the sources before asking source-specific questions.
+In creative mode, ask only about choices that cannot be inferred safely. Useful
+questions include:
 
 - Which position should the piece ultimately take?
 - What personal experience can make the argument specific?
@@ -123,8 +165,9 @@ the sources cannot answer. Useful questions include:
 - What outcome should the ending produce?
 - Which facts are sensitive or require qualification?
 
-Do not repeat intake questions. If the user wants speed, ask only the one or two
-questions that would materially change the draft.
+Do not repeat intake questions. If the supplied topic or direction is already
+sufficient, skip questions and begin. If the user wants speed, prefer explicit
+assumptions over low-value questions.
 
 ## 4. Resolve Paseo providers
 
@@ -136,7 +179,7 @@ Resolve roles as follows:
 
 | Role | Preferred category | Responsibility |
 | --- | --- | --- |
-| Researcher | `research` | Read sources, search, verify, produce source pack |
+| Researcher | `research` | Read supplied links and verify facts when needed |
 | Writer | `ui` | Create outline and draft in the requested voice |
 | Editor | `audit` | Check facts, structure, voice, citations, and awkwardness |
 
@@ -157,8 +200,9 @@ to save writing artifacts.
 
 ### Researcher brief
 
-Give the researcher the complete assignment, source URLs, interview answers,
-current date, and output contract. Require:
+Create this role only in source-guided mode or when creative mode needs factual
+research. Give the researcher the complete assignment, every supplied URL,
+interview answers, current date, and output contract. Require:
 
 ```text
 1. Source ledger with access status
@@ -173,8 +217,9 @@ The researcher must not edit files or produce the final prose.
 
 ### Writer brief
 
-Give the writer the assignment brief and verified research pack. Do not ask the
-writer to browse independently unless the research pack contains a named gap.
+Give the writer the assignment brief, all supplied links, and the verified
+research pack when one exists. Do not ask the writer to browse independently
+unless the research pack contains a named gap.
 Require the format-specific structure from `references/document-types.md` and:
 
 ```text
@@ -191,7 +236,8 @@ For short pieces or when the user asks for speed, continue directly.
 
 ### Editor brief
 
-Give the editor the assignment, source pack, draft, and
+Give the editor the assignment, all supplied links, source pack when one exists,
+the draft, and
 `references/review-rubric.md`. The editor must return:
 
 ```text
@@ -224,7 +270,7 @@ Present unresolved tradeoffs instead of hiding them.
 Return the reviewed draft with a compact note containing:
 
 - document type and intended audience
-- sources used and any inaccessible sources
+- sources used and any inaccessible sources, when links were supplied
 - material caveats or unresolved facts
 - major editorial choices
 - requested feedback areas
@@ -266,7 +312,8 @@ Do not archive the current workspace.
 Final output must identify:
 
 - which providers were actually used for research, writing, and editing
-- which sources were read, partial, or inaccessible
+- which supplied sources were read, partial, inaccessible, or not used; write
+  `no links supplied` in creative mode
 - whether cross-provider review occurred
 - remaining factual or editorial uncertainty
 - whether artifacts were written, including exact paths

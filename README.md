@@ -45,7 +45,7 @@ v2.2에서는 블로그에 한정하지 않는 멀티에이전트 글쓰기 워�
 
 | 추가/보강 기능 | 역할 |
 | --- | --- |
-| `/paseo-writing-room` | 주제와 참고 링크를 읽고 추가 문답, 웹 조사, 작성자/편집자 교차 검토, 인간 피드백 반영을 거쳐 여러 형식의 글 작성 |
+| `/paseo-writing-room` | 주제나 방향성을 받아 글 작성. 링크가 있으면 개수 제한 없이 맥락에 포함하고, 없으면 창작 모드로 진행한 뒤 작성자/편집자 교차 검토와 인간 피드백 반영 |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
 | `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
 | Installer backup | 기존 같은 이름의 skill 디렉터리를 덮어쓰기 전에 `skills-backups/` 아래로 자동 백업 |
@@ -55,7 +55,7 @@ v2.2에서는 블로그에 한정하지 않는 멀티에이전트 글쓰기 워�
 
 `/paseo-agent-cleanup`은 명확한 테스트/검증용 완료 agent를 기본으로 archive합니다. running agent는 건드리지 않고, workspace cleanup과 애매한 대상은 승인 후 archive-only 방식으로만 처리합니다.
 
-`/paseo-writing-room`은 블로그, 에세이, 뉴스레터, 보고서, 제안서, 기고문, 보도자료, 발표/영상 스크립트, SNS 타래, 웹 카피를 지원합니다. 출처를 읽지 못했으면 읽었다고 하지 않고, 작성자와 편집자의 검토는 초안·인간 수정 단계마다 최대 2회로 제한합니다.
+`/paseo-writing-room`은 블로그, 에세이, 뉴스레터, 보고서, 제안서, 기고문, 보도자료, 발표/영상 스크립트, SNS 타래, 웹 카피를 지원합니다. 링크는 필수가 아니며 개수 제한도 없습니다. 링크가 있으면 모두 작업 맥락에 포함하고, 없으면 주제나 방향성을 바탕으로 창작합니다. 작성자와 편집자의 검토는 초안·인간 수정 단계마다 최대 2회로 제한합니다.
 
 ---
 
@@ -78,7 +78,7 @@ https://github.com/wilgon456/Paseobility
 - 웹페이지를 열고, 읽고, 클릭하고, 입력하고, 스크린샷으로 검증합니다.
 - 작업을 여러 에이전트에게 나눠 맡기고 결과를 합성합니다.
 - GPT/Claude/DeepSeek/Grok 같은 여러 모델의 답을 비교해 winner 또는 merged plan을 고릅니다.
-- 참고 글과 추가 검색 결과를 바탕으로 인터뷰, 초안, 교차 검토, 인간 수정을 거쳐 글을 완성합니다.
+- 주제나 방향성을 바탕으로 글을 쓰고, 링크가 있으면 모두 참고한 뒤 필요한 문답, 교차 검토, 인간 수정을 거쳐 완성합니다.
 - GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
 - 테스트 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive합니다.
 - 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
@@ -99,7 +99,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
 | `/paseo-agent-cleanup` | 테스트 agent/workspace 정리 | 완료된 테스트 agent 자동 archive, running agent 보호, workspace는 승인 후 archive |
-| `/paseo-writing-room` | 출처 기반 멀티에이전트 글쓰기 | 참고 링크 읽기, 추가 문답, 웹 조사, 글 형식별 초안, 작성자/편집자 교차 검토, 인간 수정 반영 |
+| `/paseo-writing-room` | 참고자료 연동/창작 멀티에이전트 글쓰기 | 주제·방향성 기반 창작, 제공된 링크 전체 반영, 필요시 문답·조사, 형식별 초안, 작성자/편집자 교차 검토 |
 
 ---
 
@@ -212,7 +212,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
 | `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, safe agent auto-archive, temp HOME 설치, 실제 skill 인식 확인 |
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
-| `/paseo-writing-room` on Apple Silicon macOS | Tested locally | Paseo 0.3.1에서 공식 skill validator, 8개 skill temp HOME 설치와 원본 diff, intake forward test, 테스트 agent archive 확인. 실제 사용자 skills 경로 설치 및 전체 research/writer/editor 라운드는 미검증 |
+| `/paseo-writing-room` on Apple Silicon macOS | Tested locally | Paseo 0.3.1에서 공식 skill validator, 8개 skill temp HOME 설치와 원본 diff, 1-link source-guided/no-link creative 모드 선택 forward test, 테스트 agent archive 확인. 실제 사용자 skills 경로 설치 및 전체 research/writer/editor 라운드는 미검증 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -272,7 +272,7 @@ Grok은 둘을 비교해서 최종 판단을 정리해줘.
 ```text
 /paseo-writing-room
 주제: AI 에이전트가 새 프로젝트를 이해하는 방법
-참고 글: <URL 1>, <URL 2>, <URL 3>
+참고 글: <URL을 원하는 만큼 제공하거나 생략>
 형식: 뉴스레터
 독자: AI 코딩 도구를 처음 쓰는 개발자
 톤: 경험담 중심, 과장 없이
@@ -281,9 +281,17 @@ Grok은 둘을 비교해서 최종 판단을 정리해줘.
 가능한 작업 흐름:
 
 ```text
-참고 링크 읽기 -> 추가 문답 -> 웹 조사/팩트 체크
+주제/방향성 확인 -> 링크가 있으면 모두 읽기 -> 필요시 문답/조사
 -> writer 초안 -> editor 진단 -> 최대 2회 수정
 -> 인간 검토 -> 요청 부분 재작성/재검토 -> 최종본
+```
+
+링크 없는 창작도 가능합니다.
+
+```text
+/paseo-writing-room
+퇴근길에 모든 신호등이 파란색으로 보이기 시작한 사람의 단편소설.
+불안하지만 지나치게 어둡지는 않은 방향으로 써줘.
 ```
 
 ### 세션 브리프 만들기
@@ -364,7 +372,7 @@ running agent는 건드리지 마.
 
 ## `/paseo-writing-room`
 
-주제와 참고 자료를 출처 장부로 정리한 뒤, 사용자의 의도와 경험을 추가로 묻고 서로 다른 역할의 agent가 조사, 작성, 편집을 나눠 맡습니다.
+주제나 방향성을 필수로 받고, 링크는 선택적으로 받습니다. 링크가 있으면 개수 제한 없이 모두 작업 맥락과 출처 장부에 포함하고, 링크가 없으면 창작 모드로 진행합니다. 필요한 경우에만 추가 질문하고 서로 다른 역할의 agent가 조사, 작성, 편집을 나눠 맡습니다.
 
 지원 형식:
 
@@ -376,6 +384,9 @@ running agent는 건드리지 마.
 핵심 규칙:
 
 - 접근하지 못한 링크를 읽었다고 하지 않습니다.
+- 링크가 많아도 임의로 3개만 고르지 않고 전체를 배치 처리합니다.
+- 링크가 없으면 참고자료를 강요하거나 불필요하게 검색하지 않습니다.
+- 주제나 방향성이 없으면 먼저 요청하고, 나머지 문답은 결과에 영향을 줄 때만 합니다.
 - 출처가 주장과 실제로 연결되는지 editor가 다시 확인합니다.
 - 개인 경험, 인용문, 통계, 고객 사례를 임의로 만들지 않습니다.
 - writer와 editor는 가능한 경우 서로 다른 provider를 사용합니다.
