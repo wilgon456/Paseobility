@@ -27,6 +27,27 @@ Load these resources as needed:
 - `references/workspace-artifacts.md` when saving workflow state
 - `references/eval-harness.md` when validating or changing this skill
 
+## Invocation intake
+
+When the user invokes `/paseo-writing-room` without a usable assignment, do not
+guess a topic, browse, or create agents. Reply in the user's language with one
+compact intake card:
+
+```text
+무엇을 쓸까요?
+
+- 주제 또는 방향 (필수, 둘 중 하나만 있어도 됨):
+- 예상 독자 (선택):
+- 참고 링크 (선택, 개수 제한 없음. 없으면 "없음"):
+- 원하는 형식이나 길이 (선택):
+```
+
+This is one intake prompt, not four required question rounds. Only topic or
+direction is mandatory. Intended reader, links, format, and length improve the
+result but may be omitted. If the user already supplied any field, extract it
+and never ask them to repeat it. Ask only for missing information that would
+materially change the piece; otherwise state a low-risk assumption and continue.
+
 ## Operating modes
 
 Select one content mode and one execution depth.
@@ -62,10 +83,10 @@ Require at least one of:
 - a topic
 - a direction, thesis, scene, question, or intended message
 
-If neither exists, ask for it and stop. Everything else is optional. Ask no
-more than three questions in one message, and only when an answer would
-materially change the result. If assumptions are low-risk, state them briefly
-and continue.
+If neither exists, show the invocation intake card and stop. Everything else is
+optional. Outside the single intake card, ask no more than three questions in
+one message, and only when an answer would materially change the result. If
+assumptions are low-risk, state them briefly and continue.
 
 ## Studio workflow
 

@@ -18,7 +18,7 @@ Maintain representative cases across:
 | Dimension | Cases |
 | --- | --- |
 | Sources | none, one, several, large batch, inaccessible |
-| Input | topic only, direction only, notes, rough draft, voice samples |
+| Input | empty invocation, topic only, direction only, partial intake, notes, rough draft, voice samples |
 | Format | article, report, proposal, script, social, fiction |
 | Stakes | quick/low, public, factual, sensitive |
 | Mode + depth | Creative + Quick, Source-guided + Studio, Revision + Quick, Revision + Studio |
@@ -31,6 +31,9 @@ for mode selection, questions, agent routing, and review because outputs vary.
 ## Deterministic assertions
 
 - topic or direction is present before drafting
+- an empty invocation returns one intake card and creates no agents or draft
+- supplied intake fields are not requested again
+- intended reader and links remain optional
 - every supplied link has an access-state record
 - no source is marked read when access failed
 - source-guided mode creates a Researcher
