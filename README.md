@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.1.1-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.2.0-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -13,12 +13,14 @@
   <img alt="Agent Tournament" src="https://img.shields.io/badge/Agent-Tournament-db2777?style=for-the-badge">
   <img alt="Spyware Check" src="https://img.shields.io/badge/Spyware-Check-dc2626?style=for-the-badge">
   <img alt="Agent Cleanup" src="https://img.shields.io/badge/Agent-Cleanup-475569?style=for-the-badge">
+  <img alt="Paseo Share" src="https://img.shields.io/badge/Paseo-Share-0284c7?style=for-the-badge">
 </p>
 
 <p>
   <code>/paseo-computer-use</code>로 웹 UI를 직접 조작하고,<br>
   <code>/paseo-agent-tournament</code>로 여러 모델의 답을 비교하고,<br>
-  <code>/paseo-project-bootstrap</code>으로 새 프로젝트 맥락을 빠르게 세팅합니다.
+  <code>/paseo-project-bootstrap</code>으로 새 프로젝트 맥락을 세팅하고,<br>
+  <code>/paseo-share</code>로 컴퓨터와 모바일 사이에 산출물을 공유합니다.
 </p>
 
 </div>
@@ -29,7 +31,7 @@
 
 Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에게 던져 설치하게 만든 **agent-installable Paseo 슬래쉬 스킬팩**입니다.
 
-설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 테스트 agent 정리 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
+설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 테스트 agent 정리, 기기 간 산출물 공유 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
 
 기본 Paseo만으로도 내장 도구를 조합하면 비슷한 일을 할 수 있습니다. 다만 매번 에이전트가 그 조합을 새로 판단하게 두면 느리고 결과가 들쭉날쭉할 수 있어서, 자주 쓰는 패턴을 바로 꺼내 쓰기 쉽게 묶었습니다.
 
@@ -37,12 +39,13 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
-## v2.1 업데이트
+## v2.2 업데이트
 
-v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했습니다. v2.1.1에서는 설치 안정성과 리포트 가독성을 보강했습니다.
+v2.2에서는 여러 Paseo 컴퓨터와 모바일 사이에서 문서, 코드, PDF, 이미지를 주고받는 private Git 기반 공유함을 추가했습니다. GitHub Actions나 별도 서버 없이 로컬 Git 명령만 사용합니다.
 
 | 추가/보강 기능 | 역할 |
 | --- | --- |
+| `/paseo-share` | 파일을 전용 private Git 저장소에 게시하고 공유 ID, 미리보기 링크, 다운로드 링크 반환. 다른 컴퓨터에서는 최신 목록 조회와 로컬 가져오기를 자동 수행 |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
 | `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
 | Installer backup | 기존 같은 이름의 skill 디렉터리를 덮어쓰기 전에 `skills-backups/` 아래로 자동 백업 |
@@ -52,11 +55,23 @@ v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했
 
 `/paseo-agent-cleanup`은 명확한 테스트/검증용 완료 agent를 기본으로 archive합니다. running agent는 건드리지 않고, workspace cleanup과 애매한 대상은 승인 후 archive-only 방식으로만 처리합니다.
 
+`/paseo-share`는 각 컴퓨터에서 동일한 private GitHub/Forgejo 저장소를 한 번 설정한 뒤 `공유해줘`, `최신 공유 파일 보여줘`, `다른 컴퓨터 파일 가져와` 같은 요청으로 사용합니다. 업로드한 파일은 모바일에서 링크로 바로 미리볼 수 있고, 다른 컴퓨터의 Paseo는 공유 ID를 이용해 자동으로 가져옵니다.
+
 ---
 
 ## 사용 방식
 
 이 프로젝트의 기본 사용자는 shell에서 직접 설치하는 사람이 아니라, **AI 에이전트에게 GitHub URL을 주고 설치와 검증을 맡기는 사람**입니다.
+
+`paseo-share`만 설치하려면 Codex 또는 Claude에 아래 문장 그대로 보내면 됩니다.
+
+```text
+https://github.com/wilgon456/Paseobility
+
+이 저장소의 지침을 읽고 paseo-share만 이 컴퓨터에 설치하고 검증해줘.
+기존 설치본은 백업하고 Paseo daemon은 재시작하지 마.
+설치가 끝나면 새 세션/reload 방법과 private 공유 저장소 연결 프롬프트를 알려줘.
+```
 
 ```text
 https://github.com/wilgon456/Paseobility
@@ -66,7 +81,7 @@ https://github.com/wilgon456/Paseobility
 설치 후 새 Paseo 세션에서 /paseo-session-brief가 인식되는지도 확인해줘.
 ```
 
-에이전트는 [AGENTS.md](./AGENTS.md)를 읽고 OS별 경로와 설치 절차를 따라갑니다. 설치가 끝난 뒤 새 Paseo 세션이나 통합 reload 후 아래 슬래쉬 스킬을 사용할 수 있습니다.
+에이전트는 Codex/Paseo에서는 [AGENTS.md](./AGENTS.md), Claude Code에서는 [CLAUDE.md](./CLAUDE.md)를 읽고 OS별 경로와 설치 절차를 따라갑니다. 이 Paseobility 저장소는 설치 원본이며, 실제 파일을 올릴 artifact 저장소는 사용자가 별도로 만든 private 저장소여야 합니다.
 
 즉, "코드 짜줘"에서 끝나는 게 아니라:
 
@@ -75,6 +90,7 @@ https://github.com/wilgon456/Paseobility
 - GPT/Claude/DeepSeek/Grok 같은 여러 모델의 답을 비교해 winner 또는 merged plan을 고릅니다.
 - GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
 - 테스트 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive합니다.
+- 작업 산출물을 private Git 공유함에 올리고 다른 컴퓨터나 모바일에서 바로 열거나 가져옵니다.
 - 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
 - 새 프로젝트에 들어갈 때 README, docs, Claude/Codex/Cursor 계열 지침을 모아 작업 맥락을 만듭니다.
 - Codex로 구현하고 Claude로 리뷰하는 식의 크로스 프로바이더 협업을 설계합니다.
@@ -91,6 +107,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-agent-tournament` | 멀티 모델 비교/심사 | GPT vs Claude vs DeepSeek, 찬반 토론, 설계안 비교, judge 기반 winner 선정 |
 | `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
+| `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private Git 저장소 게시, 클릭 가능한 미리보기/다운로드 링크, 최신 목록, 공유 ID 기반 자동 가져오기 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
 | `/paseo-agent-cleanup` | 테스트 agent/workspace 정리 | 완료된 테스트 agent 자동 archive, running agent 보호, workspace는 승인 후 archive |
 
@@ -106,7 +123,7 @@ https://github.com/wilgon456/Paseobility
 Windows/Mac 환경에 맞춰 skills/*를 복사하고, 설치 후 필요한 reload 방법을 알려줘.
 ```
 
-에이전트는 [AGENTS.md](./AGENTS.md)를 기준으로 Mac/Windows의 skills 경로를 확인해 설치하면 됩니다.
+에이전트는 Codex/Paseo에서는 [AGENTS.md](./AGENTS.md), Claude Code에서는 [CLAUDE.md](./CLAUDE.md)를 기준으로 Mac/Windows의 skills 경로를 확인해 설치합니다. `paseo-share` 요청은 전체 스킬팩 대신 해당 스킬만 설치합니다.
 
 직접 설치도 가능합니다.
 
@@ -120,6 +137,7 @@ cd Paseobility
 # 특정 스킬만 업데이트하고 싶다면
 ./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
 ./scripts/paseobility-init.sh --skill paseo-spyware-check --no-context
+./scripts/paseobility-init.sh --skill paseo-share --no-context
 
 # Claude Code에서도 같이 쓰고 싶다면
 ./scripts/paseobility-init.sh --with-claude --no-context
@@ -140,6 +158,7 @@ cd Paseobility
 # 특정 스킬만 업데이트하고 싶다면
 .\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
 .\scripts\paseobility-install.ps1 -Skill paseo-spyware-check
+.\scripts\paseobility-install.ps1 -Skill paseo-share
 
 # 임시 홈에 먼저 테스트 설치하고 싶다면
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
@@ -181,6 +200,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 - Paseo Settings -> Agents -> **Enable Paseo tools** 활성화
 - 1개 이상의 AI 프로바이더
   - 예: Codex, Claude Code 등
+- `/paseo-share`는 Node.js, Git, 그리고 인증 가능한 전용 private GitHub/Forgejo 저장소 필요. GitHub Actions는 사용하지 않음
 - 오케스트레이션을 제대로 쓰려면 `~/.paseo/orchestration-preferences.json` 설정 권장
 - 설치 대상 skills 경로
   - macOS/Linux: `~/.agents/skills`
@@ -202,6 +222,8 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
 | `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, safe agent auto-archive, temp HOME 설치, 실제 skill 인식 확인 |
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
+| `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안 테스트 7개, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
+| `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -209,6 +231,26 @@ Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치
 ---
 
 ## 빠른 사용 예시
+
+### 다른 컴퓨터와 모바일로 산출물 공유하기
+
+최초 한 번 전용 private 저장소를 연결합니다.
+
+```text
+/paseo-share
+git@github.com:owner/paseo-share.git 저장소를 이 컴퓨터에 연결해줘.
+컴퓨터 이름은 macbook으로 해줘.
+```
+
+그다음 자연어로 게시하거나 가져옵니다.
+
+```text
+/paseo-share 이 보고서 휴대폰에서 볼 수 있게 공유해줘.
+/paseo-share 다른 컴퓨터에서 방금 공유한 파일 보여줘.
+/paseo-share 최신 공유 파일을 현재 프로젝트로 가져와서 요약해줘.
+```
+
+게시 결과에는 공유 ID와 클릭 가능한 미리보기/다운로드 링크가 포함됩니다. private 저장소 링크는 모바일 브라우저에서 GitHub/Forgejo 로그인이 필요합니다.
 
 ### 웹 UI를 직접 다루기
 
@@ -329,6 +371,21 @@ running agent는 건드리지 마.
 - `delete`는 하지 않고 `archive`만 합니다.
 - running agent는 자동으로 정리하지 않습니다.
 - workspace archive와 애매한 대상은 사용자 승인 후에만 진행합니다.
+
+---
+
+## `/paseo-share`
+
+작은 문서, 코드, PDF, 이미지를 전용 private Git 저장소에 불변 artifact로 게시합니다. GitHub Actions나 background daemon 없이 각 컴퓨터에서 로컬 `git fetch`, `rebase`, `commit`, `push`만 실행합니다.
+
+- `setup`: 컴퓨터별 machine name과 동일한 원격 저장소 설정
+- `publish`: 공유 ID, 미리보기 URL, 다운로드 URL 반환
+- `list` / `latest`: 원격 동기화 후 다른 컴퓨터 산출물 조회
+- `fetch`: 공유 ID 또는 `latest`를 현재 컴퓨터로 검증 후 복사
+
+Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩니다. 50 MiB 이하의 일반 문서·코드·PDF·이미지만 허용하며 secret-looking 파일명과 대표적인 텍스트 토큰 패턴을 차단합니다. 가져올 때 metadata 스키마, 경로 containment, symlink, 파일 크기, SHA-256을 검사하고 Windows CRLF와 macOS/Linux LF 변환을 안전하게 처리합니다.
+
+지원 모델은 **한 사용자가 자기 private 저장소를 신뢰하는 자기 기기들에서 사용하는 방식**입니다. 신뢰하지 않는 여러 사용자가 하나의 저장소를 함께 쓰는 멀티테넌트 교환은 지원하지 않습니다. 바이너리 내부의 민감정보는 검사하지 않으며, Git에서 삭제해도 과거 commit에는 남으므로 민감 파일은 게시하지 않아야 합니다.
 
 ---
 
@@ -584,6 +641,13 @@ skills/
 │       └── spyware-check.sh
 ├── paseo-session-brief/
 │   └── SKILL.md
+├── paseo-share/
+│   ├── SKILL.md
+│   ├── agents/
+│   │   └── openai.yaml
+│   └── scripts/
+│       ├── paseo-share.js
+│       └── paseo-share.test.js
 └── paseo-orchestration/
     └── SKILL.md
 scripts/
@@ -592,6 +656,7 @@ scripts/
 ├── paseobility-init.sh
 └── paseobility-install.ps1
 AGENTS.md
+CLAUDE.md
 ```
 
 ---
