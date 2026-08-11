@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paseo Writing Room"
+  short_description: "Research, draft, and cross-review many kinds of writing"
+  default_prompt: "Use $paseo-writing-room to research sources, interview me, and produce a reviewed draft in my voice."

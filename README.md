@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.1.1-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.2.0-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -13,12 +13,14 @@
   <img alt="Agent Tournament" src="https://img.shields.io/badge/Agent-Tournament-db2777?style=for-the-badge">
   <img alt="Spyware Check" src="https://img.shields.io/badge/Spyware-Check-dc2626?style=for-the-badge">
   <img alt="Agent Cleanup" src="https://img.shields.io/badge/Agent-Cleanup-475569?style=for-the-badge">
+  <img alt="Writing Room" src="https://img.shields.io/badge/Writing-Room-0f766e?style=for-the-badge">
 </p>
 
 <p>
   <code>/paseo-computer-use</code>로 웹 UI를 직접 조작하고,<br>
   <code>/paseo-agent-tournament</code>로 여러 모델의 답을 비교하고,<br>
-  <code>/paseo-project-bootstrap</code>으로 새 프로젝트 맥락을 빠르게 세팅합니다.
+  <code>/paseo-project-bootstrap</code>으로 새 프로젝트 맥락을 세팅하고,<br>
+  <code>/paseo-writing-room</code>으로 조사부터 교차 검토까지 거쳐 글을 씁니다.
 </p>
 
 </div>
@@ -29,7 +31,7 @@
 
 Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에게 던져 설치하게 만든 **agent-installable Paseo 슬래쉬 스킬팩**입니다.
 
-설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 테스트 agent 정리 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
+설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 테스트 agent 정리, 출처 기반 글쓰기 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
 
 기본 Paseo만으로도 내장 도구를 조합하면 비슷한 일을 할 수 있습니다. 다만 매번 에이전트가 그 조합을 새로 판단하게 두면 느리고 결과가 들쭉날쭉할 수 있어서, 자주 쓰는 패턴을 바로 꺼내 쓰기 쉽게 묶었습니다.
 
@@ -37,12 +39,13 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
-## v2.1 업데이트
+## v2.2 업데이트
 
-v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했습니다. v2.1.1에서는 설치 안정성과 리포트 가독성을 보강했습니다.
+v2.2에서는 블로그에 한정하지 않는 멀티에이전트 글쓰기 워크플로우를 추가했습니다. v2.1의 repo 보안 점검, agent 정리, installer backup도 그대로 포함합니다.
 
 | 추가/보강 기능 | 역할 |
 | --- | --- |
+| `/paseo-writing-room` | 주제와 참고 링크를 읽고 추가 문답, 웹 조사, 작성자/편집자 교차 검토, 인간 피드백 반영을 거쳐 여러 형식의 글 작성 |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
 | `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
 | Installer backup | 기존 같은 이름의 skill 디렉터리를 덮어쓰기 전에 `skills-backups/` 아래로 자동 백업 |
@@ -51,6 +54,8 @@ v2.1에서는 설치 전 repo 점검과 테스트 후 정리 흐름을 추가했
 `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 scanner CLI를 호출하는 방식입니다. Paseobility는 해당 scanner의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
 `/paseo-agent-cleanup`은 명확한 테스트/검증용 완료 agent를 기본으로 archive합니다. running agent는 건드리지 않고, workspace cleanup과 애매한 대상은 승인 후 archive-only 방식으로만 처리합니다.
+
+`/paseo-writing-room`은 블로그, 에세이, 뉴스레터, 보고서, 제안서, 기고문, 보도자료, 발표/영상 스크립트, SNS 타래, 웹 카피를 지원합니다. 출처를 읽지 못했으면 읽었다고 하지 않고, 작성자와 편집자의 검토는 초안·인간 수정 단계마다 최대 2회로 제한합니다.
 
 ---
 
@@ -73,6 +78,7 @@ https://github.com/wilgon456/Paseobility
 - 웹페이지를 열고, 읽고, 클릭하고, 입력하고, 스크린샷으로 검증합니다.
 - 작업을 여러 에이전트에게 나눠 맡기고 결과를 합성합니다.
 - GPT/Claude/DeepSeek/Grok 같은 여러 모델의 답을 비교해 winner 또는 merged plan을 고릅니다.
+- 참고 글과 추가 검색 결과를 바탕으로 인터뷰, 초안, 교차 검토, 인간 수정을 거쳐 글을 완성합니다.
 - GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
 - 테스트 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive합니다.
 - 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
@@ -93,6 +99,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
 | `/paseo-agent-cleanup` | 테스트 agent/workspace 정리 | 완료된 테스트 agent 자동 archive, running agent 보호, workspace는 승인 후 archive |
+| `/paseo-writing-room` | 출처 기반 멀티에이전트 글쓰기 | 참고 링크 읽기, 추가 문답, 웹 조사, 글 형식별 초안, 작성자/편집자 교차 검토, 인간 수정 반영 |
 
 ---
 
@@ -120,6 +127,7 @@ cd Paseobility
 # 특정 스킬만 업데이트하고 싶다면
 ./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
 ./scripts/paseobility-init.sh --skill paseo-spyware-check --no-context
+./scripts/paseobility-init.sh --skill paseo-writing-room --no-context
 
 # Claude Code에서도 같이 쓰고 싶다면
 ./scripts/paseobility-init.sh --with-claude --no-context
@@ -140,6 +148,7 @@ cd Paseobility
 # 특정 스킬만 업데이트하고 싶다면
 .\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
 .\scripts\paseobility-install.ps1 -Skill paseo-spyware-check
+.\scripts\paseobility-install.ps1 -Skill paseo-writing-room
 
 # 임시 홈에 먼저 테스트 설치하고 싶다면
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
@@ -181,6 +190,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 - Paseo Settings -> Agents -> **Enable Paseo tools** 활성화
 - 1개 이상의 AI 프로바이더
   - 예: Codex, Claude Code 등
+- `/paseo-writing-room`은 1개 provider로도 역할을 분리해 동작하지만, 작성자와 편집자를 서로 다른 provider로 구성하는 방식을 권장
 - 오케스트레이션을 제대로 쓰려면 `~/.paseo/orchestration-preferences.json` 설정 권장
 - 설치 대상 skills 경로
   - macOS/Linux: `~/.agents/skills`
@@ -202,6 +212,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
 | `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, safe agent auto-archive, temp HOME 설치, 실제 skill 인식 확인 |
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
+| `/paseo-writing-room` on Apple Silicon macOS | Tested locally | Paseo 0.3.1에서 공식 skill validator, 8개 skill temp HOME 설치와 원본 diff, intake forward test, 테스트 agent archive 확인. 실제 사용자 skills 경로 설치 및 전체 research/writer/editor 라운드는 미검증 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -254,6 +265,25 @@ Grok은 둘을 비교해서 최종 판단을 정리해줘.
 참가자 역할 정의 -> 여러 agent 병렬 실행
 -> 결과 수집 -> judge agent 생성
 -> winner / merged plan / risks 정리
+```
+
+### 조사하고 교차 검토해서 글쓰기
+
+```text
+/paseo-writing-room
+주제: AI 에이전트가 새 프로젝트를 이해하는 방법
+참고 글: <URL 1>, <URL 2>, <URL 3>
+형식: 뉴스레터
+독자: AI 코딩 도구를 처음 쓰는 개발자
+톤: 경험담 중심, 과장 없이
+```
+
+가능한 작업 흐름:
+
+```text
+참고 링크 읽기 -> 추가 문답 -> 웹 조사/팩트 체크
+-> writer 초안 -> editor 진단 -> 최대 2회 수정
+-> 인간 검토 -> 요청 부분 재작성/재검토 -> 최종본
 ```
 
 ### 세션 브리프 만들기
@@ -329,6 +359,28 @@ running agent는 건드리지 마.
 - `delete`는 하지 않고 `archive`만 합니다.
 - running agent는 자동으로 정리하지 않습니다.
 - workspace archive와 애매한 대상은 사용자 승인 후에만 진행합니다.
+
+---
+
+## `/paseo-writing-room`
+
+주제와 참고 자료를 출처 장부로 정리한 뒤, 사용자의 의도와 경험을 추가로 묻고 서로 다른 역할의 agent가 조사, 작성, 편집을 나눠 맡습니다.
+
+지원 형식:
+
+- 블로그/기고문, 에세이/칼럼, 뉴스레터
+- 보고서/브리프/백서, 제안서/내부 메모
+- 보도자료/공지, 발표/영상/팟캐스트 스크립트
+- SNS 타래, 웹/제품 카피, 편지/이메일
+
+핵심 규칙:
+
+- 접근하지 못한 링크를 읽었다고 하지 않습니다.
+- 출처가 주장과 실제로 연결되는지 editor가 다시 확인합니다.
+- 개인 경험, 인용문, 통계, 고객 사례를 임의로 만들지 않습니다.
+- writer와 editor는 가능한 경우 서로 다른 provider를 사용합니다.
+- 초안과 인간 수정 단계의 agent 핑퐁은 각각 최대 2회입니다.
+- 결과를 게시, 발송, 업로드하는 작업은 별도 확인 없이는 하지 않습니다.
 
 ---
 
@@ -584,8 +636,15 @@ skills/
 │       └── spyware-check.sh
 ├── paseo-session-brief/
 │   └── SKILL.md
-└── paseo-orchestration/
-    └── SKILL.md
+├── paseo-orchestration/
+│   └── SKILL.md
+└── paseo-writing-room/
+    ├── SKILL.md
+    ├── agents/
+    │   └── openai.yaml
+    └── references/
+        ├── document-types.md
+        └── review-rubric.md
 scripts/
 ├── paseobility-context.sh
 ├── paseobility-doctor.sh
