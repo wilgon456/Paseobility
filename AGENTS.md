@@ -16,11 +16,15 @@ public skillNload engine under the user's `.paseo` directory. Do not ask the
 user to install or invoke skillNload separately. Paseobility does not bundle
 the manager source or any user-saved third-party skills.
 
-Before saving a target skill, run the read-only spyware workflow. Never execute
-the target repository's code during inspection or registration. Use a temporary
-home and skillNload state directory for tests. A successful test must prove that
-the skill was registered, checksum-verified, found by search, and selected by a
-natural-language match while no permanent target-skill installation was made.
+The save wrapper must run its bundled Python spyware gate before manager
+bootstrap or registration. Do not bypass it by calling skillNload directly.
+Never execute the target repository's code during inspection or registration.
+High/Critical findings block registration. Medium findings require showing the
+receipt and explicit user approval before `--approve-medium` may be used. Use a
+temporary home and skillNload state directory for tests. A successful test must
+prove that the exact scanned commit and checksum were registered,
+checksum-verified, found by search, and selected by a natural-language match
+while no permanent target-skill installation was made.
 For an `instructions-only` fixture, require a `select` decision with no
 confirmation and available bounded skill body evidence. Executable skills must
 retain their confirmation gate.

@@ -20,10 +20,13 @@ invoke skillNload separately.
 
 1. Identify the exact GitHub repository, `/tree/<revision>/<skill-path>` URL,
    or local skill directory. Reject credentials, query strings, and fragments.
-2. Apply `paseo-spyware-check` to the source before registration. Keep the
-   target inert: do not install dependencies, build it, import it, or execute
-   its scripts. Stop on High or Critical findings. Explain Medium findings and
-   obtain approval before continuing.
+2. Run the bundled wrapper, which invokes the bundled cross-platform Python
+   `paseo-spyware-check` gate before manager bootstrap or registration. Do not
+   bypass this gate by calling the routing engine directly. The gate snapshots
+   local sources and pins GitHub sources to the exact scanned commit. It never
+   installs dependencies, builds, imports, or executes target code. It blocks
+   High or Critical findings. For Medium findings, show the receipt and obtain
+   explicit user approval before rerunning with `--approve-medium`.
 3. Derive a concise Korean description and tags from the verified source.
    Prefer a controlled domain and action when clear. Do not invent capabilities
    that are absent from `SKILL.md`.
@@ -38,12 +41,18 @@ invoke skillNload separately.
      --action <action>
    ```
 
+   Add `--approve-medium` only after the user has seen the Medium findings and
+   explicitly approved registration. Never infer approval from the original
+   save request.
+
    On first use, the wrapper automatically fetches the official public
    skillNload engine at its hard-coded commit, verifies both the commit and the
    complete Git tree, and caches it under `~/.paseo/skill-save/manager/`. It
    uses no pip installation. Do not ask the user to prepare skillNload.
 5. Require the wrapper to report all of the following:
 
+   - spyware receipt digest, severity counts, findings, scanned checksum, and
+     immutable source
    - internal manager mode, pinned commit, tree, and cache path
    - router target and initialization status
    - pinned source repository, commit, and skill path

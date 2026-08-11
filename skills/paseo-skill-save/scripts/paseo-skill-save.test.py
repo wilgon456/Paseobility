@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -56,7 +57,47 @@ def fake_runtime() -> object:
     )
 
 
+def signed_receipt(*, high: int = 0, medium: int = 0) -> dict:
+    findings = [
+        {"severity": "High", "path": "fixture", "line": 1, "reason": "test"}
+        for _ in range(high)
+    ] + [
+        {"severity": "Medium", "path": "fixture", "line": 1, "reason": "test"}
+        for _ in range(medium)
+    ]
+    receipt = {
+        "status": "scan-complete",
+        "scanner": {
+            "name": "paseo-spyware-check",
+            "schema_version": 1,
+            "mode": "bundled-python-static",
+        },
+        "target": "fixture",
+        "source": {"kind": "local", "path": "fixture"},
+        "pinned_source": None,
+        "content_checksum": "b" * 64,
+        "verdict": "high" if high else ("medium" if medium else "low"),
+        "counts": {"critical": 0, "high": high, "medium": medium, "info": 0},
+        "findings": findings,
+        "limitations": [],
+    }
+    canonical = json.dumps(
+        receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    receipt["receipt_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return receipt
+
+
 class PaseoSkillSaveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.gate = mock.patch.object(
+            MODULE,
+            "_run_spyware_gate",
+            side_effect=lambda args, _workspace: (signed_receipt(), args.source),
+        )
+        self.gate.start()
+        self.addCleanup(self.gate.stop)
+
     def test_add_verify_search_and_match_use_argv_without_shell(self) -> None:
         replies = [
             response({"status": "initialized", "router": "core.skill-hub-router"}),
@@ -293,6 +334,91 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 with self.assertRaises(MODULE.SaveError) as raised:
                     MODULE._bootstrap_manager(args)
                 self.assertEqual(raised.exception.code, "manager-verification-failed")
+
+    def test_high_findings_block_registration(self) -> None:
+        self.gate.stop()
+        module = mock.Mock()
+        module.scan_target.return_value = (signed_receipt(high=1), "fixture")
+        args = MODULE.build_parser().parse_args(["fixture"])
+        with mock.patch.object(MODULE, "_load_spyware_scanner", return_value=module):
+            with self.assertRaises(MODULE.SaveError) as raised:
+                MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
+        self.assertEqual(raised.exception.code, "spyware-check-blocked")
+
+    def test_medium_findings_require_and_accept_explicit_approval(self) -> None:
+        self.gate.stop()
+        module = mock.Mock()
+        module.scan_target.return_value = (signed_receipt(medium=1), "fixture")
+        with mock.patch.object(MODULE, "_load_spyware_scanner", return_value=module):
+            args = MODULE.build_parser().parse_args(["fixture"])
+            with self.assertRaises(MODULE.SaveError) as raised:
+                MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
+            self.assertEqual(
+                raised.exception.code, "spyware-check-approval-required"
+            )
+
+            approved = MODULE.build_parser().parse_args(
+                ["fixture", "--approve-medium"]
+            )
+            receipt, source = MODULE._run_spyware_gate(
+                approved, Path(tempfile.mkdtemp())
+            )
+        self.assertEqual(receipt["counts"]["medium"], 1)
+        self.assertEqual(source, "fixture")
+
+    def test_scan_receipt_mismatch_is_rejected(self) -> None:
+        receipt = signed_receipt()
+        receipt["source"] = {
+            "kind": "github",
+            "commit": "a" * 40,
+            "path": "skills/demo",
+        }
+        record = {
+            "source": {"commit": "c" * 40, "path": "skills/demo"},
+            "checksum": "b" * 64,
+        }
+        with self.assertRaises(MODULE.SaveError) as raised:
+            MODULE._bind_record_to_scan(receipt, record)
+        self.assertEqual(raised.exception.code, "scan-receipt-mismatch")
+
+    def test_local_scan_checksum_mismatch_is_rejected(self) -> None:
+        receipt = signed_receipt()
+        receipt["source"]["skill_manifest"] = True
+        record = {"source": {}, "checksum": "c" * 64}
+        with self.assertRaises(MODULE.SaveError) as raised:
+            MODULE._bind_record_to_scan(receipt, record)
+        self.assertEqual(raised.exception.code, "scan-receipt-mismatch")
+
+    def test_failed_scan_runs_before_manager_bootstrap(self) -> None:
+        self.gate.stop()
+        args = MODULE.build_parser().parse_args(["fixture"])
+        with mock.patch.object(
+            MODULE,
+            "_run_spyware_gate",
+            side_effect=MODULE.SaveError("spyware-check-blocked", "blocked"),
+        ), mock.patch.object(MODULE, "_bootstrap_manager") as bootstrap:
+            with self.assertRaises(MODULE.SaveError) as raised:
+                MODULE.save_skill(args)
+        self.assertEqual(raised.exception.code, "spyware-check-blocked")
+        bootstrap.assert_not_called()
+
+    def test_receipt_with_finding_count_mismatch_is_rejected(self) -> None:
+        receipt = signed_receipt()
+        receipt["findings"].append(
+            {"severity": "High", "path": "fixture", "line": 1, "reason": "test"}
+        )
+        canonical = json.dumps(
+            {key: value for key, value in receipt.items() if key != "receipt_sha256"},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        receipt["receipt_sha256"] = hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
+        with self.assertRaises(MODULE.SaveError) as raised:
+            MODULE._validate_scan_receipt(receipt)
+        self.assertEqual(raised.exception.code, "spyware-check-invalid")
 
 
 if __name__ == "__main__":
