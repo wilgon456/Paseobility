@@ -1,0 +1,98 @@
+---
+name: paseo-skill-save
+description: >-
+  Inspect and save one or more reusable AI skills from a GitHub URL or local
+  skill directory into the user's private skillNload library. Use when the
+  user invokes /paseo-skill-save, supplies a GitHub skill link and asks to
+  save, archive, register, remember, or add it, or wants the saved skill to
+  become usable later from ordinary natural-language requests.
+---
+
+# Paseo Skill Save
+
+Save user-selected skills to the private skillNload overlay. Registration is
+persistent; activation is not. The router may attach a selected skill for one
+task without permanently installing every saved skill.
+
+## Required workflow
+
+1. Identify the exact GitHub repository, `/tree/<revision>/<skill-path>` URL,
+   or local skill directory. Reject credentials, query strings, and fragments.
+2. Apply `paseo-spyware-check` to the source before registration. Keep the
+   target inert: do not install dependencies, build it, import it, or execute
+   its scripts. Stop on High or Critical findings. Explain Medium findings and
+   obtain approval before continuing.
+3. Confirm the public skillNload manager is available:
+
+   ```text
+   python -m skillhub --version
+   ```
+
+   If it is missing, explain that this skill depends on
+   `https://github.com/wilgon456/skillNload`. Do not install software silently.
+   If the user approves installation, inspect that repository, pin the exact
+   commit, and install from the pinned public source. The wrapper can also use
+   a supplied checkout through `--repo`.
+4. Derive a concise Korean description and tags from the verified source.
+   Prefer a controlled domain and action when clear. Do not invent capabilities
+   that are absent from `SKILL.md`.
+5. Resolve this skill's installed directory and run the bundled wrapper using
+   an argv list, never a shell-built command string:
+
+   ```text
+   python <skill-dir>/scripts/paseo-skill-save.py <source> \
+     --description-ko "<Korean description>" \
+     --tag-ko "<tag>" \
+     --domain <domain> \
+     --action <action>
+   ```
+
+6. Require the wrapper to report all of the following:
+
+   - router target and initialization status
+   - pinned source repository, commit, and skill path
+   - checksum, inferred risk, activation policy, and catalog ID
+   - checksum verification result
+   - search discovery result
+   - natural-language match decision and selected catalog ID
+   - bounded skill body evidence for an instructions-only selection
+
+   A saved `instructions-only` skill is ready only when its activation policy
+   is `on-demand`, the match decision is `select`, and confirmation is false.
+   Executable or externally mutating skills may return `confirm`; keep that
+   gate. Never claim that static checks prove absolute safety.
+7. Do not run `enable`, `install`, or target skill code merely because the
+   skill was saved. The installed `skill-hub-router` will select the minimum
+   useful saved skill for later natural-language requests. A session that was
+   already running before router initialization may require integration reload
+   or a new agent session.
+
+## Multiple skills
+
+A repository root may contain multiple `SKILL.md` files. Register each one only
+when the user clearly requested the whole repository. For one intended skill,
+prefer its `/tree/<revision>/<path>` URL. Do not pass a single custom name or
+description when bulk-registering multiple skills.
+
+## Updates and collisions
+
+skillNload refuses to overwrite an existing personal catalog ID. If the skill
+already exists, show the existing record and the new pinned commit. Do not
+delete or replace the old archive without explicit approval and a recoverable
+snapshot or backup.
+
+## Multi-computer behavior
+
+The personal overlay is local to one computer. Do not upload it to the public
+Paseobility or skillNload repositories. If the user wants synchronization, use
+a separate user-owned private Git repository and preserve license metadata.
+
+## Failure handling
+
+- Missing `SKILL.md`: stop and ask for the correct skill path.
+- Static scan rejection, symlink, junction, checksum mismatch, or ownership
+  mismatch: stop; do not weaken the guard.
+- Missing Korean metadata: generate a conservative description from verified
+  source text and label it as generated.
+- Search or match smoke failure: keep the archive registered, report that its
+  routing metadata needs correction, and do not claim automatic use works.

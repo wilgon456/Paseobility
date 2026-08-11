@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.2.0-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.3.0-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -14,13 +14,15 @@
   <img alt="Spyware Check" src="https://img.shields.io/badge/Spyware-Check-dc2626?style=for-the-badge">
   <img alt="Agent Cleanup" src="https://img.shields.io/badge/Agent-Cleanup-475569?style=for-the-badge">
   <img alt="Paseo Share" src="https://img.shields.io/badge/Paseo-Share-0284c7?style=for-the-badge">
+  <img alt="Paseo Skill Save" src="https://img.shields.io/badge/Paseo-Skill%20Save-7c3aed?style=for-the-badge">
 </p>
 
 <p>
   <code>/paseo-computer-use</code>로 웹 UI를 직접 조작하고,<br>
   <code>/paseo-agent-tournament</code>로 여러 모델의 답을 비교하고,<br>
   <code>/paseo-project-bootstrap</code>으로 새 프로젝트 맥락을 세팅하고,<br>
-  <code>/paseo-share</code>로 컴퓨터와 모바일 사이에 산출물을 공유합니다.
+  <code>/paseo-share</code>로 컴퓨터와 모바일 사이에 산출물을 공유하고,<br>
+  <code>/paseo-skill-save</code>로 GitHub 스킬을 저장해 자연어로 다시 사용합니다.
 </p>
 
 </div>
@@ -39,12 +41,13 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
-## v2.2 업데이트
+## v2.3 업데이트
 
-v2.2에서는 여러 Paseo 컴퓨터와 모바일 사이에서 문서, 코드, PDF, 이미지를 주고받는 private Git 기반 공유함을 추가했습니다. GitHub Actions나 별도 서버 없이 로컬 Git 명령만 사용합니다.
+v2.3에서는 GitHub의 AI 스킬을 정적 검사한 뒤 개인 skillNload 라이브러리에 저장하고, 이후 일반 자연어 요청에서 다시 선택해 쓰는 `/paseo-skill-save`를 추가했습니다. v2.2의 private Git 기반 공유 기능도 그대로 포함합니다.
 
 | 추가/보강 기능 | 역할 |
 | --- | --- |
+| `/paseo-skill-save` | GitHub 스킬을 읽기 전용으로 검사하고 커밋·체크섬을 고정해 개인 라이브러리에 저장한 뒤 자연어 검색·선택까지 검증 |
 | `/paseo-share` | 파일을 전용 private Git 저장소에 게시하고 공유 ID, 미리보기 링크, 다운로드 링크 반환. 다른 컴퓨터에서는 최신 목록 조회와 로컬 가져오기를 자동 수행 |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
 | `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
@@ -56,6 +59,8 @@ v2.2에서는 여러 Paseo 컴퓨터와 모바일 사이에서 문서, 코드, P
 `/paseo-agent-cleanup`은 명확한 테스트/검증용 완료 agent를 기본으로 archive합니다. running agent는 건드리지 않고, workspace cleanup과 애매한 대상은 승인 후 archive-only 방식으로만 처리합니다.
 
 `/paseo-share`는 각 컴퓨터에서 동일한 private GitHub/Forgejo 저장소를 한 번 설정한 뒤 `공유해줘`, `최신 공유 파일 보여줘`, `다른 컴퓨터 파일 가져와` 같은 요청으로 사용합니다. 업로드한 파일은 모바일에서 링크로 바로 미리볼 수 있고, 다른 컴퓨터의 Paseo는 공유 ID를 이용해 자동으로 가져옵니다.
+
+`/paseo-skill-save`는 대상 스킬을 실행하지 않고 먼저 `/paseo-spyware-check` 방식으로 검사합니다. 통과한 스킬은 로컬 개인 overlay에만 저장되며, 설명 전용 스킬은 `on-demand`로 연결하고 스크립트 실행·외부 변경·삭제 기능은 확인 절차를 유지합니다.
 
 ---
 
@@ -91,6 +96,7 @@ https://github.com/wilgon456/Paseobility
 - GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
 - 테스트 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive합니다.
 - 작업 산출물을 private Git 공유함에 올리고 다른 컴퓨터나 모바일에서 바로 열거나 가져옵니다.
+- GitHub 스킬 링크를 개인 라이브러리에 저장하고 이후 평범한 자연어 요청에서 자동으로 찾아 씁니다.
 - 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
 - 새 프로젝트에 들어갈 때 README, docs, Claude/Codex/Cursor 계열 지침을 모아 작업 맥락을 만듭니다.
 - Codex로 구현하고 Claude로 리뷰하는 식의 크로스 프로바이더 협업을 설계합니다.
@@ -108,6 +114,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
 | `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private Git 저장소 게시, 클릭 가능한 미리보기/다운로드 링크, 최신 목록, 공유 ID 기반 자동 가져오기 |
+| `/paseo-skill-save` | 개인 스킬 저장·등록 | GitHub 스킬 정적 검사, 한국어 메타데이터 생성, 커밋·체크섬 고정, 자연어 검색·선택 검증 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
 | `/paseo-agent-cleanup` | 테스트 agent/workspace 정리 | 완료된 테스트 agent 자동 archive, running agent 보호, workspace는 승인 후 archive |
 
@@ -138,6 +145,7 @@ cd Paseobility
 ./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
 ./scripts/paseobility-init.sh --skill paseo-spyware-check --no-context
 ./scripts/paseobility-init.sh --skill paseo-share --no-context
+./scripts/paseobility-init.sh --skill paseo-skill-save --skill paseo-spyware-check --no-context
 
 # Claude Code에서도 같이 쓰고 싶다면
 ./scripts/paseobility-init.sh --with-claude --no-context
@@ -159,6 +167,7 @@ cd Paseobility
 .\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
 .\scripts\paseobility-install.ps1 -Skill paseo-spyware-check
 .\scripts\paseobility-install.ps1 -Skill paseo-share
+.\scripts\paseobility-install.ps1 -Skill paseo-skill-save,paseo-spyware-check
 
 # 임시 홈에 먼저 테스트 설치하고 싶다면
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
@@ -201,6 +210,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 - 1개 이상의 AI 프로바이더
   - 예: Codex, Claude Code 등
 - `/paseo-share`는 Node.js, Git, 그리고 인증 가능한 전용 private GitHub/Forgejo 저장소 필요. GitHub Actions는 사용하지 않음
+- `/paseo-skill-save`는 Python 3.11 이상, Git, 별도로 설치한 공개 [skillNload](https://github.com/wilgon456/skillNload) 관리자 필요. 대상 외부 스킬이나 개인 overlay는 Paseobility에 포함하지 않음
 - 오케스트레이션을 제대로 쓰려면 `~/.paseo/orchestration-preferences.json` 설정 권장
 - 설치 대상 skills 경로
   - macOS/Linux: `~/.agents/skills`
@@ -224,6 +234,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
 | `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안 테스트 7개, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
 | `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
+| `/paseo-skill-save` on Windows | Tested locally | 공식 skill validator, Python 단위 테스트 4개, PowerShell 격리 설치, 실제 GitHub 스킬 정적 검사·저장·체크섬 검증·검색·자연어 select·본문 증거 확인. 전역 router는 변경하지 않음 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -231,6 +242,20 @@ Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치
 ---
 
 ## 빠른 사용 예시
+
+### GitHub 스킬을 저장하고 자연어로 다시 사용하기
+
+```text
+/paseo-skill-save https://github.com/owner/repo/tree/main/path/to/skill
+```
+
+에이전트는 먼저 대상 저장소를 읽기 전용으로 검사합니다. 통과하면 원본 커밋과 체크섬을 고정해 개인 skillNload overlay에 등록하고, 검색 결과와 자연어 match가 해당 스킬을 선택하는지 확인합니다.
+
+```text
+회의 녹취에서 결정사항과 담당자별 할 일을 정리해줘
+```
+
+이후 `skill-hub-router`가 개인 라이브러리에서 맞는 스킬을 골라 이번 작업에만 연결합니다. 설명 전용 스킬은 다시 묻지 않고 적용하며, 실행·외부 변경·삭제 동작은 기존 확인 절차를 유지합니다. 라우터를 처음 설치한 직후에는 새 agent 세션이나 integration reload가 필요할 수 있습니다.
 
 ### 다른 컴퓨터와 모바일로 산출물 공유하기
 
@@ -371,6 +396,21 @@ running agent는 건드리지 마.
 - `delete`는 하지 않고 `archive`만 합니다.
 - running agent는 자동으로 정리하지 않습니다.
 - workspace archive와 애매한 대상은 사용자 승인 후에만 진행합니다.
+
+---
+
+## `/paseo-skill-save`
+
+GitHub 저장소나 정확한 스킬 경로를 받아 `/paseo-spyware-check`로 먼저 정적 검사하고, 공개 [skillNload](https://github.com/wilgon456/skillNload) 관리자를 통해 사용자 컴퓨터의 개인 overlay에 저장합니다.
+
+핵심 규칙:
+
+- 대상 스킬의 dependency 설치, build, import, script 실행을 저장 과정에서 금지합니다.
+- 원본 repository, 고정 commit, skill path, checksum, license와 정적 검사 결과를 기록합니다.
+- 저장 직후 `verify`, `search`, 자연어 `match --agent-packet`을 실행해 실제 선택과 본문 증거까지 확인합니다.
+- `instructions-only` 스킬만 확인 없이 `on-demand`로 적용합니다.
+- scripts, external-write, destructive 위험은 저장 후에도 사용자 확인을 유지합니다.
+- 개인 overlay는 로컬에 두며 Paseobility나 공개 skillNload 저장소에 업로드하지 않습니다.
 
 ---
 
@@ -648,6 +688,13 @@ skills/
 │   └── scripts/
 │       ├── paseo-share.js
 │       └── paseo-share.test.js
+├── paseo-skill-save/
+│   ├── SKILL.md
+│   ├── agents/
+│   │   └── openai.yaml
+│   └── scripts/
+│       ├── paseo-skill-save.py
+│       └── paseo-skill-save.test.py
 └── paseo-orchestration/
     └── SKILL.md
 scripts/
@@ -663,7 +710,7 @@ CLAUDE.md
 
 ## 같이 보면 좋은 프로젝트
 
-- [ai-skill-library](https://github.com/wilgon456/ai-skill-library) - 크로스 에이전트 스킬 검색/설치 라이브러리
+- [skillNload](https://github.com/wilgon456/skillNload) - 사용자 선택 스킬을 검증·저장하고 자연어 요청에 연결하는 개인 스킬 라이브러리
 
 ---
 

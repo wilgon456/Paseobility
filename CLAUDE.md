@@ -1,9 +1,20 @@
 # Paseobility Claude Install Guide
 
 This repository is an AI-installable skill package. When the user gives this
-repository URL and asks to install `paseo-share`, share Paseo artifacts, or
-enable cross-computer/mobile file viewing, install the skill instead of merely
-describing the repository.
+repository URL and asks to install `paseo-share`, share Paseo artifacts, enable
+cross-computer/mobile file viewing, or install `/paseo-skill-save`, install the
+requested skill instead of merely describing the repository.
+
+For `/paseo-skill-save`, install both required skill directories with Claude
+support, then read `skills/paseo-skill-save/SKILL.md` before first use:
+
+```bash
+./scripts/paseobility-init.sh --skill paseo-skill-save --skill paseo-spyware-check --with-claude --no-context
+```
+
+```powershell
+.\scripts\paseobility-install.ps1 -Skill paseo-skill-save,paseo-spyware-check -WithClaude
+```
 
 Read `AGENTS.md` for the complete safety and platform rules. For the common
 `paseo-share` request, use this fast path:
