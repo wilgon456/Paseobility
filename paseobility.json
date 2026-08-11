@@ -1,6 +1,6 @@
 {
   "name": "Paseobility",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "skillPath": "skills",
   "installTargets": {
     "paseo": {
@@ -20,6 +20,7 @@
     "paseo-project-bootstrap",
     "paseo-session-brief",
     "paseo-share",
+    "paseo-skill-save",
     "paseo-spyware-check"
   ]
 }

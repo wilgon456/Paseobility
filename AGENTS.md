@@ -7,6 +7,23 @@ This repository is designed for an AI-agent install flow: the user gives Codex,
 Claude, or a Paseo agent the GitHub URL, and the agent reads this file before
 copying the bundled skills into the local skill directory.
 
+## Paseo Skill Save fast path
+
+When the user asks to install or test `/paseo-skill-save`, install both the
+`paseo-skill-save` and `paseo-spyware-check` skill directories. The save skill
+is a thin client for the separately installed public skillNload manager at
+`https://github.com/wilgon456/skillNload`; Paseobility does not bundle that
+manager or any user-saved third-party skills.
+
+Before saving a target skill, run the read-only spyware workflow. Never execute
+the target repository's code during inspection or registration. Use a temporary
+home and skillNload state directory for tests. A successful test must prove that
+the skill was registered, checksum-verified, found by search, and selected by a
+natural-language match while no permanent target-skill installation was made.
+For an `instructions-only` fixture, require a `select` decision with no
+confirmation and available bounded skill body evidence. Executable skills must
+retain their confirmation gate.
+
 ## Paseo Share fast path
 
 If the user gives this repository URL and asks to install `paseo-share`, share
@@ -112,6 +129,7 @@ Convenience installer:
 ./scripts/paseobility-init.sh --no-context
 ./scripts/paseobility-init.sh --with-claude --no-context
 ./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
+./scripts/paseobility-init.sh --skill paseo-skill-save --skill paseo-spyware-check --no-context
 ```
 
 Existing same-name skills are backed up to
@@ -139,6 +157,7 @@ Convenience installer:
 .\scripts\paseobility-install.ps1 -WithClaude
 .\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
 .\scripts\paseobility-install.ps1 -Skill paseo-share
+.\scripts\paseobility-install.ps1 -Skill paseo-skill-save,paseo-spyware-check
 
 # Temp-home install test:
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
