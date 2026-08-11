@@ -95,16 +95,36 @@ Use one representative opening or section before the full Studio draft.
 
 ```text
 Calibration sample:
+Candidate: A | B | single requested provider
 Assumptions used:
+Preflight: pass | retry | discarded
+Preflight blockers:
 User response:
 Profile updates:
 Lines to lock:
 Lines to revise:
-Gate: approved | revise | skipped-by-user
+Meaning clear on first read: yes | no
+Referents and source names clear: yes | no
+Gate: approved | revise | explicitly-skipped-by-user
 ```
 
 Ask concrete choices instead of a broad quality question. One focused feedback
 turn is normally enough; allow a second only when the direction remains wrong.
+
+## Section ledger
+
+```text
+Section ID:
+Purpose:
+Plain-language claim:
+Concrete support: atom ID | named source | example | scene | explicit opinion
+Intended reader takeaway:
+New factual claims:
+Locked text:
+```
+
+If `Plain-language claim` cannot be completed without copying a slogan from the
+draft, the section is not ready to write.
 
 ## Locked passages
 

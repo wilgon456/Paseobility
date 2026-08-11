@@ -24,6 +24,7 @@ Maintain representative cases across:
 | Mode + depth | Creative + Quick, Source-guided + Studio, Revision + Quick, Revision + Studio |
 | Feedback | accept, local rewrite, direction change, unlock passage |
 | Providers | cross-provider available, one provider only, unavailable role |
+| Korean failure modes | repeated antithesis, vague referents, unnamed sources, slogan opening, uniform short paragraphs |
 
 Include real user-shaped cases and rare costly failures. Run multiple trials
 for mode selection, questions, agent routing, and review because outputs vary.
@@ -38,7 +39,12 @@ for mode selection, questions, agent routing, and review because outputs vary.
 - no source is marked read when access failed
 - source-guided mode creates a Researcher
 - creative mode does not create a Researcher without a factual need
-- Studio mode records calibration status
+- Studio mode cannot draft without `approved` or `explicitly-skipped-by-user` calibration status
+- direction-based Studio calibration compares two provider families when available
+- calibration candidates with placeholders or clarity blockers are rejected before the human gate
+- long-form or public Studio work receives a Clarity Editor verdict
+- every section ledger records a plain claim, concrete support, and reader takeaway
+- unclear antecedents and vague source attribution cannot receive `ready-for-human`
 - user-approved locked passages survive revisions byte-for-byte unless unlocked
 - review and patch passes together do not exceed two per human revision cycle
 - publishing actions never occur without explicit confirmation
@@ -55,6 +61,7 @@ Keep grader responsibilities separate:
 - factual/source grader
 - direction and constraint grader
 - voice-profile grader
+- literal clarity and antecedent grader
 - intended-reader grader
 
 Require exact excerpts and evidence for failures. Prefer a provider family that

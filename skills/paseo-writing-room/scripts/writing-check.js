@@ -208,6 +208,85 @@ function addRhythmFindings(text, stats, findings) {
   }
 }
 
+function matchedSignals(text, pattern) {
+  return [...text.matchAll(pattern)].map((match) => ({
+    evidence: match[0],
+    line: lineNumber(text, match.index),
+  }));
+}
+
+function addKoreanClarityFindings(text, findings) {
+  const paragraphList = paragraphs(text);
+  const antithesis = matchedSignals(text, /(?:아니라|아니다|아닌\s+(?:것|셈|이유))/gu);
+  if (antithesis.length >= 3) {
+    findings.push({
+      id: "repeated-korean-antithesis",
+      severity: "warning",
+      count: antithesis.length,
+      lines: antithesis.map((item) => item.line),
+      evidence: antithesis.slice(0, 4).map((item) => item.evidence).join(" | "),
+      message: "Negation or A-not-B rhetoric repeats; verify that each instance adds meaning instead of acting as a slogan scaffold.",
+    });
+  }
+
+  const vagueReferents = matchedSignals(
+    text,
+    /(?:그쪽|이쪽|저쪽|어떤\s+쪽|같은\s+줄기|그런\s+식|같은\s+이야기)/gu,
+  );
+  if (vagueReferents.length >= 2) {
+    findings.push({
+      id: "vague-korean-referent",
+      severity: "warning",
+      count: vagueReferents.length,
+      lines: vagueReferents.map((item) => item.line),
+      evidence: vagueReferents.slice(0, 4).map((item) => item.evidence).join(" | "),
+      message: "Several shorthand referents may force the reader to guess the subject; name the actor, model, source, or idea when needed.",
+    });
+  }
+
+  const vagueSources = matchedSignals(
+    text,
+    /(?:(?:한|어떤|앞선|위의)\s*(?:글|자료|정리)(?:에서|에\s*따르면|처럼)?|[\p{L}\p{N}]+\s*쪽\s*(?:글|자료|정리)(?:에서|에\s*따르면|처럼)?)/gu,
+  );
+  for (const signal of vagueSources) {
+    findings.push({
+      id: "vague-source-attribution",
+      severity: "warning",
+      line: signal.line,
+      evidence: signal.evidence,
+      message: "A source-dependent statement uses an unnamed or indirect attribution; identify or cite the source precisely.",
+    });
+  }
+
+  const transitions = matchedSignals(
+    text,
+    /(?:여기서\s+중요한\s+(?:건|것은)|반대로|다시\s+[^.!?\n]{0,30}(?:돌아오면|돌아가면)|정리하면|결국|같은\s+줄기)/gu,
+  );
+  if (transitions.length >= 4) {
+    findings.push({
+      id: "transition-scaffold-density",
+      severity: "info",
+      count: transitions.length,
+      lines: transitions.map((item) => item.line),
+      evidence: transitions.slice(0, 5).map((item) => item.evidence).join(" | "),
+      message: "Turn-signaling phrases are dense; verify that each transition introduces a concrete relation or new information.",
+    });
+  }
+
+  const shortBeats = paragraphList.filter((paragraph) => {
+    const sentenceCount = sentences(paragraph).length;
+    return sentenceCount <= 2 && words(paragraph).length <= 35 && paragraph.length <= 180;
+  });
+  if (paragraphList.length >= 8 && shortBeats.length / paragraphList.length >= 0.6) {
+    findings.push({
+      id: "mechanical-short-paragraph-rhythm",
+      severity: "info",
+      evidence: `${shortBeats.length}/${paragraphList.length} paragraphs`,
+      message: "Most paragraphs are similar short beats; inspect whether the cadence feels intentionally varied or mechanically segmented.",
+    });
+  }
+}
+
 function addSourceFindings(draft, sourcesText, findings) {
   if (!sourcesText) return { supplied: 0, presentInDraft: 0, absentFromDraft: [] };
   const supplied = extractUrls(sourcesText);
@@ -252,6 +331,7 @@ function analyze({ draft, sources = "", sample = "", forbidden = "" }) {
   addPatternFindings(draft, findings);
   addForbiddenFindings(draft, forbidden, findings);
   addRhythmFindings(draft, stats, findings);
+  addKoreanClarityFindings(draft, findings);
   const sourceCoverage = addSourceFindings(draft, sources, findings);
   const sampleStats = addSampleComparison(stats, sample, findings);
   return {

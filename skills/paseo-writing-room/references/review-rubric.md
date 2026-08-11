@@ -9,6 +9,7 @@ voice-level, and reader-response judgments.
 - Shared blocking checks
 - Fact Auditor rubric
 - Voice Editor rubric
+- Clarity Editor rubric
 - Reader rubric
 - Combined decision
 
@@ -87,6 +88,40 @@ Locked passages checked:
 
 Diagnose; do not rewrite the entire piece.
 
+## Clarity Editor rubric
+
+Meaning comes before elegance. Review each paragraph without rewarding
+quotable-sounding language.
+
+Return `blocked` for:
+
+- a consequential sentence that cannot be paraphrased into one plain claim
+- a pronoun, shorthand, or category such as `그쪽`, `어떤 쪽`, or `한 글` whose
+  referent is not obvious in the same or previous paragraph
+- a source-dependent statement that does not name or cite the source
+- a paragraph with no claim, evidence, example, scene, decision, or useful link
+  to the surrounding argument
+- a transition that announces contrast or conclusion but adds no meaning
+
+Flag as `revise` when the draft repeatedly relies on antithesis, slogans,
+fragment-like paragraph beats, abstract nouns, or restated thesis sentences.
+One deliberate instance may be valid; repetition without voice-sample evidence
+is the failure.
+
+Output:
+
+```text
+Verdict: pass | revise | blocked
+Excerpt:
+Plain paraphrase: <meaning or UNCLEAR>
+Unresolved referent or missing support:
+Required semantic change:
+Preserve unchanged:
+```
+
+Do not solve unclear meaning by adding decorative transitions. Send factual
+questions to Fact Auditor and subjective voice choices to the user.
+
 ## Reader rubric
 
 Evaluate without guessing whether AI was involved.
@@ -113,6 +148,7 @@ Return `ready-for-human` only when:
 - no shared blocker remains
 - Fact Auditor passes, when factual review applies
 - Voice Editor has no required revision
+- Clarity Editor passes, when required
 - Reader has no major comprehension failure
 - locked passages are accounted for
 - the review-loop budget has not been exceeded

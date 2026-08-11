@@ -12,6 +12,7 @@ files unless artifact persistence was approved.
 - Writer
 - Fact Auditor
 - Voice Editor
+- Clarity Editor
 - Reader
 
 ## Provider mapping
@@ -24,12 +25,14 @@ files unless artifact persistence was approved.
 | Writer | `ui` |
 | Fact Auditor | `audit` or `research` |
 | Voice Editor | `audit`, preferably a different family from Writer |
+| Clarity Editor | `planning` or `audit`, preferably a different family from Writer |
 | Reader | `audit` |
 
 Resolve actual providers through Paseo preferences and provider tools. Do not
 hardcode the examples from another skill or reuse an unavailable identifier.
-Use separate agents for Fact Auditor and Voice Editor. Prefer different provider
-families for them when available; otherwise disclose the limitation.
+Use separate agents for Fact Auditor, Voice Editor, and Clarity Editor. Prefer
+different provider families from the Writer and from each other when available;
+otherwise disclose the limitation.
 
 ## Researcher
 
@@ -69,13 +72,16 @@ Output:
 
 ```text
 Draft or requested sections
-Section ledger: purpose, atoms, sources, new factual claims
+Section ledger: purpose, plain claim, concrete support, reader takeaway, atoms, sources, new factual claims
 Assumptions and placeholders
 Locked passages preserved
 ```
 
 The Writer owns prose. It may not unlock accepted text or silently change the
-central direction.
+central direction. It must receive an approved calibration status before a full
+Studio draft. Prefer direct declarative wording over slogans, repeated
+antithesis, vague referents, or abstract transitions unless the approved sample
+specifically supports those choices.
 
 ## Fact Auditor
 
@@ -111,6 +117,27 @@ Return exact excerpts and local revision instructions. State what must remain
 unchanged. Do not rewrite the whole piece and do not add artificial mistakes,
 random slang, or unsupported personal details.
 
+## Clarity Editor
+
+Input: draft, Direction Lock, section ledger, source ledger when present, and
+locked passages. Review without seeing the Writer provider when possible.
+
+For every paragraph, answer:
+
+```text
+Literal claim: <one plain sentence, or UNCLEAR>
+Named subject and antecedents: <clear | list unresolved words>
+Concrete support: <atom, source, example, opinion, or NONE>
+Connection to prior paragraph: <specific relation, or MISSING>
+```
+
+Return `blocked` when any consequential sentence cannot be paraphrased plainly,
+when a pronoun or shorthand has no obvious antecedent, or when a source-dependent
+claim uses vague attribution. Flag repeated slogan structures, antithesis,
+one- or two-sentence paragraph beats, and transitions that only announce a turn.
+Quote every failing excerpt and give a local semantic instruction. Do not polish
+or replace the user's voice, and do not rewrite the complete piece.
+
 ## Reader
 
 Input: draft, intended reader, desired effect, and document type. Do not provide
@@ -127,4 +154,6 @@ Likely reader response or action
 One highest-value change, or pass
 ```
 
-The Reader evaluates reception, not authorship detection.
+The Reader evaluates reception, not authorship detection. It may not return
+`pass` if it cannot summarize the central claim and each major section in plain
+language on the first read.

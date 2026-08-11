@@ -99,7 +99,7 @@ Direction Lock
 -> Voice Calibration Sample
 -> Human Voice Gate
 -> Section Drafting
--> Fact + Voice review in parallel
+-> Fact + Voice + Clarity review in parallel
 -> Reader review when useful
 -> Patch Revision (maximum 2 rounds)
 -> Human Draft Gate
@@ -188,11 +188,30 @@ calibration using concrete options:
 - too explanatory
 - too casual or too formal
 - wrong emotional distance
+- sentences sound polished but the meaning is unclear
+- vague references make sources or subjects hard to identify
 - keep specific lines
 
 Convert the response into profile updates and `locked passages`. Do not ask a
 vague question such as "What do you think?" If the user approves, use the
 sample as the voice anchor for the remaining sections.
+
+When no sample-based voice profile exists, ask two different provider families
+for short calibration candidates when available. Give both the same semantic
+brief, label them `Sample A` and `Sample B` without provider names, and let the
+user choose or combine specific traits. Do not generate two full drafts.
+
+Before showing a calibration candidate, run a bounded preflight: reject
+placeholders, unclear literal meaning, unresolved referents, vague source
+attribution, and violations of the Direction Lock. Retry that candidate once;
+if it still fails, discard it, use another available provider, or disclose that
+only one viable sample remains. Do not ask the user to calibrate against broken
+prose, and do not rank candidates by provider reputation.
+
+Studio mode may enter Section Drafting only when `calibration_status` is
+`approved` or `explicitly-skipped-by-user`. Missing status means stop at the
+Human Voice Gate. The coordinator may never infer approval from silence or from
+the user's earlier angle choice.
 
 ## 6. Draft by section
 
@@ -203,6 +222,9 @@ while keeping one coherent document.
 For each section, track:
 
 - purpose in the whole piece
+- plain-language claim: what the section literally says without a slogan
+- concrete support: user atom, named source, example, scene, or explicit opinion
+- intended reader takeaway
 - content atoms used
 - sources used, if any
 - new factual claims requiring audit
@@ -212,6 +234,21 @@ The writer may not invent personal experience, quotations, customers,
 statistics, credentials, or events. It may propose clearly labeled creative
 options for the user to accept.
 
+Unless the approved voice sample demonstrates otherwise, avoid using these as
+default scaffolding:
+
+- slogan-like or metaphorical negation openings
+- repeated `A가 아니라 B` / `A 때문이 아니라 B` antithesis
+- a whole article made of uniform one- or two-sentence paragraph beats
+- vague referents such as `그쪽`, `어떤 쪽`, `한 글`, or `같은 이야기`
+- unnamed source gestures such as "한 글에서" or "어떤 자료에 따르면"
+- abstract transitions that do not add a claim, fact, example, or decision
+
+Prefer ordinary declarative sentences when they carry the meaning more clearly.
+Every pronoun or shorthand reference must have an obvious antecedent. Name the
+source, model, tool, actor, or event when the reader could otherwise ask "which
+one?" Never sacrifice comprehension to make a sentence sound quotable.
+
 ## 7. Separate reviews
 
 Do not use one editor for every concern. Run independent review contracts from
@@ -219,14 +256,18 @@ Do not use one editor for every concern. Run independent review contracts from
 
 - **Fact Auditor**: source support, quotations, dates, caveats, contradictions
 - **Voice Editor**: voice-profile fit, generic language, rhythm, tone drift
+- **Clarity Editor**: literal meaning, antecedents, paragraph logic, attribution
 - **Reader**: comprehension, interest, persuasion, emotional and practical effect
 
-Run Fact Auditor and Voice Editor in parallel when both are needed. Add Reader
-for long-form, public, persuasive, or creative Studio work. Reviewers diagnose
-with exact excerpts and instructions; they do not rewrite the complete piece.
-Use separate agents for Fact Auditor and Voice Editor. Prefer different provider
-families for those roles when available; if they resolve to the same family,
-disclose that the reviews were independent prompts but not cross-provider.
+Run Fact Auditor, Voice Editor, and Clarity Editor in parallel when applicable.
+Clarity Editor is required for long-form or public Studio work and whenever the
+voice profile is direction-based. Add Reader for long-form, public, persuasive,
+or creative Studio work. Reviewers diagnose with exact excerpts and
+instructions; they do not rewrite the complete piece.
+Use separate agents for Fact Auditor, Voice Editor, and Clarity Editor. Prefer
+different provider families from the Writer and from each other when available;
+if roles resolve to the same family, disclose that the reviews used independent
+prompts but were not fully cross-provider.
 
 Use `scripts/writing-check.js` for deterministic signals when files exist. Resolve
 the helper relative to this `SKILL.md`; do not assume the target project contains
@@ -239,6 +280,9 @@ node <skill-dir>/scripts/writing-check.js --draft <draft.md> --forbid <forbidden
 ```
 
 Its findings are editing signals, not proof of AI authorship or poor quality.
+Checker warnings for repeated antithesis, vague attribution, transition density,
+or mechanical short-paragraph rhythm must be inspected by Clarity Editor; they
+are not automatic failures by themselves.
 
 ## 8. Patch Revision
 

@@ -21,6 +21,7 @@ project. Keep normal Quick mode in the conversation.
 ├── reviews/
 │   ├── fact-v1.md
 │   ├── voice-v1.md
+│   ├── clarity-v1.md
 │   └── reader-v1.md
 ├── human-feedback.md
 ├── decision-log.md

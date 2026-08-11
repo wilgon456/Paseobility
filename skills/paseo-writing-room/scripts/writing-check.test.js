@@ -31,6 +31,30 @@ assert(ids.has("source-url-not-present"));
 assert(ids.has("repeated-paragraph-opening"));
 assert.equal(report.summary.errors, 2);
 
+const koreanMechanicalDraft = `도구를 더 쓰는 일은 채팅 창을 계속 늘리는 일이 아니다.
+
+어떤 쪽은 긴 글에 강하고 그쪽은 복잡한 코드를 맡는다고 말한다.
+
+한 글에서 여러 도구를 역할별로 나눠야 한다는 비슷한 이야기를 했다.
+
+여기서 중요한 건 단순히 구독한 서비스의 숫자를 세는 일이 아니다.
+
+반대로 하나의 서비스만 고집하는 선택도 언제나 정답인 것은 아니다.
+
+다시 여러 서비스를 구독하는 이야기로 돌아오면 역할 분담이 보인다.
+
+같은 줄기에서 매달 지출해야 하는 비용과 사용량 이야기도 자연스럽게 나온다.
+
+정리하면 중요한 것은 도구의 수가 아니라 각 도구에 맡길 역할의 문제다.`;
+
+const koreanReport = analyze({ draft: koreanMechanicalDraft });
+const koreanIds = new Set(koreanReport.findings.map((item) => item.id));
+assert(koreanIds.has("repeated-korean-antithesis"));
+assert(koreanIds.has("vague-korean-referent"));
+assert(koreanIds.has("vague-source-attribution"));
+assert(koreanIds.has("transition-scaffold-density"));
+assert(koreanIds.has("mechanical-short-paragraph-rhythm"));
+
 assert.deepEqual(parseArgs(["--draft", "draft.md", "--json", "--strict"]), {
   draft: "draft.md",
   json: true,
