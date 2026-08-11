@@ -1,4 +1,4 @@
 interface:
   display_name: "Paseo Writing Room"
-  short_description: "Research, draft, and cross-review many kinds of writing"
+  short_description: "Human-directed drafting and separated editorial review"
   default_prompt: "Use $paseo-writing-room to develop my topic or direction, use any links I provide, and produce a reviewed draft in my voice."

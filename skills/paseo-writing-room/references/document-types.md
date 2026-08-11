@@ -15,6 +15,8 @@ company template, or submission guide, treat that guide as authoritative.
 - Social thread
 - Website or product copy
 - Letter or email
+- Fiction or creative prose
+- Poetry or lyrical text
 
 ## Blog post or contributed article
 
@@ -166,3 +168,35 @@ Recommended shape:
 5. Sign-off matching the relationship
 
 Protect private details. Do not send without explicit confirmation.
+
+## Fiction or creative prose
+
+Build from a controlling tension, character desire, scene, image, or formal
+constraint supplied or approved by the user.
+
+Recommended process:
+
+1. Establish viewpoint, emotional distance, and world rules
+2. Select a concrete opening situation rather than explaining the premise
+3. Develop change through action, perception, dialogue, and consequence
+4. Preserve ambiguity when it is intentional
+5. End on an earned change, image, decision, or unresolved tension
+
+Track invented story facts as fictional content atoms, not real-world claims.
+Do not imitate a living author's distinctive style. Use the user's own samples
+or high-level traits such as spare, comic, restrained, or dreamlike.
+
+## Poetry or lyrical text
+
+Treat sound, image, line movement, and omission as structural choices.
+
+Recommended process:
+
+1. Identify the emotional or perceptual turn
+2. Choose image field, speaker distance, and formal constraint
+3. Generate a short calibration stanza before the full piece
+4. Remove explanation that the images already carry
+5. Read aloud and revise for sound rather than uniform smoothness
+
+Do not add random obscurity, grammatical errors, or unusual punctuation merely
+to simulate human writing.
