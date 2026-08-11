@@ -2,7 +2,7 @@
 name: paseo-skill-save
 description: >-
   Inspect and save one or more reusable AI skills from a GitHub URL or local
-  skill directory into the user's private skillNload library. Use when the
+  skill directory into the user's private local skill library. Use when the
   user invokes /paseo-skill-save, supplies a GitHub skill link and asks to
   save, archive, register, remember, or add it, or wants the saved skill to
   become usable later from ordinary natural-language requests.
@@ -10,9 +10,11 @@ description: >-
 
 # Paseo Skill Save
 
-Save user-selected skills to the private skillNload overlay. Registration is
+Save user-selected skills to a private local overlay. Registration is
 persistent; activation is not. The router may attach a selected skill for one
-task without permanently installing every saved skill.
+task without permanently installing every saved skill. The wrapper manages its
+pinned routing engine automatically; never require the user to install or
+invoke skillNload separately.
 
 ## Required workflow
 
@@ -22,21 +24,10 @@ task without permanently installing every saved skill.
    target inert: do not install dependencies, build it, import it, or execute
    its scripts. Stop on High or Critical findings. Explain Medium findings and
    obtain approval before continuing.
-3. Confirm the public skillNload manager is available:
-
-   ```text
-   python -m skillhub --version
-   ```
-
-   If it is missing, explain that this skill depends on
-   `https://github.com/wilgon456/skillNload`. Do not install software silently.
-   If the user approves installation, inspect that repository, pin the exact
-   commit, and install from the pinned public source. The wrapper can also use
-   a supplied checkout through `--repo`.
-4. Derive a concise Korean description and tags from the verified source.
+3. Derive a concise Korean description and tags from the verified source.
    Prefer a controlled domain and action when clear. Do not invent capabilities
    that are absent from `SKILL.md`.
-5. Resolve this skill's installed directory and run the bundled wrapper using
+4. Resolve this skill's installed directory and run the bundled wrapper using
    an argv list, never a shell-built command string:
 
    ```text
@@ -47,8 +38,13 @@ task without permanently installing every saved skill.
      --action <action>
    ```
 
-6. Require the wrapper to report all of the following:
+   On first use, the wrapper automatically fetches the official public
+   skillNload engine at its hard-coded commit, verifies both the commit and the
+   complete Git tree, and caches it under `~/.paseo/skill-save/manager/`. It
+   uses no pip installation. Do not ask the user to prepare skillNload.
+5. Require the wrapper to report all of the following:
 
+   - internal manager mode, pinned commit, tree, and cache path
    - router target and initialization status
    - pinned source repository, commit, and skill path
    - checksum, inferred risk, activation policy, and catalog ID
@@ -61,7 +57,7 @@ task without permanently installing every saved skill.
    is `on-demand`, the match decision is `select`, and confirmation is false.
    Executable or externally mutating skills may return `confirm`; keep that
    gate. Never claim that static checks prove absolute safety.
-7. Do not run `enable`, `install`, or target skill code merely because the
+6. Do not run `enable`, `install`, or target skill code merely because the
    skill was saved. The installed `skill-hub-router` will select the minimum
    useful saved skill for later natural-language requests. A session that was
    already running before router initialization may require integration reload
@@ -92,6 +88,8 @@ a separate user-owned private Git repository and preserve license metadata.
 - Missing `SKILL.md`: stop and ask for the correct skill path.
 - Static scan rejection, symlink, junction, checksum mismatch, or ownership
   mismatch: stop; do not weaken the guard.
+- Internal manager commit/tree mismatch or modified cache: stop; do not repair,
+  replace, or execute the cache silently.
 - Missing Korean metadata: generate a conservative description from verified
   source text and label it as generated.
 - Search or match smoke failure: keep the archive registered, report that its

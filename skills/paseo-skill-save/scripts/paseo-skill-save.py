@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
-"""Save a user-selected skill through the installed skillNload manager."""
+"""Save a user-selected skill through Paseobility's pinned routing engine."""
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 from typing import Any, Sequence
+
+
+MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload.git"
+MANAGER_REVISION = "c9f5b6e0a0273639abe8ddbf4dc8a5f1abfc73cd"
+MANAGER_TREE = "ed9f00aab7539774402e62e22b19a33e565e023b"
 
 
 class SaveError(RuntimeError):
@@ -19,15 +28,215 @@ class SaveError(RuntimeError):
         self.detail = detail
 
 
+@dataclass(frozen=True)
+class ManagerRuntime:
+    command: tuple[str, ...]
+    details: dict[str, Any]
+
+
 def _json_output(payload: dict[str, Any]) -> None:
     # Keep stdout machine-readable even in Windows PowerShell 5.1 code pages.
     print(json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True))
 
 
-def _manager_prefix(args: argparse.Namespace) -> list[str]:
-    command = [args.python, "-m", "skillhub"]
+def _utf8_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONUTF8"] = "1"
+    return environment
+
+
+def _run_process(command: Sequence[str], timeout: int) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            list(command),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            env=_utf8_environment(),
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise SaveError(
+            "command-not-found", f"Required executable not found: {command[0]}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise SaveError("command-timeout", f"Command timed out: {command[0]}") from exc
+
+
+def _run_checked_text(
+    command: Sequence[str], timeout: int, code: str, message: str
+) -> str:
+    process = _run_process(command, timeout)
+    if process.returncode:
+        raise SaveError(code, message, process.stderr.strip() or process.stdout.strip())
+    return process.stdout.strip()
+
+
+def _is_link_or_reparse(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    try:
+        attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    except OSError:
+        return True
+    return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+
+def _validate_manager_checkout(path: Path, timeout: int) -> tuple[str, str]:
+    if not path.is_dir() or _is_link_or_reparse(path):
+        raise SaveError(
+            "manager-checkout-invalid", "Pinned routing engine path is not a safe directory"
+        )
+    revision = _run_checked_text(
+        ["git", "-C", str(path), "rev-parse", "HEAD"],
+        timeout,
+        "manager-verification-failed",
+        "Could not verify the pinned routing engine commit",
+    )
+    tree = _run_checked_text(
+        ["git", "-C", str(path), "rev-parse", "HEAD^{tree}"],
+        timeout,
+        "manager-verification-failed",
+        "Could not verify the pinned routing engine tree",
+    )
+    if revision != MANAGER_REVISION or tree != MANAGER_TREE:
+        raise SaveError(
+            "manager-verification-failed",
+            "Pinned routing engine commit or tree does not match",
+            f"revision={revision}; tree={tree}",
+        )
+    status_output = _run_checked_text(
+        ["git", "-C", str(path), "status", "--porcelain", "--untracked-files=all"],
+        timeout,
+        "manager-verification-failed",
+        "Could not verify the pinned routing engine working tree",
+    )
+    if status_output:
+        raise SaveError(
+            "manager-verification-failed",
+            "Pinned routing engine working tree was modified",
+            status_output[:500],
+        )
+    launcher = path / "scripts" / "skillhub.py"
+    if not launcher.is_file() or _is_link_or_reparse(launcher):
+        raise SaveError(
+            "manager-launcher-missing",
+            "Pinned routing engine has no safe scripts/skillhub.py launcher",
+        )
+    for candidate in path.rglob("*"):
+        if _is_link_or_reparse(candidate):
+            raise SaveError(
+                "manager-checkout-invalid",
+                "Pinned routing engine contains a link or reparse point",
+                str(candidate.relative_to(path)),
+            )
+    return revision, tree
+
+
+def _manager_cache_root(args: argparse.Namespace) -> Path:
+    if args.manager_dir:
+        return Path(args.manager_dir).expanduser().resolve()
+    base = Path(args.home).expanduser().resolve() if args.home else Path.home()
+    return base / ".paseo" / "skill-save" / "manager"
+
+
+def _provided_manager(args: argparse.Namespace) -> ManagerRuntime:
+    root = Path(args.repo).expanduser().resolve()
+    launcher = root / "scripts" / "skillhub.py"
+    if not root.is_dir() or _is_link_or_reparse(root):
+        raise SaveError("manager-checkout-invalid", "Provided routing engine checkout is invalid")
+    if not launcher.is_file() or _is_link_or_reparse(launcher):
+        raise SaveError(
+            "manager-launcher-missing",
+            "Provided routing engine checkout has no safe scripts/skillhub.py launcher",
+        )
+    return ManagerRuntime(
+        command=(args.python, str(launcher), "--repo", str(root)),
+        details={"mode": "provided-checkout", "path": str(root)},
+    )
+
+
+def _bootstrap_manager(args: argparse.Namespace) -> ManagerRuntime:
     if args.repo:
-        command += ["--repo", str(Path(args.repo).expanduser())]
+        return _provided_manager(args)
+
+    cache_root = _manager_cache_root(args)
+    cache_root.mkdir(parents=True, exist_ok=True)
+    if _is_link_or_reparse(cache_root):
+        raise SaveError(
+            "manager-cache-invalid", "Routing engine cache is a link or reparse point"
+        )
+    checkout = cache_root / MANAGER_REVISION
+    if not checkout.exists():
+        temporary = Path(tempfile.mkdtemp(prefix=".bootstrap-", dir=cache_root))
+        try:
+            _run_checked_text(
+                ["git", "init", str(temporary)],
+                args.timeout,
+                "manager-bootstrap-failed",
+                "Could not initialize the routing engine cache",
+            )
+            _run_checked_text(
+                ["git", "-C", str(temporary), "remote", "add", "origin", MANAGER_REPOSITORY],
+                args.timeout,
+                "manager-bootstrap-failed",
+                "Could not configure the routing engine source",
+            )
+            _run_checked_text(
+                [
+                    "git",
+                    "-C",
+                    str(temporary),
+                    "fetch",
+                    "--depth",
+                    "1",
+                    "origin",
+                    MANAGER_REVISION,
+                ],
+                args.timeout,
+                "manager-bootstrap-failed",
+                "Could not fetch the pinned routing engine",
+            )
+            _run_checked_text(
+                ["git", "-C", str(temporary), "checkout", "--detach", "FETCH_HEAD"],
+                args.timeout,
+                "manager-bootstrap-failed",
+                "Could not check out the pinned routing engine",
+            )
+            _validate_manager_checkout(temporary, args.timeout)
+            try:
+                temporary.replace(checkout)
+            except OSError:
+                # Another invocation can win the atomic directory rename. On
+                # Windows that race is not consistently reported as
+                # FileExistsError, so only accept it when the final checkout
+                # now exists and independently passes every pin check.
+                if not checkout.exists():
+                    raise
+                _validate_manager_checkout(checkout, args.timeout)
+        finally:
+            if temporary.exists():
+                shutil.rmtree(temporary)
+
+    revision, tree = _validate_manager_checkout(checkout, args.timeout)
+    launcher = checkout / "scripts" / "skillhub.py"
+    return ManagerRuntime(
+        command=(args.python, str(launcher), "--repo", str(checkout)),
+        details={
+            "mode": "auto-pinned",
+            "repository": MANAGER_REPOSITORY.removesuffix(".git"),
+            "revision": revision,
+            "tree": tree,
+            "path": str(checkout),
+        },
+    )
+
+
+def _manager_prefix(args: argparse.Namespace, runtime: ManagerRuntime) -> list[str]:
+    command = list(runtime.command)
     if args.home:
         command += ["--home", str(Path(args.home).expanduser())]
     if args.state_dir:
@@ -36,38 +245,19 @@ def _manager_prefix(args: argparse.Namespace) -> list[str]:
 
 
 def _run_json(command: Sequence[str], timeout: int) -> dict[str, Any]:
-    environment = os.environ.copy()
-    environment["PYTHONIOENCODING"] = "utf-8"
-    environment["PYTHONUTF8"] = "1"
-    try:
-        process = subprocess.run(
-            list(command),
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            env=environment,
-            timeout=timeout,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise SaveError(
-            "python-not-found", f"Python executable not found: {command[0]}"
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise SaveError("skillnload-timeout", "skillNload command timed out") from exc
+    process = _run_process(command, timeout)
 
     if process.returncode:
         stderr = process.stderr.strip()
         if "No module named skillhub" in stderr:
             raise SaveError(
-                "skillnload-unavailable",
-                "skillNload is not installed for the selected Python interpreter",
+                "manager-runtime-unavailable",
+                "The pinned routing engine failed to load",
                 stderr,
             )
         raise SaveError(
-            "skillnload-command-failed",
-            "skillNload rejected the request",
+            "manager-command-failed",
+            "The routing engine rejected the request",
             stderr or process.stdout.strip(),
         )
     try:
@@ -75,18 +265,18 @@ def _run_json(command: Sequence[str], timeout: int) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise SaveError(
             "invalid-manager-output",
-            "skillNload did not return valid JSON",
+            "The routing engine did not return valid JSON",
             process.stdout[:500],
         ) from exc
     if not isinstance(payload, dict):
         raise SaveError(
-            "invalid-manager-output", "skillNload returned a non-object JSON result"
+            "invalid-manager-output", "The routing engine returned a non-object JSON result"
         )
     return payload
 
 
-def _build_add_command(args: argparse.Namespace) -> list[str]:
-    command = _manager_prefix(args) + ["add", args.source]
+def _build_add_command(args: argparse.Namespace, prefix: list[str]) -> list[str]:
+    command = prefix + ["add", args.source]
     if args.description_ko:
         command += ["--description-ko", args.description_ko]
     for tag in args.tag_ko:
@@ -157,18 +347,19 @@ def _match_record(
 
 
 def save_skill(args: argparse.Namespace) -> dict[str, Any]:
+    runtime = _bootstrap_manager(args)
+    prefix = _manager_prefix(args, runtime)
     router = _run_json(
-        _manager_prefix(args)
-        + ["init", "--target", args.router_target, "--json"],
+        prefix + ["init", "--target", args.router_target, "--json"],
         args.timeout,
     )
     if router.get("status") != "initialized":
         raise SaveError(
             "router-init-failed",
-            "skillNload did not initialize the natural-language router",
+            "The routing engine did not initialize the natural-language router",
         )
 
-    added = _run_json(_build_add_command(args), args.timeout)
+    added = _run_json(_build_add_command(args, prefix), args.timeout)
     items = added.get("items")
     if (
         added.get("status") != "added-to-personal-library"
@@ -177,14 +368,13 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
     ):
         raise SaveError(
             "unexpected-add-result",
-            "skillNload did not report a saved personal-library item",
+            "The routing engine did not report a saved personal-library item",
         )
 
     verified: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
     discovered: list[dict[str, Any]] = []
     matches: list[dict[str, Any]] = []
-    prefix = _manager_prefix(args)
     match_target = _primary_target(args.router_target)
     for item in items:
         catalog_id = str(item.get("catalog_id", ""))
@@ -252,6 +442,7 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "status": "saved-and-verified",
         "source": args.source,
+        "manager": runtime.details,
         "router": router,
         "items": items,
         "records": records,
@@ -267,7 +458,7 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Save a skill to a private skillNload library"
+        description="Inspect and save a skill to a private local library"
     )
     parser.add_argument(
         "source", help="GitHub skill URL, repository URL, or local skill directory"
@@ -293,13 +484,18 @@ def build_parser() -> argparse.ArgumentParser:
         default="codex",
         help="comma-separated router targets (default: codex for .agents/skills)",
     )
-    parser.add_argument("--repo", help="skillNload checkout or catalog root")
+    parser.add_argument(
+        "--repo", help="advanced: use an explicit routing engine checkout instead of the pinned runtime"
+    )
+    parser.add_argument(
+        "--manager-dir", help="advanced: alternate parent directory for the pinned runtime"
+    )
     parser.add_argument("--home", help="alternate home used only for isolated tests")
     parser.add_argument(
         "--state-dir", help="alternate state directory used only for isolated tests"
     )
     parser.add_argument(
-        "--python", default=sys.executable, help="Python interpreter containing skillNload"
+        "--python", default=sys.executable, help="Python interpreter used by the pinned routing engine"
     )
     parser.add_argument("--timeout", type=int, default=180)
     return parser
