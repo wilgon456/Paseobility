@@ -9,9 +9,9 @@ process. Do not turn every field into a required question.
 - Content atoms
 - Research Gap Map
 - Voice profile
-- Conversational passage loop
 - Optional angle cards
-- Human voice anchor
+- Continuous draft record
+- Writer/editor exchange
 - Locked passages
 
 ## Direction Lock
@@ -72,18 +72,19 @@ Searchable gaps receive at most one focused pass and one refinement by default.
 Personal and voice gaps never become researched substitutes for the user's own
 experience or judgment.
 
-## Conversational passage loop
+## Continuous draft record
 
-Keep the harness behind the conversation. The normal visible exchange is:
+Keep the harness behind the conversation. The normal flow is:
 
 ```text
 User supplies an experience or opinion
 -> coordinator confirms the useful detail
 -> coordinator verifies any external fact in the background
--> coordinator writes two to four usable paragraphs
--> user accepts or requests a local change
--> accepted passage is locked
--> coordinator continues
+-> Lead Writer writes the complete draft
+-> Adversarial Editor critiques exact passages
+-> Lead Writer patches the draft
+-> Adversarial Editor verifies the patch
+-> user receives the reviewed draft
 ```
 
 Prefer concrete chronology and named tools, events, or decisions. For example,
@@ -91,17 +92,15 @@ if the user says they began with one model and later divided work among several
 services, draft that progression directly. Do not open with a universal slogan,
 invent a theory of model specialization, or show the user an atom table first.
 
-Ask one personal follow-up only when it unlocks the next passage. Questions such
-as "What did you use it for?" are useful; asking the user to fill every intake
-field again is not.
+Ask one personal follow-up only when proceeding would invent or materially
+misstate the user's experience. Questions such as "What did you use it for?"
+are useful when that answer controls the piece; asking the user to fill every
+intake field again is not.
 
 Connective prose must not add an inferred motive, emotion, habit, causal story,
 or retrospective interpretation. If the user names several tools and uses, it
 is safe to state the sequence and uses. It is not safe to claim the separation
 "happened naturally" or "was intentional" without user support.
-
-End ordinary passage turns with the prose or one conversational question. Keep
-calibration rubrics internal unless the user needs help naming what feels wrong.
 
 Do not convert each note sentence into a separate one-sentence paragraph. Group
 details that belong to the same moment, use, or decision. When there is enough
@@ -146,29 +145,23 @@ Risk or tradeoff:
 
 Reject an angle set when options differ only in title, ordering, or adjectives.
 
-## Human voice anchor
-
-Use one representative opening or section before the full Studio draft.
+## Writer/editor exchange
 
 ```text
-Calibration sample:
-Author: coordinator | user-requested provider
-Assumptions used:
-Preflight: pass | retry | discarded
-Preflight blockers:
-User response:
-Profile updates:
-Lines to lock:
-Lines to revise:
-Meaning clear on first read: yes | no
-Referents and source names clear: yes | no
-Gate: approved | revise | explicitly-skipped-by-user
+Round: 1 | 2
+Writer model family:
+Editor model family:
+Editor findings: excerpt | lane | severity | required action
+Writer response: accept | partly accept | reject with reason
+Patched sections:
+Verification: pass | blockers remain
+New issues introduced:
 ```
 
-Ask concrete choices instead of a broad quality question. One focused feedback
-turn is normally enough; allow a second only when the direction remains wrong.
-An unambiguous response such as "좋다", "이런 식으로", or a direct acceptance
-sets the gate to `approved`; do not ask for a redundant confirmation.
+Keep this exchange internal unless the user asks to see it. The Editor does not
+rewrite the complete piece. The Writer cannot dismiss a factual or clarity
+blocker merely as a matter of taste. Stop after the second round and disclose
+any unresolved blocker instead of looping indefinitely.
 
 ## Section ledger
 
@@ -190,9 +183,12 @@ draft, the section is not ready to write.
 ```text
 Lock ID:
 Exact text or section identifier:
-Reason: user-approved | user-authored | legally required | source-sensitive
+Reason: explicitly-user-locked | user-authored-verbatim | legally required | source-sensitive
 Can unlock when:
 ```
 
-Reviewers may flag a locked passage but cannot silently rewrite it. Verified
-factual or safety problems return to the user for a decision.
+Only create a lock when the user explicitly marks wording to preserve, supplies
+verbatim required language, or a legal/source constraint requires it. Ordinary
+silence or missing passage feedback does not create a lock. Editors may flag a
+locked passage but cannot silently rewrite it. Verified factual or safety
+problems return to the user for a decision.

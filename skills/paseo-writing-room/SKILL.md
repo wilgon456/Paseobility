@@ -5,10 +5,10 @@ description: >-
   writing. Use for articles, essays, newsletters, reports, proposals, press
   releases, speeches, scripts, social threads, website copy, letters, email,
   and fiction when the user supplies a topic or direction plus any number of
-  optional links, notes, samples, or drafts. Develops the piece conversationally
-  with the user one passage at a time, researches missing factual context,
-  preserves accepted wording, and uses other models mainly for factual, voice,
-  clarity, and reader review after a coherent human-led draft exists.
+  optional links, notes, samples, or drafts. Researches missing factual context,
+  drafts continuously without requiring passage-by-passage approval, and runs a
+  bounded two-model writer/editor critique loop before returning a complete
+  human-reviewable draft.
 ---
 
 # Paseo Writing Room
@@ -64,12 +64,12 @@ ledger before drafting. Never silently drop links.
 
 | Depth | Select when |
 | --- | --- |
-| Quick | Short, low-stakes work; the user requests speed; voice calibration or multi-agent review would add little value |
+| Quick | Short, low-stakes work or the user explicitly requests speed |
 | Studio | Long-form, public, high-stakes factual or persuasive, strongly voice-sensitive, or iterative work |
 
-Quick mode may collapse angle exploration and calibration, but it must still
-respect the user's direction, sources, factual integrity, and final approval.
-Studio mode uses the full workflow below.
+Quick mode may use one compact writer/editor exchange. Studio mode uses the full
+two-model workflow below. Use only one model when the user explicitly requests
+it or the output is too small for a second model to add meaningful review.
 
 Choose content mode and depth independently. A short poem or caption can be
 `Creative + Quick`; a sourced public statement can be `Source-guided + Studio`.
@@ -95,22 +95,23 @@ Direction Lock
 -> Human Material Pack
 -> Research Gap Map
 -> targeted web research and Source Ledger when needed
--> Conversational Passage Loop
--> Human Voice Anchor
--> Coherent Section Drafting
--> Fact + Voice + Clarity review in parallel
--> Reader review when useful
--> Patch Revision (maximum 2 rounds)
+-> Lead Writer full draft
+-> Adversarial Editor critique
+-> Lead Writer response and patch
+-> Adversarial Editor verification
+-> optional second critique/patch round
 -> Human Draft Gate
 -> targeted revision and final
 ```
 
-The user may explicitly skip an intermediate gate. Record that choice and the
-assumptions used; do not silently skip gates merely to finish faster.
+Do not pause for passage, angle, or voice approval unless the user explicitly
+asks to collaborate step by step. Record low-risk assumptions and continue.
+Stop only when a missing personal fact would otherwise be invented, materially
+different directions remain unresolved, or a source problem blocks the piece.
 
 ## 1. Direction Lock
 
-Restate the assignment in a compact brief:
+Record the assignment in a compact internal brief:
 
 - topic or direction
 - intended reader and desired effect, when known
@@ -121,6 +122,7 @@ Restate the assignment in a compact brief:
 
 Do not invent the central message for the user. If multiple interpretations
 would produce materially different pieces, ask one focused question.
+Do not print the Direction Lock unless the user asks to inspect the process.
 
 ## 2. Human Material Pack
 
@@ -141,9 +143,9 @@ profile `direction-based`, not `sample-based`.
 
 Keep content atoms, gap maps, and voice profiles as internal working records.
 Do not dump these records into the conversation unless the user asks to inspect
-the process. Speak like a coauthor: acknowledge the useful detail, ask one
-focused follow-up only when needed, and move into a concrete passage as soon as
-there is enough material. The user should not have to operate the harness.
+the process. Ask one focused follow-up only when needed, then move directly into
+the complete drafting and critique loop. The user should not have to operate the
+harness.
 
 Follow the templates in `references/coauthoring-harness.md`.
 
@@ -191,94 +193,73 @@ In creative mode, do not force references or browse for decoration. Research
 when externally verifiable facts, requested realism, or a named contextual gap
 matters. Do not use research to overwrite deliberate fictional choices.
 
-## 4. Conversational Passage Loop
+## 4. Continuous Lead Draft
 
-The coordinator is the lead coauthor. Before creating prose-writing agents,
-turn the user's supplied experience, opinion, sequence, and vocabulary into one
-short passage, normally two to four natural paragraphs. Prefer the order in
-which events actually happened over an abstract thesis-first structure.
+Use everything the user has already supplied and never ask them to repeat
+intake. Ask at most one focused question only when a missing personal fact would
+materially change the piece and cannot be safely omitted. Search factual gaps
+instead of asking the user to research them.
 
-For each turn:
+Model A is the Lead Writer and owns the prose from first draft through final
+patch. It writes the complete requested draft before returning control to the
+user. Prefer the order in which events happened and the user's named examples
+over an abstract thesis-first structure.
 
-1. Use everything the user has already said; never ask them to repeat intake.
-2. Ask at most one focused question when a missing personal fact would change
-   the passage. Search factual gaps instead of asking the user to research them.
-3. Write the next usable passage, not a content-atom table, angle card, outline,
-   or explanation of the workflow.
-4. Keep the prose close to the user's ordinary wording. Add connective tissue,
-   but do not inflate a simple experience into a slogan or general theory.
-   Connective tissue may clarify order and reference; it may not invent a
-   motive, feeling, habit, causal explanation, or retrospective judgment. For
-   example, do not turn a list of changing tool uses into "쓰다 보니 자연스럽게
-   나뉘었다" unless the user said that happened.
-5. Shape a passage rather than line-breaking the user's notes. Group sentences
-   that explain the same moment or choice, vary paragraph length where the
-   material supports it, and normally give at least one paragraph two or more
-   connected sentences. Do not make every source sentence its own paragraph.
-6. End with the passage itself or one natural continuation question. Do not
-   append a rating form, diagnostic checklist, JSON, internal status, or a list
-   of calibration choices to ordinary coauthoring output.
-7. When the user accepts the passage, lock it and continue to the next logical
-   section. When they reject it, revise locally before moving on.
+The Lead Writer must:
 
-Do not ask external providers to author calibration candidates by default. A
-provider that is good at ideation or speed can still produce mechanical prose,
-and provider identity is not a substitute for voice evidence. Use another
-writer only when the user explicitly requests alternatives, delegation, or a
-named model. Even then, the coordinator must preflight the candidate and may
-discard it.
+- keep prose close to the user's ordinary wording without merely copying notes
+- group related details into real paragraphs with varied, supported rhythm
+- avoid mapping every supplied sentence to its own paragraph
+- use connective tissue only to clarify order and reference
+- never infer a motive, feeling, habit, causal story, or retrospective judgment
+- avoid slogans, unsupported general theories, and vague unnamed sources
+- keep internal atoms, gap maps, ledgers, and provider discussion out of draft
+- treat requested length as subordinate to supported material: never repeat,
+  inflate, or invent content merely to hit a word or character target
 
-Angle exploration is optional. Offer two compact angles only when materially
-different structures remain plausible and the user has not already chosen one.
-Do not create angle agents for a personal piece whose chronology and purpose
-are already clear.
+When the supplied material supports a shorter piece than requested, produce the
+stronger shorter draft and disclose the length tradeoff after it. Ask one
+focused question only when the user explicitly made length a hard requirement.
 
-## 5. Human Voice Anchor
+Angle exploration is internal and optional. Resolve low-risk structural choices
+without asking. Ask the user only when two directions would create materially
+different arguments or personal claims.
 
-The first accepted coauthored passage becomes the Studio voice anchor. Ask for
-fast calibration using concrete options when the response is not already an
-unambiguous acceptance:
+## 5. Two-Model Critique Loop
 
-- sounds like me
-- too polished or generic
-- too explanatory
-- too casual or too formal
-- wrong emotional distance
-- sentences sound polished but the meaning is unclear
-- vague references make sources or subjects hard to identify
-- keep specific lines
+Use two distinct model/provider families when available:
 
-Use these options selectively in a natural sentence, not as a form appended to
-every passage. Show a compact choice list only when the user says the voice is
-wrong but cannot identify why, or explicitly asks for calibration choices.
+- **Model A — Lead Writer:** creates and revises one coherent draft.
+- **Model B — Adversarial Editor:** challenges facts, logic, clarity, voice,
+  reader effect, unsupported inference, and mechanical prose without rewriting
+  the entire piece.
 
-Convert the response into profile updates and `locked passages`. Do not ask a
-vague question such as "What do you think?" If the user approves, use the
-sample as the voice anchor for the remaining sections.
+The default exchange is automatic:
 
-Before showing a coauthored or optional external candidate, run a bounded
-preflight: reject
-placeholders, unclear literal meaning, unresolved referents, vague source
-attribution, and violations of the Direction Lock. Retry that candidate once;
-if it still fails, revise locally or discard it. Do not ask the user to
-calibrate against broken prose, and do not rank candidates by provider
-reputation.
+1. Model A returns the full draft plus an internal section ledger.
+2. Model B returns prioritized findings with exact excerpts and local actions.
+3. Model A marks each finding `accept`, `partly accept`, or `reject with reason`,
+   then patches only affected passages and transitions.
+4. Model B verifies that blocking findings are resolved and that revisions did
+   not introduce new factual or voice problems.
+5. Run one additional critique/patch exchange only when blocking issues remain.
 
-Studio mode may expand beyond the voice-anchor passage only when
-`calibration_status` is
-`approved` or `explicitly-skipped-by-user`. Missing status means stop at the
-Human Voice Gate. The coordinator may never infer approval from silence or from
-the user's earlier angle choice.
+The user sees the reviewed draft, not the internal debate, unless they ask for
+it. Do not stop after step 1 to request approval. Do not let Model B replace the
+whole draft: one model must retain prose ownership so the voice does not become
+committee-written. A model name is not a quality guarantee; apply the same
+contracts regardless of which provider fills either role.
 
-## 6. Draft by section
+If the coordinator's provider family is known, it may serve as Model A and only
+one independent Model B agent is needed. If it is unknown, create separate Lead
+Writer and Adversarial Editor agents. If two provider families are unavailable,
+use two independent agents or passes from the available family and disclose
+that the review was not cross-provider.
 
-Continue the same coordinator-led passage loop section by section. Give any
-explicitly requested Writer agent the Direction Lock, content atoms, voice
-profile, selected structure, source pack when present, and locked passages.
-Keep one coherent document and preserve the causal or chronological line that
-made the accepted passage feel natural.
+## 6. Draft Ledger
 
-For each section, track:
+Keep one coherent document throughout the critique loop. Track the following
+internally for each section:
 
 - purpose in the whole piece
 - plain-language claim: what the section literally says without a slogan
@@ -289,11 +270,11 @@ For each section, track:
 - new factual claims requiring audit
 - locked text that must remain unchanged
 
-The writer may not invent personal experience, quotations, customers,
+The Lead Writer may not invent personal experience, quotations, customers,
 statistics, credentials, or events. It may propose clearly labeled creative
-options for the user to accept.
+options only when the genre permits them.
 
-Unless the approved voice sample demonstrates otherwise, avoid using these as
+Unless the user's own sample demonstrates otherwise, avoid using these as
 default scaffolding:
 
 - slogan-like or metaphorical negation openings
@@ -308,29 +289,13 @@ Every pronoun or shorthand reference must have an obvious antecedent. Name the
 source, model, tool, actor, or event when the reader could otherwise ask "which
 one?" Never sacrifice comprehension to make a sentence sound quotable.
 
-## 7. Separate reviews
+## 7. Editorial Review Contract
 
-Do not use one editor for every concern. Run independent review contracts from
-`references/role-briefs.md`:
-
-- **Fact Auditor**: source support, quotations, dates, caveats, contradictions
-- **Voice Editor**: voice-profile fit, generic language, rhythm, tone drift
-- **Clarity Editor**: literal meaning, antecedents, paragraph logic, attribution
-- **Reader**: comprehension, interest, persuasion, emotional and practical effect
-
-Run Fact Auditor, Voice Editor, and Clarity Editor in parallel when applicable.
-Clarity Editor is required for long-form or public Studio work and whenever the
-voice profile is direction-based. Add Reader for long-form, public, persuasive,
-or creative Studio work. Reviewers diagnose with exact excerpts and
-instructions; they do not rewrite the complete piece.
-Do not create these reviewers until the user and coordinator have a coherent
-draft or the user explicitly asks for an early audit. Their job is to find
-problems in a human-led draft, not to replace it with a committee-written one.
-Use separate agents for Fact Auditor, Voice Editor, and Clarity Editor. Prefer
-different provider families from the coordinator or optional external Writer
-and from each other when available; if roles resolve to the same family,
-disclose that the reviews used independent prompts but were not fully
-cross-provider.
+The Adversarial Editor applies the combined contract in
+`references/role-briefs.md` and `references/review-rubric.md`. It must cover
+Fact, Voice, Clarity, and Reader lanes separately in one response so no concern
+is silently averaged away. Use extra specialist agents only for high-stakes
+facts, legal/safety review, or an explicit user request.
 
 Use `scripts/writing-check.js` for deterministic signals when files exist. Resolve
 the helper relative to this `SKILL.md`; do not assume the target project contains
@@ -344,25 +309,24 @@ node <skill-dir>/scripts/writing-check.js --draft <draft.md> --forbid <forbidden
 
 Its findings are editing signals, not proof of AI authorship or poor quality.
 Checker warnings for repeated antithesis, vague attribution, transition density,
-or mechanical short-paragraph rhythm must be inspected by Clarity Editor; they
-are not automatic failures by themselves.
+or mechanical short-paragraph rhythm must be inspected in the Adversarial
+Editor's Clarity lane; they are not automatic failures by themselves.
 
 ## 8. Patch Revision
 
-Return review findings to the writer as a bounded revision brief. Classify each
-item as `blocking`, `required`, `optional`, or `human decision`. Revise only the
-affected passages and nearby transitions. Preserve locked and accepted text
-unless the user explicitly unlocks it or a verified factual problem requires a
-change.
+Return review findings to the Lead Writer as a bounded revision brief. Classify
+each item as `blocking`, `required`, `optional`, or `human decision`. Revise only
+the affected passages and nearby transitions. Preserve explicitly locked text
+unless the user unlocks it or a verified factual problem requires a change.
 
-After revision, report:
+After revision, record internally:
 
 - sections changed
 - reason for each change
 - locked passages preserved
 - factual claims added or removed
 
-Run at most two writer/reviewer rounds within one human revision cycle,
+Run at most two writer/editor rounds within one human revision cycle,
 including every review and patch pass before returning to the user. New user
 feedback starts a new cycle. Stop early when all blocking issues pass or
 remaining disagreements are matters of taste.
@@ -383,9 +347,10 @@ Return the reviewed draft with:
 - providers actually used by role
 - whether review was cross-provider
 
-Turn human feedback into a targeted revision brief. Recheck changed passages
-and transitions, not the entire document by default. The latest user direction
-overrides earlier preferences.
+Turn human feedback into a targeted revision brief and automatically run the
+same writer/editor exchange on changed passages. Recheck nearby transitions,
+not the entire document by default. The latest user direction overrides earlier
+preferences.
 
 Do not publish, post, email, upload, or submit without a separate explicit
 request and confirmation at the point of action. Human review is mandatory
@@ -399,15 +364,10 @@ Read the base **paseo** skill and actually read
 real provider/model identifiers through Paseo tooling when missing, invalid, or
 named by the user. Never hardcode identifiers.
 
-Use the role categories and contracts in `references/role-briefs.md`. Prefer a
-different provider family for reviewers when available. The coordinator owns
-the prose by default; an external Writer is opt-in. If only one provider exists,
-use separate agents and disclose that review was not cross-provider.
-
-Do not create writing or angle agents before the Conversational Passage Loop.
-A Researcher may run earlier only for a real source or fact gap. Minimize agent
-count: for ordinary personal writing, one coordinator plus final reviewers is
-usually enough.
+Use the role categories and contracts in `references/role-briefs.md`. Resolve a
+Lead Writer and Adversarial Editor from different provider families when
+available. Do not create more agents than this pair unless research or stakes
+materially require a specialist. Disclose any same-family fallback.
 
 All agents receive self-contained briefings. Do not create an external project
 or a new workspace for this read-only workflow. Archive only agents created by
@@ -416,11 +376,11 @@ agents.
 
 ## Artifacts and evaluation
 
-Keep Quick mode conversational. For Studio mode, ask once before creating an
-optional `.paseobility/writing/<slug>/` state directory inside the current
-target project. This is not a new Paseo workspace or external project. If
-approved, follow `references/workspace-artifacts.md` and never overwrite an
-accepted final.
+Keep Quick mode conversational. Create an optional
+`.paseobility/writing/<slug>/` state directory only when the user asks to save
+workflow artifacts. This is not a new Paseo workspace or external project.
+Follow `references/workspace-artifacts.md` and never overwrite an accepted
+final.
 
 When changing this skill, run the regression matrix in
 `references/eval-harness.md`. Use several trials for nondeterministic agent

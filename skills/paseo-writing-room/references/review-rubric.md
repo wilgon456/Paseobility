@@ -1,16 +1,16 @@
 # Editorial Review Rubric
 
 Review the draft against its Direction Lock, source state, content atoms, voice
-profile, calibration decision, and intended reader. Separate factual,
-voice-level, and reader-response judgments.
+profile, and intended reader. The Adversarial Editor evaluates each lane
+separately instead of averaging concerns together.
 
 ## Contents
 
 - Shared blocking checks
-- Fact Auditor rubric
-- Voice Editor rubric
-- Clarity Editor rubric
-- Reader rubric
+- Fact lane
+- Voice lane
+- Clarity lane
+- Reader lane
 - Combined decision
 
 ## Shared blocking checks
@@ -21,11 +21,11 @@ Return `blocked` when any of these remain:
 - a material factual claim is unsupported or contradicted by reliable evidence
 - a source is cited for a claim it does not support
 - personal experience, quotation, customer, statistic, or event was invented
-- an accepted locked passage changed without approval
+- an explicitly locked passage changed without approval
 - the document violates a required format or publication rule
 - private or sensitive information appears without a clear need
 
-## Fact Auditor rubric
+## Fact lane
 
 For each externally verifiable claim that matters:
 
@@ -48,20 +48,20 @@ Required action: retain | qualify | cite | research | remove | ask user
 
 Do not rewrite for tone or elegance.
 
-## Voice Editor rubric
+## Voice lane
 
 Score each dimension from 1 to 5. Use `not applicable` instead of inventing a
-score when no sample or calibration evidence exists.
+score when no sample or direction evidence exists.
 
 | Dimension | Review question |
 | --- | --- |
 | Direction fidelity | Does the piece express the user's selected idea and effect? |
 | Atom use | Does it use supplied material instead of generic filler? |
-| Voice evidence | Does it match observable sample or calibration choices? |
+| Voice evidence | Does it match observable samples or explicit direction? |
 | Specificity | Are important points grounded in earned detail? |
 | Rhythm | Do sentence and paragraph choices feel deliberate rather than uniform? |
 | Register | Is cultural, professional, and emotional distance appropriate? |
-| Continuity | Did revisions preserve accepted tone and locked passages? |
+| Continuity | Did revisions preserve established tone and explicit locks? |
 
 Flag exact excerpts for:
 
@@ -88,7 +88,7 @@ Locked passages checked:
 
 Diagnose; do not rewrite the entire piece.
 
-## Clarity Editor rubric
+## Clarity lane
 
 Meaning comes before elegance. Review each paragraph without rewarding
 quotable-sounding language.
@@ -119,10 +119,10 @@ Required semantic change:
 Preserve unchanged:
 ```
 
-Do not solve unclear meaning by adding decorative transitions. Send factual
-questions to Fact Auditor and subjective voice choices to the user.
+Do not solve unclear meaning by adding decorative transitions. Route factual
+questions to the Fact lane and unresolved subjective voice choices to the user.
 
-## Reader rubric
+## Reader lane
 
 Evaluate without guessing whether AI was involved.
 
@@ -141,20 +141,22 @@ breaks trust.
 
 ## Combined decision
 
-The coordinator merges reviews without averaging away blockers.
+The Adversarial Editor combines its lane verdicts without averaging away
+blockers.
 
 Return `ready-for-human` only when:
 
 - no shared blocker remains
-- Fact Auditor passes, when factual review applies
-- Voice Editor has no required revision
-- Clarity Editor passes, when required
-- Reader has no major comprehension failure
+- Fact lane passes, when factual review applies
+- Voice lane has no required revision
+- Clarity lane passes
+- Reader lane has no major comprehension failure
 - locked passages are accounted for
 - the review-loop budget has not been exceeded
 
-When reviewers disagree on taste, present the tradeoff to the user. Do not let
-another agent settle a subjective voice decision on the user's behalf.
+When Lead Writer and Editor disagree on taste, preserve the Writer's choice and
+report the tradeoff only when it materially affects the user's direction. Do
+not let the Editor settle a subjective voice decision on the user's behalf.
 
 AI-detector scores are not part of this rubric. Deterministic script findings
 are evidence to inspect, not automatic failures.

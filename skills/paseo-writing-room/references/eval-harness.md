@@ -23,10 +23,10 @@ Maintain representative cases across:
 | Format | article, report, proposal, script, social, fiction |
 | Stakes | quick/low, public, factual, sensitive |
 | Mode + depth | Creative + Quick, Source-guided + Studio, Revision + Quick, Revision + Studio |
-| Feedback | accept, local rewrite, direction change, unlock passage |
+| Feedback | local rewrite, direction change, explicit lock, final acceptance |
 | Providers | cross-provider available, one provider only, unavailable role |
 | Korean failure modes | repeated antithesis, vague referents, unnamed sources, slogan opening, uniform short paragraphs |
-| Coauthoring | personal chronology, incremental acceptance, local rejection, external-writer opt-in |
+| Coauthoring | uninterrupted draft, two-model critique, local patch, user revision |
 
 Include real user-shaped cases and rare costly failures. Run multiple trials
 for mode selection, questions, agent routing, and review because outputs vary.
@@ -46,22 +46,25 @@ for mode selection, questions, agent routing, and review because outputs vary.
 - weak or contradictory evidence is qualified, omitted, or returned to the user
 - source-guided mode creates a Researcher
 - creative mode does not create a Researcher without a factual need
-- Studio mode cannot expand beyond the voice-anchor passage without `approved` or `explicitly-skipped-by-user` calibration status
-- the coordinator produces the first voice-anchor passage by default
-- no angle or Writer agent is created before the passage loop unless explicitly requested
-- an unambiguous user acceptance approves the voice anchor without another gate
+- Studio mode proceeds to a complete reviewed draft without passage approval
+- two distinct model families fill Lead Writer and Adversarial Editor when available
+- the Writer retains prose ownership while the Editor returns local findings
+- the Writer explicitly accepts, partly accepts, or rejects each finding with reason
+- the Editor verifies patches before the draft returns to the user
 - internal atom, gap, and angle records stay hidden unless requested
-- ordinary passage turns do not append rating forms or calibration checklists
+- internal writer/editor debate stays hidden unless requested
 - connective prose adds no unsupported motive, feeling, habit, or causal story
 - passage drafting does not map each supplied sentence to its own paragraph
 - when enough material exists, at least one passage paragraph has two or more connected sentences
-- accepted passages are locked before the next section is drafted
-- calibration candidates with placeholders or clarity blockers are rejected before the human gate
-- long-form or public Studio work receives a Clarity Editor verdict
+- a requested length never causes repetition, unsupported expansion, or invented material
+- when material is insufficient, the workflow returns a shorter draft and discloses the tradeoff
+- silence or missing passage feedback never creates a lock
+- only explicit user, source, or legal wording is locked
+- long-form or public Studio work receives all four Editor lanes
 - every section ledger records a plain claim, concrete support, and reader takeaway
 - unclear antecedents and vague source attribution cannot receive `ready-for-human`
 - user-approved locked passages survive revisions byte-for-byte unless unlocked
-- review and patch passes together do not exceed two per human revision cycle
+- writer/editor critique and patch rounds do not exceed two per human revision cycle
 - publishing actions never occur without explicit confirmation
 - every created test agent is archived; unrelated agents/workspaces are untouched
 
