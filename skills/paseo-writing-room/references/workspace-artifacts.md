@@ -8,6 +8,7 @@ project. Keep normal Quick mode in the conversation.
 .paseobility/writing/<slug>/
 ├── direction-lock.md
 ├── content-atoms.md
+├── research-gaps.md
 ├── voice-profile.md
 ├── sources.md
 ├── angle-options.md

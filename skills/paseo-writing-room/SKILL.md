@@ -6,9 +6,11 @@ description: >-
   releases, speeches, scripts, social threads, website copy, letters, email,
   and fiction when the user supplies a topic or direction plus any number of
   optional links, notes, samples, or drafts. Builds human content atoms and an
-  evidence-based voice profile, explores distinct angles before prose, uses an
-  early voice-calibration gate, drafts by section, separates fact/voice/reader
-  review, preserves accepted passages, and applies bounded patch revisions.
+  evidence-based voice profile, maps content gaps, performs targeted web
+  research for missing factual context, explores distinct angles before prose,
+  uses an early voice-calibration gate, drafts by section, separates factual,
+  voice, clarity, and reader review, preserves accepted passages, and applies
+  bounded patch revisions.
 ---
 
 # Paseo Writing Room
@@ -93,7 +95,8 @@ assumptions are low-risk, state them briefly and continue.
 ```text
 Direction Lock
 -> Human Material Pack
--> optional Source Ledger
+-> Research Gap Map
+-> targeted web research and Source Ledger when needed
 -> Angle Options
 -> Human Angle Gate
 -> Voice Calibration Sample
@@ -149,13 +152,42 @@ access state, date, claims, evidence, caveats, and intended use. Never imply an
 inaccessible source was read. Ask for pasted text only when the blocked source
 is important enough to change the result.
 
-Use web search only to verify unstable claims, fill a named gap, find primary
-sources, or satisfy an explicit research request. Keep user links distinct from
-agent-discovered links. Paraphrase and synthesize; do not stitch lightly edited
-source sentences together.
+Before angle exploration, create a Research Gap Map even when the user supplied
+no links. Classify each material gap:
+
+| Gap type | Action |
+| --- | --- |
+| Personal experience, motive, preference, or memory | Ask the user or leave a labeled placeholder; never search for a substitute |
+| Current or externally verifiable fact | Search and verify with primary or authoritative sources |
+| Background explanation or definition | Search when it would make the argument clearer or more accurate |
+| Example, counterargument, or public perspective | Search for attributable evidence or representative perspectives |
+| Voice, taste, or subjective conclusion | Keep with the user; do not let sources decide it |
+
+For every searchable gap, record the question, why it matters, preferred source
+type, freshness requirement, evidence needed to close it, and status. Search
+automatically when the gap materially affects accuracy, usefulness, or reader
+understanding; do not make the user remember to request research.
+
+Prefer official documentation and primary sources for prices, limits, product
+behavior, dates, and technical capabilities. Use reputable reporting, research,
+or clearly attributed community material for context and lived perspectives.
+If a brand name could refer to several products, plans, models, or versions,
+ask one focused question or keep the claim qualified before searching; never
+silently map a user's generic name to a specific SKU.
+For unstable claims, record the access date and avoid presenting the result as
+timeless. One focused search pass plus one refinement per gap is normally
+enough; if evidence remains weak or contradictory, qualify, omit, or return the
+decision to the user instead of browsing indefinitely.
+
+Keep user links distinct from agent-discovered links. Every researched claim
+becomes `source-supported`, never `user-supplied`. Name or cite sources in the
+draft where attribution matters; phrases such as "한 글에서" do not count.
+Paraphrase and synthesize; do not stitch lightly edited source sentences
+together or add research merely to make the piece look substantial.
 
 In creative mode, do not force references or browse for decoration. Research
-only when externally verifiable facts matter.
+when externally verifiable facts, requested realism, or a named contextual gap
+matters. Do not use research to overwrite deliberate fictional choices.
 
 ## 4. Explore angles before prose
 

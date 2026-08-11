@@ -36,8 +36,8 @@ otherwise disclose the limitation.
 
 ## Researcher
 
-Input: Direction Lock, every supplied link, relevant content atoms, current
-date.
+Input: Direction Lock, Research Gap Map, every supplied link, relevant content
+atoms, current date.
 
 Output:
 
@@ -47,10 +47,15 @@ Verified claim table: claim, URL, support, caveat, confidence
 Contradictions and missing context
 Facts that must remain qualified
 Source-supported content atoms
+Gap status updates: supported, contradicted, blocked, or omitted
 No finished prose
 ```
 
 Open every user link. Batch large sets, but merge all batches before returning.
+Research searchable factual, contextual, example, counterargument, and public-
+perspective gaps. Return personal-experience and voice gaps to the user without
+inventing or searching for a replacement. Prefer primary sources for unstable
+product claims and attach an access date.
 
 ## Human-first Angle
 

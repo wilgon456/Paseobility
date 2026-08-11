@@ -7,6 +7,7 @@ process. Do not turn every field into a required question.
 
 - Direction Lock
 - Content atoms
+- Research Gap Map
 - Voice profile
 - Angle cards
 - Voice calibration
@@ -50,6 +51,25 @@ Rules:
 - Do not convert `agent-proposed` into `user-supplied`.
 - Ask for confirmation before using a placeholder as a real event or belief.
 - Use atoms to compare angle options and detect generic filler.
+
+## Research Gap Map
+
+```text
+Gap ID: G01
+Type: personal | current-fact | background | example | counterargument | public-perspective | voice
+Question:
+Why it matters:
+Action: ask-user | web-search | agent-proposal | omit
+Preferred source type:
+Freshness requirement:
+Evidence needed:
+Status: open | supported | contradicted | blocked | omitted
+Resulting atom or placeholder:
+```
+
+Searchable gaps receive at most one focused pass and one refinement by default.
+Personal and voice gaps never become researched substitutes for the user's own
+experience or judgment.
 
 ## Voice profile
 

@@ -18,6 +18,7 @@ Maintain representative cases across:
 | Dimension | Cases |
 | --- | --- |
 | Sources | none, one, several, large batch, inaccessible |
+| Research gaps | personal experience, current product fact, background, example, counterargument, conflicting evidence |
 | Input | empty invocation, topic only, direction only, partial intake, notes, rough draft, voice samples |
 | Format | article, report, proposal, script, social, fiction |
 | Stakes | quick/low, public, factual, sensitive |
@@ -37,6 +38,11 @@ for mode selection, questions, agent routing, and review because outputs vary.
 - intended reader and links remain optional
 - every supplied link has an access-state record
 - no source is marked read when access failed
+- personal-experience and voice gaps are never filled from web research
+- material factual or contextual gaps trigger targeted research without an extra user request
+- unstable claims record source and access date
+- every researched claim is labeled `source-supported`, not `user-supplied`
+- weak or contradictory evidence is qualified, omitted, or returned to the user
 - source-guided mode creates a Researcher
 - creative mode does not create a Researcher without a factual need
 - Studio mode cannot draft without `approved` or `explicitly-skipped-by-user` calibration status
