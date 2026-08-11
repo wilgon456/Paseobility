@@ -1,4 +1,4 @@
 interface:
   display_name: "Paseo Writing Room"
-  short_description: "Human-directed drafting and separated editorial review"
-  default_prompt: "Use $paseo-writing-room. Ask for my topic or direction, intended reader, optional links, and optional format; preserve personal gaps for me, research missing factual context, then guide the writing workflow."
+  short_description: "Conversational coauthoring with researched editorial review"
+  default_prompt: "Use $paseo-writing-room to develop my piece with me one passage at a time, research missing facts, preserve accepted wording, and use other models mainly to review the coherent draft."

@@ -8,8 +8,8 @@ files unless artifact persistence was approved.
 
 - Provider mapping
 - Researcher
-- Angle agents
-- Writer
+- Optional angle agents
+- Optional external Writer
 - Fact Auditor
 - Voice Editor
 - Clarity Editor
@@ -20,19 +20,20 @@ files unless artifact persistence was approved.
 | Role | Preference category |
 | --- | --- |
 | Researcher | `research` |
-| Human-first Angle | `planning` |
-| Alternative Angle | `ui` or another available family |
-| Writer | `ui` |
+| Optional Human-first Angle | `planning` |
+| Optional Alternative Angle | another available family |
+| Optional external Writer | user-selected or `ui` |
 | Fact Auditor | `audit` or `research` |
-| Voice Editor | `audit`, preferably a different family from Writer |
-| Clarity Editor | `planning` or `audit`, preferably a different family from Writer |
+| Voice Editor | `audit`, preferably a different family from the prose author |
+| Clarity Editor | `planning` or `audit`, preferably a different family from the prose author |
 | Reader | `audit` |
 
 Resolve actual providers through Paseo preferences and provider tools. Do not
 hardcode the examples from another skill or reuse an unavailable identifier.
 Use separate agents for Fact Auditor, Voice Editor, and Clarity Editor. Prefer
-different provider families from the Writer and from each other when available;
-otherwise disclose the limitation.
+different provider families from the coordinator and from each other when
+available; otherwise disclose the limitation. Do not create angle or Writer
+agents unless the main skill's opt-in conditions are met.
 
 ## Researcher
 
@@ -57,21 +58,21 @@ perspective gaps. Return personal-experience and voice gaps to the user without
 inventing or searching for a replacement. Prefer primary sources for unstable
 product claims and attach an access date.
 
-## Human-first Angle
+## Optional Human-first Angle
 
 Prioritize the user's content atoms, vocabulary, and desired reader effect.
 Return one angle card. Do not write finished prose.
 
-## Alternative Angle
+## Optional Alternative Angle
 
 Challenge the obvious structure with a genuinely different tension, opening,
 or progression while preserving the same Direction Lock. Return one angle card.
 Do not contradict known facts or invent user experiences.
 
-## Writer
+## Optional external Writer
 
-Input: Direction Lock, selected angle, content atoms, voice profile, source pack
-when present, document-type guidance, locked passages, and revision brief.
+Input: Direction Lock, selected structure, content atoms, voice profile, source
+pack when present, document-type guidance, locked passages, and revision brief.
 
 Output:
 
@@ -82,11 +83,13 @@ Assumptions and placeholders
 Locked passages preserved
 ```
 
-The Writer owns prose. It may not unlock accepted text or silently change the
-central direction. It must receive an approved calibration status before a full
-Studio draft. Prefer direct declarative wording over slogans, repeated
-antithesis, vague referents, or abstract transitions unless the approved sample
-specifically supports those choices.
+The coordinator owns prose by default. Use this role only when the user asks for
+a named model, alternate passage, or delegated draft. The external Writer may
+not unlock accepted text or silently change the central direction. It must
+receive an approved voice anchor before a full Studio draft. Prefer direct
+declarative wording over slogans, repeated antithesis, vague referents, or
+abstract transitions unless the approved sample specifically supports those
+choices.
 
 ## Fact Auditor
 
