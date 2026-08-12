@@ -104,6 +104,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
             response(
                 {
                     "status": "added-to-personal-library",
+                    "sync": "pushed",
                     "items": [
                         {
                             "catalog_id": "overlay.demo",
@@ -149,6 +150,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
         self.assertEqual(result["records"][0]["source"]["commit"], "a" * 40)
         self.assertEqual(result["records"][0]["checksum"], "b" * 64)
         self.assertTrue(result["matches"][0]["skill_body_evidence_available"])
+        self.assertEqual(result["library_sync"]["status"], "pushed")
 
         for call in run.call_args_list:
             self.assertNotIn("shell", call.kwargs)
@@ -164,6 +166,17 @@ class PaseoSkillSaveTests(unittest.TestCase):
         self.assertIn("match", match_call.args[0])
         self.assertIn("--agent-packet", match_call.args[0])
         self.assertIn("codex", match_call.args[0])
+
+    def test_local_only_is_forwarded_explicitly(self) -> None:
+        args = MODULE.build_parser().parse_args(["fixture", "--local-only"])
+        command = MODULE._build_add_command(args, ["python", "skillhub.py"])
+        self.assertIn("--local-only", command)
+
+        default_args = MODULE.build_parser().parse_args(["fixture"])
+        default_command = MODULE._build_add_command(
+            default_args, ["python", "skillhub.py"]
+        )
+        self.assertNotIn("--local-only", default_command)
 
     def test_missing_manager_has_clear_error(self) -> None:
         failed = response({}, returncode=1, stderr="No module named skillhub")
