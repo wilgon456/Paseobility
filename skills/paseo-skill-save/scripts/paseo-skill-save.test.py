@@ -149,8 +149,70 @@ class PaseoSkillSaveTests(unittest.TestCase):
             targets, detail = RESOLVE_ROUTER_TARGETS("claude-code,opencode")
 
         self.assertEqual(targets, "claude,opencode")
-        self.assertEqual(detail, {"mode": "explicit", "targets": ["claude", "opencode"]})
+        self.assertEqual(
+            detail,
+            {
+                "mode": "explicit",
+                "manager_supported_targets": list(MODULE.ROUTER_TARGETS),
+                "targets": ["claude", "opencode"],
+            },
+        )
         which.assert_not_called()
+
+    def test_router_target_auto_includes_hermes_when_manager_supports_it(self) -> None:
+        def which(name: str) -> str | None:
+            return "/tools/hermes" if name == "hermes" else None
+
+        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
+            MODULE.shutil, "which", side_effect=which
+        ), mock.patch.object(
+            MODULE,
+            "_discover_paseo_provider_targets",
+            return_value=([], {"status": "not-installed", "mapped_targets": []}),
+        ):
+            targets, detail = RESOLVE_ROUTER_TARGETS("auto", MODULE.ROUTER_TARGETS)
+
+        self.assertEqual(targets, "hermes")
+        self.assertEqual(detail["mode"], "auto-detected")
+        self.assertEqual(detail["targets"], ["hermes"])
+        self.assertEqual(detail["ignored_unsupported_targets"], [])
+
+    def test_router_target_auto_ignores_hermes_for_legacy_manager(self) -> None:
+        def which(name: str) -> str | None:
+            return "/tools/hermes" if name == "hermes" else None
+
+        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
+            MODULE.shutil, "which", side_effect=which
+        ), mock.patch.object(
+            MODULE,
+            "_discover_paseo_provider_targets",
+            return_value=([], {"status": "not-installed", "mapped_targets": []}),
+        ):
+            targets, detail = RESOLVE_ROUTER_TARGETS(
+                "auto", MODULE.LEGACY_ROUTER_TARGETS
+            )
+
+        self.assertEqual(targets, "codex,claude")
+        self.assertEqual(detail["mode"], "auto-fallback")
+        self.assertEqual(detail["ignored_unsupported_targets"], ["hermes"])
+
+    def test_manager_router_targets_reads_advertised_hermes_support(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            manager = Path(temporary)
+            profile = manager / "profiles" / "default.json"
+            profile.parent.mkdir(parents=True)
+            profile.write_text(
+                json.dumps({"targets": ["codex", "hermes", "generic"]}),
+                encoding="utf-8",
+            )
+            runtime = MODULE.ManagerRuntime(
+                command=(MODULE.sys.executable, "-m", "skillhub"),
+                details={"mode": "test", "path": str(manager)},
+            )
+
+            targets = MODULE._manager_router_targets(runtime)
+
+        self.assertEqual(targets, ("codex", "hermes", "generic"))
 
     def test_add_verify_search_and_match_use_argv_without_shell(self) -> None:
         replies = [

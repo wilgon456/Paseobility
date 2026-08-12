@@ -32,10 +32,12 @@ MANAGER_COPY_DIRECTORIES = (
 )
 MANAGER_COPY_FILES = ("registry.json", "LICENSE", "NOTICE")
 MANAGER_SKIP_NAMES = {".git", "__pycache__", ".pytest_cache", "build", "dist"}
-ROUTER_TARGETS = ("codex", "claude", "opencode", "paseo", "generic")
+ROUTER_TARGETS = ("codex", "claude", "opencode", "paseo", "hermes", "generic")
+LEGACY_ROUTER_TARGETS = ("codex", "claude", "opencode", "paseo", "generic")
 ROUTER_TARGET_ALIASES = {
     "agents": "codex",
     "claude-code": "claude",
+    "hermes-agent": "hermes",
     "generic-agent": "generic",
 }
 ROUTER_ENV_MARKERS = {
@@ -45,16 +47,19 @@ ROUTER_ENV_MARKERS = {
     "CLAUDE_CODE_ENTRYPOINT": "claude",
     "OPENCODE": "opencode",
     "PASEO_HOME": "paseo",
+    "HERMES_HOME": "hermes",
 }
 ROUTER_EXECUTABLE_TARGETS = {
     "codex": "codex",
     "claude": "claude",
     "opencode": "opencode",
+    "hermes": "hermes",
 }
 PASEO_PROVIDER_TARGETS = {
     "codex": "codex",
     "claude": "claude",
     "opencode": "opencode",
+    "hermes": "hermes",
 }
 PASEO_AVAILABLE_STATUSES = {"available", "connected", "ready"}
 PASEO_ENABLED_VALUES = {"1", "enabled", "on", "true", "yes"}
@@ -744,6 +749,28 @@ def _ordered_router_targets(values: Sequence[str]) -> list[str]:
     return [target for target in ROUTER_TARGETS if target in selected]
 
 
+def _manager_router_targets(runtime: ManagerRuntime) -> tuple[str, ...]:
+    raw_root = runtime.details.get("path")
+    if not isinstance(raw_root, str) or not raw_root:
+        return LEGACY_ROUTER_TARGETS
+    profile = Path(raw_root) / "profiles" / "default.json"
+    try:
+        value = json.loads(profile.read_text(encoding="utf-8"))
+        raw_targets = value.get("targets")
+    except (OSError, json.JSONDecodeError):
+        return LEGACY_ROUTER_TARGETS
+    if not isinstance(raw_targets, list):
+        return LEGACY_ROUTER_TARGETS
+    normalized = []
+    for target in raw_targets:
+        normalized_target = str(target).strip().casefold()
+        normalized.append(
+            ROUTER_TARGET_ALIASES.get(normalized_target, normalized_target)
+        )
+    targets = tuple(_ordered_router_targets(normalized))
+    return targets or LEGACY_ROUTER_TARGETS
+
+
 def _paseo_provider_rows(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, list):
         return [row for row in value if isinstance(row, dict)]
@@ -810,7 +837,12 @@ def _discover_paseo_provider_targets(executable: str) -> tuple[list[str], dict[s
     return mapped, detail
 
 
-def _resolve_router_targets(value: str) -> tuple[str, dict[str, Any]]:
+def _resolve_router_targets(
+    value: str, supported_targets: Sequence[str] = ROUTER_TARGETS
+) -> tuple[str, dict[str, Any]]:
+    supported = tuple(_ordered_router_targets(supported_targets))
+    if not supported:
+        raise SaveError("missing-router-target", "routing manager supports no targets")
     raw = [part.strip().casefold() for part in value.split(",") if part.strip()]
     if not raw:
         raise SaveError("missing-router-target", "router target cannot be empty")
@@ -820,9 +852,18 @@ def _resolve_router_targets(value: str) -> tuple[str, dict[str, Any]]:
             target = ROUTER_TARGET_ALIASES.get(part, part)
             if target not in ROUTER_TARGETS:
                 raise SaveError("unknown-router-target", f"unknown router target: {part}")
+            if target not in supported:
+                raise SaveError(
+                    "unsupported-router-target",
+                    f"routing manager does not support target: {target}",
+                )
             if target not in targets:
                 targets.append(target)
-        return ",".join(targets), {"mode": "explicit", "targets": targets}
+        return ",".join(targets), {
+            "mode": "explicit",
+            "manager_supported_targets": list(supported),
+            "targets": targets,
+        }
 
     detected: list[str] = []
     environment: list[dict[str, str]] = []
@@ -848,16 +889,23 @@ def _resolve_router_targets(value: str) -> tuple[str, dict[str, Any]]:
             if target not in detected:
                 detected.append(target)
 
-    targets = _ordered_router_targets(detected)
+    detected_targets = _ordered_router_targets(detected)
+    targets = [target for target in detected_targets if target in supported]
     mode = "auto-detected"
     if not targets:
-        targets = ["codex", "claude"]
+        targets = [target for target in ("codex", "claude") if target in supported]
+        if not targets:
+            targets = [supported[0]]
         mode = "auto-fallback"
     return ",".join(targets), {
         "mode": mode,
         "environment": environment,
         "executables": executables,
         "paseo": paseo_detail,
+        "manager_supported_targets": list(supported),
+        "ignored_unsupported_targets": [
+            target for target in detected_targets if target not in supported
+        ],
         "targets": targets,
     }
 
@@ -912,7 +960,7 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         runtime = _bootstrap_manager(args)
         prefix = _manager_prefix(args, runtime)
         router_targets, router_target_discovery = _resolve_router_targets(
-            args.router_target
+            args.router_target, _manager_router_targets(runtime)
         )
         router = _run_json(
             prefix + ["init", "--target", router_targets, "--json"],
