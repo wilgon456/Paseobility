@@ -1,122 +1,176 @@
 ---
 name: paseo-agent-cleanup
 description: >-
-  Clean up inactive Paseo agents and test workspaces safely. Use when the user
-  wants to archive old, idle, completed, stopped, validation, test, PR, or
-  temporary Paseo agents/workspaces, reduce clutter, or inspect what can be
-  cleaned up. The default mode auto-archives every non-active agent without
-  asking first; never archive active agents, never delete anything, and require
-  explicit approval for workspace cleanup. Inactive subagents follow the same
-  no-confirmation archive rule.
+  Safely inspect and archive explicitly selected or clearly disposable Paseo
+  agents and test workspaces. Use when the user asks to preview cleanup
+  candidates, reduce agent-list clutter, or archive explicit test, validation,
+  fixture, or temporary sessions. Ordinary idle agents are resumable and are
+  never auto-archived based on status alone. Bare invocation is dry-run; active
+  agents and unapproved workspaces remain protected, and delete, stop, kill,
+  restart, history, timeline, and resume are never used for cleanup.
 ---
 
 # Paseo Agent Cleanup
 
-This skill keeps Paseo agent/workspace lists manageable. Inactive agents are
-archived automatically without confirmation, workspaces require explicit
-approval, and delete is never used.
+This skill reduces Paseo list clutter without treating a normal idle session as
+disposable. A bare invocation only previews. Agent archive is limited to an
+explicit ID, a user-supplied pattern, or a clear disposable/test/validation
+marker. Workspace archive always requires an explicit workspace ID and
+`--archive --yes`.
 
 ## Core rules
 
-- Default to auto-archive every non-active agent, including subagents, without
-  asking for approval again.
-- Use dry-run when the user asks to preview first.
-- Never delete agents or workspaces.
+- Treat `idle` as a normal resumable state, not as permission to archive.
+- Default to dry-run. Never archive every inactive agent by default.
+- `--auto` may archive only inactive agents selected by one of these signals:
+  - explicit `--agent <id>`
+  - a user-supplied `--pattern <regex>`
+  - a clear disposable, fixture, smoke, temp, test, or validation marker
 - Never archive active agents, including `running`, `working`, `active`,
-  `starting`, `queued`, `pending`, `busy`, `executing`, or `in-progress`
-  states.
-- Never stop or interrupt agents automatically.
+  `starting`, `queued`, `pending`, `busy`, `executing`, or `in-progress`.
+- Never delete, stop, interrupt, or kill agents or workspaces. Never remove lock
+  files or restart the Paseo daemon as part of cleanup.
 - Archive workspaces only after the user explicitly approves the exact cleanup
-  plan or provides explicit workspace IDs.
-- Prefer explicit IDs when the user gives them.
-- Report every archive attempt and failure.
+  plan or supplies explicit workspace IDs with `--archive --yes`.
+- After every archive attempt, re-run `paseo ls --json` (or `paseo workspace ls
+  --json`) and verify the archived record is no longer in the active listing.
+- Do not open timeline/history or resume an archived agent to verify cleanup.
+  Those operations can acquire a native provider writer lock.
+- Exit code 0 from `paseo archive` proves only that the command returned
+  successfully. It does not by itself prove that the native provider runtime
+  released its writer or lock.
+- Report an unconfirmed native release as `providerRelease: unknown`, a
+  provider failure, a command failure, or a record-removal verification failure
+  as partial/failed cleanup, and return non-zero.
 
 ## Quick workflow
 
-1. Inspect current state:
+1. Preview the safe default candidates. This makes no changes:
+
    ```bash
-   paseo ls --json
-   paseo workspace ls --json
+   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js
    ```
-2. Auto-archive all inactive agents without asking first:
+
+2. Review `paseo ls --json` and choose an explicit agent ID or a bounded
+   pattern whenever possible:
+
    ```bash
-   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto
+   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run --pattern 'cleanup-validation|fixture'
    ```
-3. Use dry-run when previewing candidates:
+
+3. Archive only the approved inactive selection:
+
    ```bash
-   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run
+   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --agent <agent-id>
+   node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --pattern 'cleanup-validation|fixture'
    ```
+
 4. Archive an explicit workspace only after approval:
+
    ```bash
    node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
    ```
-5. Verify cleanup:
+
+5. Use the helper's post-archive listing verification. If checking manually,
+   inspect only the active listings:
+
    ```bash
    paseo ls --json
    paseo workspace ls --json
    ```
+
+   Do not use history, timeline, or resume as an archive verification method.
 
 ## Bundled helper
 
 Use:
 
 ```bash
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto
+# Safe default: dry-run, with only clearly disposable agents marked SELECTED
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run
+node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --json
+
+# Preview a user-bounded selection
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run --pattern 'test|verify|validation|paseobility'
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive --yes
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --include-workspaces --dry-run
+
+# Agent archive: explicit ID, user pattern, or clear disposable marker only
+node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --agent <agent-id>
+node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --pattern 'cleanup-validation|fixture'
+node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive --yes
+
+# Workspace archive: exact ID and explicit approval only
 node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
 ```
 
 Defaults:
 
-- every non-active agent is a candidate, regardless of its name or purpose
-- `--pattern <regex>` optionally narrows candidates by names/titles/cwd/provider/id
-- auto mode archives selected inactive agents only, without confirmation
-- workspaces are never auto-archived; use `--include-workspaces --dry-run` to
-  preview and explicit `--workspace <id> --archive --yes` to archive
-- `--archive` without `--yes` still refuses to modify state
+- bare invocation is dry-run
+- there is no implicit `.*` pattern
+- ordinary idle, completed, or stopped status alone does not select an agent
+- without an ID or user pattern, only clear disposable/test/validation markers
+  are selected for preview or `--auto`
+- explicit agent IDs take precedence over pattern/marker discovery
+- `--archive` requires `--yes` and an explicit agent/workspace ID or a
+  user-supplied pattern
+- workspaces are never auto-archived; `--include-workspaces` is preview-only
+- all archive attempts are verified by listing records again, never by opening
+  archived history or resuming a provider thread
+- unknown native provider release is not reported as complete success
 
 ## Candidate policy
 
-Good cleanup candidates:
+Good agent cleanup candidates:
 
-- any agent whose status is inactive, including `idle`, completed, or stopped
-- idle test agents created for PR validation
-- recognition-only agents
-- skill validation agents
-- fixture or temporary workspaces created only for testing
+- an inactive agent whose exact ID the user supplied
+- an inactive agent matched by a bounded pattern the user supplied
+- an inactive agent with a clear disposable, fixture, smoke, temp, test, or
+  validation marker in its name, title, project, or working path
+- recognition or validation agents only when their ID, user pattern, or naming
+  clearly marks them as disposable
 
 Do not clean up automatically:
 
-- agents in an active state
-- workspaces, unless explicitly specified with `--workspace <id> --archive --yes`
-- anything requiring delete rather than archive
+- a normal idle agent with no explicit selection or disposable marker
+- completed or stopped agents based only on status
+- any active agent, even when explicitly named
+- workspaces, unless explicitly specified with `--workspace <id> --archive
+  --yes`
+- anything requiring delete, stop, kill, lock-file removal, daemon restart,
+  history/timeline inspection, or resume
+
+## Verification and failures
+
+For each archive action, distinguish three separate facts:
+
+1. `commandExitCode`: whether the Paseo archive command returned successfully.
+2. `paseoRecordRemoved`: whether a fresh active-list query no longer contains
+   the record.
+3. `providerRelease`: whether the archive response explicitly confirms native
+   provider release. When it does not, report `unknown`.
+
+Command success with a remaining Paseo record is `verification-failed`.
+Verified Paseo record removal with an unknown provider release is
+`provider-release-unknown`, not full success. Partial failures and verification
+failures must be visible in both JSON and human output and return non-zero.
 
 ## Manual fallback
 
-If Node is unavailable:
+If Node is unavailable, do not reproduce broad auto-cleanup manually. Use exact
+IDs, inspect only active lists, and do not open history or resume threads:
 
 ```bash
 paseo ls --json
-paseo archive <agent-id> --json
-paseo workspace ls --json
-paseo workspace archive <workspace-id> --json
-```
-
-On Windows PowerShell:
-
-```powershell
+paseo archive <explicit-agent-id> --json
 paseo ls --json
-paseo archive <agent-id> --json
 paseo workspace ls --json
-paseo workspace archive <workspace-id> --json
+paseo workspace archive <approved-workspace-id> --json
+paseo workspace ls --json
 ```
 
-For agents, verify the ID and status, then archive inactive entries without
-asking the user. Continue to require explicit approval for workspaces.
+On Windows PowerShell, use the same Paseo commands. If provider release is not
+explicitly present in the archive result, report it as unknown. Never infer
+native release from exit code 0.
 
 ## Output expectations
 
@@ -124,24 +178,27 @@ Return:
 
 ```text
 Cleanup Plan
-- agents considered
-- candidates selected
-- active agents skipped
-- workspaces considered
+- dry-run / auto / explicit archive mode
+- candidates and their selection source
+- ordinary idle and active agents skipped
+- workspaces considered and approval state
 
 Actions
-- dry-run only / archived
-- IDs archived
-- failures and reasons
+- command exit code
+- Paseo record-removal verification
+- provider release: confirmed / failed / unknown
+- outcome: success / partial-failure / failed
 
 Remaining
-- anything still active
-- suggested next cleanup, if any
+- anything still active or unverifiable
+- no history/timeline/resume verification performed
 ```
 
 ## Safety notes
 
-- `archive` is the only supported cleanup action.
-- `delete` is out of scope for this skill.
-- If the user asks to delete, ask for a separate explicit confirmation and use
-  native Paseo commands carefully.
+- `archive` is the only supported cleanup mutation.
+- `delete`, `stop`, `kill`, lock-file removal, and daemon restart are out of
+  scope and must not be run automatically.
+- Session data may still exist after archive. Do not probe it through
+  history/resume during cleanup; escalate native-provider release problems to
+  Paseo core instead.
