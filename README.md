@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.4.0-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.4.1-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -40,6 +40,10 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 이 repo는 실행형 프레임워크가 아니라 **Paseo 내장 도구를 반복 가능하게 조합하기 위한 스킬 문서 패키지**입니다. macOS/Linux용 bootstrap helper와 Windows PowerShell 설치 helper를 함께 제공합니다.
 
 ---
+
+## v2.4.1 업데이트
+
+v2.4.1은 `/paseo-spyware-check`의 macOS/Linux helper가 report 디렉터리나 필수 출력 파일을 만들지 못했을 때 성공으로 끝나던 문제를 수정합니다. 필수 I/O 실패는 즉시 nonzero로 종료하고, 선택형 외부 scanner의 실패는 `tools.log`에 기록한 뒤 나머지 검사와 fallback 정적 검사를 계속합니다.
 
 ## v2.4.0 업데이트
 
@@ -227,7 +231,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | Apple Silicon macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/arm64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Intel macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/x86_64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Windows | Tested | Windows 11 x64, Windows PowerShell 5.1, Paseo CLI 0.2.5에서 PowerShell installer, `-TargetHome` 임시 설치, 실제 `%USERPROFILE%\.agents\skills` 설치, 새 Paseo agent의 `/paseo-session-brief` 인식 확인. Native bash context script는 미검증 |
-| `/paseo-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인 |
+| `/paseo-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인. 필수 report I/O fail-closed와 선택 scanner 실패 계속 처리 회귀 테스트 통과 |
 | `/paseo-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
 | `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.1에서 모든 비활성 agent 선택, running agent skip, idle agent 무확인 auto-archive, workspace 자동 제외, 실제 skill 설치 확인 |
@@ -701,6 +705,7 @@ skills/
 │       ├── install-scanners.ps1
 │       ├── spyware-check.py
 │       ├── spyware-check.test.py
+│       ├── spyware-check-shell.test.sh
 │       ├── spyware-check.ps1
 │       └── spyware-check.sh
 ├── paseo-session-brief/

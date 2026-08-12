@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -u
+# Required setup and report writes fail fast. Optional scanner failures are
+# captured by run_optional so the remaining scanners and fallback scan run.
+set -euo pipefail
 
 usage() {
   cat <<'USAGE'
@@ -48,18 +50,28 @@ if [ -z "$TARGET" ]; then
 fi
 
 timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/paseo-spyware.XXXXXX")"
-if [ -z "$OUT_DIR" ]; then
-  OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/paseo-spyware-report.XXXXXX")"
-fi
-mkdir -p "$OUT_DIR"
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/paseo-spyware.XXXXXX")" || {
+  echo "could not create temporary workspace" >&2
+  exit 1
+}
 
 cleanup() {
   if [ "$KEEP" -ne 1 ]; then
-    rm -rf "$WORK_DIR"
+    rm -rf -- "$WORK_DIR" || true
   fi
 }
 trap cleanup EXIT
+
+if [ -z "$OUT_DIR" ]; then
+  OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/paseo-spyware-report.XXXXXX")" || {
+    echo "could not create report directory" >&2
+    exit 1
+  }
+fi
+mkdir -p -- "$OUT_DIR" || {
+  echo "could not create report directory: $OUT_DIR" >&2
+  exit 1
+}
 
 is_url() {
   case "$1" in
@@ -71,15 +83,17 @@ is_url() {
 REPO_DIR=""
 if is_url "$TARGET"; then
   REPO_DIR="$WORK_DIR/repo"
-  git clone --depth 1 "$TARGET" "$REPO_DIR" >"$OUT_DIR/git-clone.log" 2>&1
-  clone_status=$?
-  if [ "$clone_status" -ne 0 ]; then
+  if git clone --depth 1 "$TARGET" "$REPO_DIR" >"$OUT_DIR/git-clone.log" 2>&1; then
+    :
+  else
+    clone_status=$?
     echo "git clone failed. See $OUT_DIR/git-clone.log" >&2
     exit "$clone_status"
   fi
 else
-  REPO_DIR="$(cd "$TARGET" 2>/dev/null && pwd)"
-  if [ -z "$REPO_DIR" ]; then
+  if REPO_DIR="$(cd "$TARGET" 2>/dev/null && pwd)"; then
+    :
+  else
     echo "target path does not exist: $TARGET" >&2
     exit 2
   fi
@@ -88,8 +102,11 @@ fi
 REPORT="$OUT_DIR/report.md"
 RAW="$OUT_DIR/raw-findings.txt"
 CLASSIFIED="$OUT_DIR/classified-findings.tsv"
-: >"$RAW"
-: >"$CLASSIFIED"
+TOOLS_LOG="$OUT_DIR/tools.log"
+if ! { : >"$RAW" && : >"$CLASSIFIED" && : >"$TOOLS_LOG"; }; then
+  echo "could not initialize report files in: $OUT_DIR" >&2
+  exit 1
+fi
 
 has_cmd() {
   command -v "$1" >/dev/null 2>&1
@@ -109,11 +126,14 @@ run_optional() {
   shift
   {
     echo "== $name =="
-    "$@" 2>&1
-    status=$?
-    echo "exit=$status"
+    if "$@" 2>&1; then
+      scanner_status=0
+    else
+      scanner_status=$?
+    fi
+    echo "exit=$scanner_status"
     echo
-  } >>"$OUT_DIR/tools.log"
+  } >>"$TOOLS_LOG"
   return 0
 }
 
