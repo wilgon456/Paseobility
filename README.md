@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.3.1-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.3.2-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -43,7 +43,7 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ## v2.3 업데이트
 
-v2.3에서는 GitHub의 AI 스킬을 정적 검사한 뒤 개인 로컬 라이브러리에 저장하고, 이후 일반 자연어 요청에서 다시 선택해 쓰는 `/paseo-skill-save`를 추가했습니다. v2.3.1부터 내부 라우팅 엔진도 첫 실행 시 검증된 고정 버전으로 자동 준비하므로 사용자가 skillNload를 별도로 설치하거나 호출할 필요가 없습니다.
+v2.3에서는 GitHub의 AI 스킬을 정적 검사한 뒤 개인 로컬 라이브러리에 저장하고, 이후 일반 자연어 요청에서 다시 선택해 쓰는 `/paseo-skill-save`를 추가했습니다. v2.3.1부터 내부 라우팅 엔진도 첫 실행 시 검증된 고정 버전으로 자동 준비하므로 사용자가 skillNload를 별도로 설치하거나 호출할 필요가 없습니다. v2.3.2부터 저장 wrapper 자체가 spyware 검사를 fail-closed로 강제하고, 검사한 GitHub commit과 checksum이 실제 저장 결과와 일치하는지 검증합니다.
 
 | 추가/보강 기능 | 역할 |
 | --- | --- |
@@ -60,7 +60,7 @@ v2.3에서는 GitHub의 AI 스킬을 정적 검사한 뒤 개인 로컬 라이�
 
 `/paseo-share`는 각 컴퓨터에서 동일한 private GitHub/Forgejo 저장소를 한 번 설정한 뒤 `공유해줘`, `최신 공유 파일 보여줘`, `다른 컴퓨터 파일 가져와` 같은 요청으로 사용합니다. 업로드한 파일은 모바일에서 링크로 바로 미리볼 수 있고, 다른 컴퓨터의 Paseo는 공유 ID를 이용해 자동으로 가져옵니다.
 
-`/paseo-skill-save`는 대상 스킬을 실행하지 않고 먼저 `/paseo-spyware-check` 방식으로 검사합니다. 통과한 스킬은 로컬 개인 overlay에만 저장되며, 설명 전용 스킬은 `on-demand`로 연결하고 스크립트 실행·외부 변경·삭제 기능은 확인 절차를 유지합니다. 내부 엔진은 커밋과 전체 Git tree를 검증한 뒤 `~/.paseo/skill-save/manager/`에 자동 캐시합니다.
+`/paseo-skill-save` wrapper는 대상 스킬을 실행하지 않고 bundled Python `/paseo-spyware-check` gate를 먼저 강제합니다. High/Critical은 저장을 차단하고 Medium은 결과를 보여준 뒤 명시적으로 승인한 경우에만 진행합니다. 통과한 GitHub 소스는 검사한 commit URL로 고정하고 checksum을 다시 대조합니다. 스킬은 로컬 개인 overlay에만 저장되며, 설명 전용 스킬은 `on-demand`로 연결하고 스크립트 실행·외부 변경·삭제 기능은 확인 절차를 유지합니다. 내부 엔진은 커밋과 전체 Git tree를 검증한 뒤 `~/.paseo/skill-save/manager/`에 자동 캐시합니다.
 
 ---
 
@@ -234,7 +234,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
 | `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안 테스트 7개, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
 | `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
-| `/paseo-skill-save` on Windows | Tested locally | 공식 skill validator, Python 단위 테스트 5개, 고정 manager 자동 bootstrap·재사용·변조 차단, PowerShell 격리 설치, 실제 GitHub 스킬 정적 검사·저장·체크섬 검증·검색·자연어 select·본문 증거 확인. 전역 router는 변경하지 않음 |
+| `/paseo-skill-save` on Windows | Tested locally | 공식 skill validator, Python 단위 테스트 17개, fail-closed spyware receipt, High 차단, Medium 승인 gate, 검사 commit·checksum 결합, secret evidence redaction, 고정 manager 자동 bootstrap·재사용·변조 차단, 실제 GitHub 스킬 저장·검증·검색·자연어 select·본문 증거 확인. 전역 router는 변경하지 않음 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -405,6 +405,9 @@ GitHub 저장소나 정확한 스킬 경로를 받아 `/paseo-spyware-check`로 
 
 핵심 규칙:
 
+- wrapper를 직접 실행해도 bundled Python spyware gate가 manager보다 먼저 실행되며, 유효한 검사 receipt가 없으면 저장하지 않습니다.
+- High/Critical은 차단하고 Medium은 findings를 확인한 사용자가 명시적으로 승인한 뒤에만 `--approve-medium`으로 진행합니다.
+- GitHub 소스는 검사한 exact commit URL로 저장하고, 저장 결과의 commit·path·checksum을 receipt와 대조합니다.
 - 대상 스킬의 dependency 설치, build, import, script 실행을 저장 과정에서 금지합니다.
 - 내부 엔진은 hard-coded commit과 전체 Git tree가 모두 일치할 때만 실행하고, 변조된 cache는 자동 복구하거나 실행하지 않습니다.
 - 원본 repository, 고정 commit, skill path, checksum, license와 정적 검사 결과를 기록합니다.
@@ -534,6 +537,11 @@ Third-party scanner note:
 - Paseobility는 해당 스캐너의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
 포함된 helper:
+
+```bash
+# Cross-platform JSON receipt used by paseo-skill-save
+python skills/paseo-spyware-check/scripts/spyware-check.py https://github.com/owner/repo --json
+```
 
 ```bash
 # macOS/Linux
@@ -680,6 +688,8 @@ skills/
 │   └── scripts/
 │       ├── install-scanners.sh
 │       ├── install-scanners.ps1
+│       ├── spyware-check.py
+│       ├── spyware-check.test.py
 │       ├── spyware-check.ps1
 │       └── spyware-check.sh
 ├── paseo-session-brief/
