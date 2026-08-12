@@ -12,6 +12,8 @@ const MAX_BYTES = 50 * 1024 * 1024;
 const MAX_METADATA_BYTES = 64 * 1024;
 const MAX_FILENAME_LENGTH = 120;
 const MAX_NOTE_LENGTH = 2000;
+const DEFAULT_GITHUB_HOST = "github.com";
+const DEFAULT_REPOSITORY_NAME = "paseo_share";
 const ARTIFACT_ID_PATTERN = /^psh_\d{8}T\d{6}Z_[a-f0-9]{6}$/;
 const MACHINE_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
@@ -129,6 +131,7 @@ function run(command, args, options = {}) {
   }
   const response = {
     ok: result.status === 0,
+    status: result.status,
     stdout: (result.stdout || "").trim(),
     stderr: (result.stderr || "").trim()
   };
@@ -171,6 +174,10 @@ function gitBuffer(args, cwd, allowFailure = false) {
   return runBuffer("git", args, { cwd, allowFailure });
 }
 
+function gh(args, allowFailure = false) {
+  return run("gh", args, { allowFailure });
+}
+
 function ensureGit() {
   run("git", ["--version"]);
 }
@@ -183,7 +190,7 @@ function writeJson(filePath, value) {
 function loadConfig() {
   const filePath = configPath();
   if (!fs.existsSync(filePath)) {
-    fail(`not configured; run setup <private-repo-url> first (config: ${filePath})`, 2);
+    fail(`not configured; run onboard for the default private GitHub repository, or setup <private-repo-url> for a custom remote (config: ${filePath})`, 2);
   }
   let config;
   try {
@@ -340,6 +347,118 @@ function rejectCredentialUrl(repositoryUrl) {
   }
 }
 
+function parseCommandJson(response, label) {
+  try {
+    return JSON.parse(response.stdout);
+  } catch (error) {
+    throw new Error(`${label} returned invalid JSON: ${error.message}`);
+  }
+}
+
+function isNotFoundResponse(response) {
+  return /(?:HTTP 404|not found)/i.test(response.stderr || "");
+}
+
+function isEmptyRepositoryResponse(response) {
+  return /Git Repository is empty/i.test(response.stderr || "");
+}
+
+function validateDefaultRepositoryTree(tree) {
+  if (!tree || !Array.isArray(tree.tree) || tree.truncated) {
+    throw new Error("could not safely inspect the existing paseo_share repository tree");
+  }
+  const paths = tree.tree
+    .map((entry) => entry && entry.path)
+    .filter((entryPath) => typeof entryPath === "string" && entryPath.length > 0);
+  const onlyArtifacts = paths.every(
+    (entryPath) => entryPath === "artifacts" || entryPath.startsWith("artifacts/")
+  );
+  const hasShareMarker = paths.some(
+    (entryPath) => entryPath === "artifacts/.gitkeep" || entryPath.endsWith("/artifact.json")
+  );
+  if (!onlyArtifacts || !hasShareMarker) {
+    throw new Error(
+      `private repository ${DEFAULT_REPOSITORY_NAME} already exists but is not a recognized Paseo Share repository; rename it or use setup <private-repo-url> with a different dedicated repository`
+    );
+  }
+}
+
+function resolveDefaultGithubRepository(runGh = gh) {
+  const version = runGh(["--version"], true);
+  if (!version.ok) {
+    throw new Error("GitHub CLI is required for automatic setup; install gh, then run gh auth login");
+  }
+
+  const auth = runGh(["auth", "status", "--hostname", DEFAULT_GITHUB_HOST], true);
+  if (!auth.ok) {
+    throw new Error("GitHub connection is required; run gh auth login --hostname github.com, then retry Paseo Share");
+  }
+
+  const gitAuth = runGh(["auth", "setup-git", "--hostname", DEFAULT_GITHUB_HOST], true);
+  if (!gitAuth.ok) {
+    throw new Error(`GitHub is connected but local Git authentication could not be configured: ${redact(gitAuth.stderr)}`);
+  }
+
+  const userResponse = runGh(["api", "user", "--jq", ".login"], true);
+  if (!userResponse.ok || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(userResponse.stdout)) {
+    throw new Error("could not determine the authenticated GitHub account");
+  }
+  const owner = userResponse.stdout;
+  const repositoryName = `${owner}/${DEFAULT_REPOSITORY_NAME}`;
+  const apiPath = `repos/${repositoryName}`;
+  let repositoryResponse = runGh(["api", apiPath], true);
+  let repositoryCreated = false;
+
+  if (!repositoryResponse.ok) {
+    if (!isNotFoundResponse(repositoryResponse)) {
+      throw new Error(`could not inspect ${repositoryName}: ${redact(repositoryResponse.stderr)}`);
+    }
+    const createResponse = runGh([
+      "repo",
+      "create",
+      repositoryName,
+      "--private",
+      "--description",
+      "Private artifact repository for Paseo Share"
+    ], true);
+    if (!createResponse.ok) {
+      throw new Error(`could not create private repository ${repositoryName}: ${redact(createResponse.stderr)}`);
+    }
+    repositoryCreated = true;
+    repositoryResponse = runGh(["api", apiPath], true);
+    if (!repositoryResponse.ok) {
+      throw new Error(`created ${repositoryName}, but could not verify it: ${redact(repositoryResponse.stderr)}`);
+    }
+  }
+
+  const repository = parseCommandJson(repositoryResponse, repositoryName);
+  if (String(repository.full_name || "").toLowerCase() !== repositoryName.toLowerCase()) {
+    throw new Error(`GitHub returned an unexpected repository for ${repositoryName}`);
+  }
+  if (repository.private !== true) {
+    throw new Error(
+      `repository ${repositoryName} is public; make it private or rename it before retrying automatic Paseo Share setup`
+    );
+  }
+  if (!repositoryCreated) {
+    const branch = repository.default_branch || "main";
+    const treeResponse = runGh([
+      "api",
+      `repos/${repositoryName}/git/trees/${encodeURIComponent(branch)}?recursive=1`
+    ], true);
+    if (!treeResponse.ok) {
+      if (!isEmptyRepositoryResponse(treeResponse)) {
+        throw new Error(`could not inspect existing repository ${repositoryName}: ${redact(treeResponse.stderr)}`);
+      }
+    } else {
+      validateDefaultRepositoryTree(parseCommandJson(treeResponse, `${repositoryName} tree`));
+    }
+  }
+
+  const repositoryUrl = `https://${DEFAULT_GITHUB_HOST}/${repositoryName}.git`;
+  return { owner, repositoryName, repositoryUrl, repositoryCreated };
+}
+
 function ensureIdentity(checkoutPath, machine) {
   if (!git(["config", "user.name"], checkoutPath, true).stdout) {
     git(["config", "user.name", `Paseo Share (${machine})`], checkoutPath);
@@ -365,7 +484,7 @@ function localHeadExists(checkoutPath) {
   return git(["rev-parse", "--verify", "HEAD"], checkoutPath, true).ok;
 }
 
-function commandSetup(positionals, options) {
+function commandSetup(positionals, options, resultExtras = {}) {
   ensureGit();
   const repositoryUrl = positionals[0];
   if (!repositoryUrl) fail("usage: setup <repo-url> [--machine <name>] [--branch <name>]");
@@ -422,7 +541,20 @@ function commandSetup(positionals, options) {
     maxBytes: MAX_BYTES
   };
   writeJson(configPath(), config);
-  printResult({ configured: true, ...config, configPath: configPath() }, options.json);
+  printResult({ configured: true, ...config, ...resultExtras, configPath: configPath() }, options.json);
+}
+
+function commandOnboard(options) {
+  if (fs.existsSync(configPath())) {
+    commandStatus(options);
+    return;
+  }
+  const resolved = resolveDefaultGithubRepository();
+  commandSetup([resolved.repositoryUrl], options, {
+    onboarded: true,
+    repositoryCreated: resolved.repositoryCreated,
+    repositoryName: resolved.repositoryName
+  });
 }
 
 function ensureCheckout(config) {
@@ -814,6 +946,7 @@ function commandStatus(options) {
 function printHelp() {
   process.stdout.write(`Paseo Share\n\n`);
   process.stdout.write(`Usage:\n`);
+  process.stdout.write(`  paseo-share.js onboard [--machine <name>] [--branch <name>] [--json]\n`);
   process.stdout.write(`  paseo-share.js setup <repo-url> [--machine <name>] [--branch <name>]\n`);
   process.stdout.write(`  paseo-share.js publish <file> [--note <text>] [--json]\n`);
   process.stdout.write(`  paseo-share.js list [--limit <number>] [--json]\n`);
@@ -830,6 +963,9 @@ function main() {
     return;
   }
   switch (command) {
+    case "onboard":
+      commandOnboard(options);
+      break;
     case "setup":
       commandSetup(positionals, options);
       break;
@@ -864,10 +1000,15 @@ if (require.main === module) {
 module.exports = {
   ARTIFACT_ID_PATTERN,
   MAX_BYTES,
+  isEmptyRepositoryResponse,
+  isNotFoundResponse,
   isPathInside,
+  parseCommandJson,
+  resolveDefaultGithubRepository,
   resolveWithin,
   sha256,
   validateArtifactMetadata,
+  validateDefaultRepositoryTree,
   validateFetchedPayload,
   validatePortableFileName
 };

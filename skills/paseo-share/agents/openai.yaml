@@ -1,4 +1,4 @@
 interface:
   display_name: "Paseo Share"
   short_description: "Share Paseo files across computers and mobile"
-  default_prompt: "Use $paseo-share to publish, find, preview, or fetch a shared Paseo artifact."
+  default_prompt: "Use $paseo-share to safely onboard my private GitHub share repository, then publish, find, preview, or fetch an artifact."
