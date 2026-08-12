@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillNload profile",
+  "type": "object",
+  "required": ["schema_version", "name", "enabled", "targets", "max_risk"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "name": {"type": "string"},
+    "extends": {"type": ["string", "null"]},
+    "enabled": {"type": "array", "items": {"type": "string"}},
+    "disabled": {"type": "array", "items": {"type": "string"}},
+    "targets": {"type": "array", "items": {"type": "string"}},
+    "max_risk": {"enum": ["instructions-only", "local-management", "scripts", "external-write", "destructive"]},
+    "locks": {"type": "object"}
+  }
+}
+

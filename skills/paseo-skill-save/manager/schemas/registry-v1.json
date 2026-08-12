@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillNload runtime registry",
+  "type": "object",
+  "required": ["schema_version", "library_version", "sources", "skills"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "library_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "sources": {"type": "array", "items": {"type": "object"}},
+    "skills": {"type": "array", "items": {"$ref": "../catalog-v1.json"}}
+  }
+}
+

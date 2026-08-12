@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "windows",
+  "extends": "default",
+  "enabled": ["core.skill-hub-router"],
+  "disabled": [],
+  "targets": ["codex", "claude", "opencode", "paseo", "generic"],
+  "platform": "windows",
+  "max_risk": "local-management",
+  "locks": {}
+}

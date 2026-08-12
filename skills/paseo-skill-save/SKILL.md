@@ -52,10 +52,13 @@ user to install or invoke skillNload separately.
    computer alone. If GitHub authentication is missing, preserve the local
    skill and report `saved-locally-sync-pending` with the exact login command.
 
-   On first use, the wrapper automatically fetches the official public
-   skillNload engine at its hard-coded commit, verifies both the commit and the
-   complete Git tree, and caches it under `~/.paseo/skill-save/manager/`. It
-   uses no pip installation. Do not ask the user to prepare skillNload.
+   The wrapper first looks for a checksum-verified manager-owned skillNload
+   runtime in the normal local state directory. If that runtime contains the
+   user's private catalog, it is used for saving and natural-language routing.
+   Otherwise the wrapper verifies and uses the public manager boundary bundled
+   with this skill. A pinned network bootstrap remains only for compatibility
+   with older incomplete installations. It uses no pip installation. Do not
+   ask the user to prepare skillNload.
 5. Require the wrapper to report all of the following:
 
    - spyware receipt digest, severity counts, findings, scanned checksum, and
@@ -109,8 +112,9 @@ local overlay.
 - Missing `SKILL.md`: stop and ask for the correct skill path.
 - Static scan rejection, symlink, junction, checksum mismatch, or ownership
   mismatch: stop; do not weaken the guard.
-- Internal manager commit/tree mismatch or modified cache: stop; do not repair,
-  replace, or execute the cache silently.
+- Private runtime ownership/digest failure, bundled manager digest failure, or
+  legacy manager commit/tree mismatch: stop; do not repair, replace, fall back,
+  or execute the manager silently.
 - Missing Korean metadata: generate a conservative description from verified
   source text and label it as generated.
 - Search or match smoke failure: keep the archive registered, report that its
