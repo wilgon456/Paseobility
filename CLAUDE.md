@@ -43,14 +43,19 @@ Read `AGENTS.md` for the complete safety and platform rules. For the common
    or reload integrations.
 
 The Paseobility URL is only the skill source. Never configure this repository
-as the artifact destination. Initial use requires a different, dedicated
-private GitHub or Forgejo repository owned by the user. Do not create that
-remote repository unless the user asks.
+as the artifact destination. Installation must remain side-effect free. On the
+first actual share request, run `status` and then `onboard` when unconfigured.
+If GitHub CLI is missing or unauthenticated, ask the user to install `gh` or run
+`gh auth login --hostname github.com`. Onboarding targets the authenticated
+account’s private `<login>/paseo_share` repository. Create it when absent;
+reuse it only when empty or already recognized as Paseo Share. Refuse public,
+unrelated, or incompletely inspected same-name repositories. Use explicit
+`setup <repo-url>` for Forgejo or another custom remote.
 
 After installation, give the user this first-use prompt:
 
 ```text
-/paseo-share 전용 private 저장소를 이 컴퓨터에 연결해줘.
-저장소: <private artifact repository URL>
-컴퓨터 이름: <friendly machine name>
+/paseo-share 이 파일을 공유해줘.
+GitHub 연결이 필요하면 먼저 알려주고, 연결되어 있으면 내 계정의
+private paseo_share 저장소를 안전하게 준비해서 사용해줘.
 ```

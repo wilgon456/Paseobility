@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.3.1-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.4.0-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -41,9 +41,9 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
-## v2.3 업데이트
+## v2.4.0 업데이트
 
-v2.3에서는 GitHub의 AI 스킬을 정적 검사한 뒤 개인 로컬 라이브러리에 저장하고, 이후 일반 자연어 요청에서 다시 선택해 쓰는 `/paseo-skill-save`를 추가했습니다. v2.3.1부터 내부 라우팅 엔진도 첫 실행 시 검증된 고정 버전으로 자동 준비하므로 사용자가 skillNload를 별도로 설치하거나 호출할 필요가 없습니다.
+v2.4.0에서는 `/paseo-share`를 처음 사용할 때 GitHub 연결을 확인하고, 인증된 계정의 private `paseo_share` 저장소를 자동으로 생성하거나 안전하게 재사용하는 온보딩을 추가했습니다. public·비관련·불완전하게 검사된 동명 저장소는 건드리지 않고 중단합니다. 또한 `/paseo-agent-cleanup`이 이름이나 용도와 무관하게 모든 비활성 agent를 확인 없이 자동 archive하도록 기본 정책을 바꿨으며, 실행 중인 agent와 workspace는 계속 보호합니다.
 
 | 추가/보강 기능 | 역할 |
 | --- | --- |
@@ -58,7 +58,7 @@ v2.3에서는 GitHub의 AI 스킬을 정적 검사한 뒤 개인 로컬 라이�
 
 `/paseo-agent-cleanup`은 이름이나 용도와 무관하게 모든 비활성 agent를 묻지 않고 기본 archive합니다. running 등 활성 agent는 건드리지 않고, workspace cleanup은 승인 후 archive-only 방식으로만 처리합니다.
 
-`/paseo-share`는 각 컴퓨터에서 동일한 private GitHub/Forgejo 저장소를 한 번 설정한 뒤 `공유해줘`, `최신 공유 파일 보여줘`, `다른 컴퓨터 파일 가져와` 같은 요청으로 사용합니다. 업로드한 파일은 모바일에서 링크로 바로 미리볼 수 있고, 다른 컴퓨터의 Paseo는 공유 ID를 이용해 자동으로 가져옵니다.
+`/paseo-share`는 첫 실제 공유 요청에서 GitHub CLI 인증을 확인하고 `<로그인 계정>/paseo_share`를 private 저장소로 준비합니다. 다른 컴퓨터에서 같은 GitHub 계정으로 온보딩하면 기존 저장소를 안전 검사 후 재사용합니다. Forgejo나 다른 저장소는 명시적인 `setup <repo-url>`로 연결할 수 있습니다. 업로드한 파일은 모바일에서 링크로 바로 미리볼 수 있고, 다른 컴퓨터의 Paseo는 공유 ID를 이용해 자동으로 가져옵니다.
 
 `/paseo-skill-save`는 대상 스킬을 실행하지 않고 먼저 `/paseo-spyware-check` 방식으로 검사합니다. 통과한 스킬은 로컬 개인 overlay에만 저장되며, 설명 전용 스킬은 `on-demand`로 연결하고 스크립트 실행·외부 변경·삭제 기능은 확인 절차를 유지합니다. 내부 엔진은 커밋과 전체 Git tree를 검증한 뒤 `~/.paseo/skill-save/manager/`에 자동 캐시합니다.
 
@@ -209,7 +209,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 - Paseo Settings -> Agents -> **Enable Paseo tools** 활성화
 - 1개 이상의 AI 프로바이더
   - 예: Codex, Claude Code 등
-- `/paseo-share`는 Node.js, Git, 그리고 인증 가능한 전용 private GitHub/Forgejo 저장소 필요. GitHub Actions는 사용하지 않음
+- `/paseo-share`는 Node.js와 Git 필요. 기본 GitHub 자동 온보딩에는 인증된 GitHub CLI(`gh`)가 필요하며, Forgejo·custom remote는 명시적인 저장소 URL로 연결. GitHub Actions는 사용하지 않음
 - `/paseo-skill-save`는 Python 3.11 이상과 Git 필요. 첫 실행 시 고정된 공개 [skillNload](https://github.com/wilgon456/skillNload) 엔진을 자동 검증·캐시하며 별도 설치 명령은 필요 없음. 대상 외부 스킬이나 개인 overlay는 Paseobility에 포함하지 않음
 - 오케스트레이션을 제대로 쓰려면 `~/.paseo/orchestration-preferences.json` 설정 권장
 - 설치 대상 skills 경로
@@ -232,7 +232,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
 | `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.1에서 모든 비활성 agent 선택, running agent skip, idle agent 무확인 auto-archive, workspace 자동 제외, 실제 skill 설치 확인 |
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
-| `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안 테스트 7개, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
+| `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안·온보딩 테스트 13개, private 저장소 생성/재사용과 public·비관련 저장소 거부 검증, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
 | `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
 | `/paseo-skill-save` on Windows | Tested locally | 공식 skill validator, Python 단위 테스트 5개, 고정 manager 자동 bootstrap·재사용·변조 차단, PowerShell 격리 설치, 실제 GitHub 스킬 정적 검사·저장·체크섬 검증·검색·자연어 select·본문 증거 확인. 전역 router는 변경하지 않음 |
 
@@ -259,13 +259,16 @@ Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치
 
 ### 다른 컴퓨터와 모바일로 산출물 공유하기
 
-최초 한 번 전용 private 저장소를 연결합니다.
+최초 공유 요청에서 GitHub 연결을 확인하고 인증된 계정의 private
+`paseo_share` 저장소를 자동으로 준비합니다.
 
 ```text
-/paseo-share
-git@github.com:owner/paseo-share.git 저장소를 이 컴퓨터에 연결해줘.
-컴퓨터 이름은 macbook으로 해줘.
+/paseo-share 이 보고서 휴대폰에서 볼 수 있게 공유해줘.
 ```
+
+GitHub 인증이 없으면 `gh auth login --hostname github.com` 연결을 먼저
+안내합니다. Forgejo나 별도 저장소를 쓰려면 `setup <repo-url>`을
+명시적으로 사용합니다.
 
 그다음 자연어로 게시하거나 가져옵니다.
 
@@ -419,6 +422,7 @@ GitHub 저장소나 정확한 스킬 경로를 받아 `/paseo-spyware-check`로 
 
 작은 문서, 코드, PDF, 이미지를 전용 private Git 저장소에 불변 artifact로 게시합니다. GitHub Actions나 background daemon 없이 각 컴퓨터에서 로컬 `git fetch`, `rebase`, `commit`, `push`만 실행합니다.
 
+- `onboard`: GitHub 인증 확인 후 `<login>/paseo_share` private 저장소 생성 또는 안전한 재사용
 - `setup`: 컴퓨터별 machine name과 동일한 원격 저장소 설정
 - `publish`: 공유 ID, 미리보기 URL, 다운로드 URL 반환
 - `list` / `latest`: 원격 동기화 후 다른 컴퓨터 산출물 조회
@@ -427,6 +431,9 @@ GitHub 저장소나 정확한 스킬 경로를 받아 `/paseo-spyware-check`로 
 Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩니다. 50 MiB 이하의 일반 문서·코드·PDF·이미지만 허용하며 secret-looking 파일명과 대표적인 텍스트 토큰 패턴을 차단합니다. 가져올 때 metadata 스키마, 경로 containment, symlink, 파일 크기, SHA-256을 검사하고 Windows CRLF와 macOS/Linux LF 변환을 안전하게 처리합니다.
 
 지원 모델은 **한 사용자가 자기 private 저장소를 신뢰하는 자기 기기들에서 사용하는 방식**입니다. 신뢰하지 않는 여러 사용자가 하나의 저장소를 함께 쓰는 멀티테넌트 교환은 지원하지 않습니다. 바이너리 내부의 민감정보는 검사하지 않으며, Git에서 삭제해도 과거 commit에는 남으므로 민감 파일은 게시하지 않아야 합니다.
+
+자동 온보딩은 동명 저장소가 public이거나 Paseo Share 구조가 아닌 경우
+가시성 변경, 이름 변경, 삭제, 덮어쓰기를 시도하지 않고 중단합니다.
 
 ---
 
