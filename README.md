@@ -738,6 +738,12 @@ CLAUDE.md
 
 ---
 
+## 라이선스
+
+[MIT License](./LICENSE)
+
+---
+
 <div align="center">
 
 <strong>브라우저는 손처럼 쓰고, 에이전트는 팀처럼 굴리세요.</strong>
