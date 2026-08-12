@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.5.0-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.5.1-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -41,6 +41,13 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
+## v2.5.1 업데이트
+
+v2.5.1은 두 가지 에이전트 UX 회귀를 고칩니다.
+
+- `/paseo-share`: top-level `help`와 `--help`가 설정·Git·GitHub·파일시스템 부수 효과 없이 usage를 출력하고 exit 0으로 종료합니다. 알 수 없는 명령은 기존처럼 nonzero입니다.
+- `/paseo-skill-save`: 기본 등록은 `--description-ko`와 한국어 `--tag-ko`만으로 충분합니다. `--domain`/`--action`은 활성 manager의 검증된 taxonomy ID를 알 때만 넘기며, 잘못된 값은 `invalid-routing-metadata`로 명확히 실패하고 재시도 안내를 반환합니다. 게이트(spyware, checksum, manager 검증, Medium 승인, privacy, confirmation)는 약화하지 않습니다.
+
 ## v2.5.0 업데이트
 
 v2.5.0부터 `/paseo-skill-save`와 자연어 router의 공식 공개 진입점은 Paseobility입니다. wrapper는 검증된 private skillNload runtime이 설치되어 있으면 이를 우선 사용하고, 없으면 이 저장소에 포함된 Apache-2.0 공개 manager를 사용합니다. private catalog와 payload는 manager-owned runtime에만 남고 agent skill 경로에는 일괄 설치되지 않습니다.
@@ -50,8 +57,6 @@ v2.5.0부터 `/paseo-skill-save`와 자연어 router의 공식 공개 진입점�
 - private catalog가 실제로 있을 때만 private runtime 우선
 - public fallback manager도 manifest digest와 upstream commit/tree 검증
 - 기존 공개 skillNload 네트워크 bootstrap은 구버전 호환 fallback으로만 유지
-
----
 
 ## v2.4.1 업데이트
 
@@ -248,9 +253,9 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
 | `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.1에서 모든 비활성 agent 선택, running agent skip, idle agent 무확인 auto-archive, workspace 자동 제외, 실제 skill 설치 확인 |
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
-| `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안·온보딩 테스트 13개, private 저장소 생성/재사용과 public·비관련 저장소 거부 검증, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
+| `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안·온보딩·help/`--help` 회귀 테스트, private 저장소 생성/재사용과 public·비관련 저장소 거부 검증, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
 | `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
-| `/paseo-skill-save` wrapper | Tested locally | 공식 skill validator, wrapper 단위 테스트 14개와 spyware gate 테스트 6개, private manager 우선 선택, bundled public fallback digest 검증, fail-closed receipt, High 차단, Medium 승인 gate, 검사 commit·checksum 결합, private sync 상태 전달, 저장·검증·검색·자연어 select 확인. workload 스킬은 영구 설치하지 않음 |
+| `/paseo-skill-save` wrapper | Tested locally | 공식 skill validator, wrapper 단위 테스트(private manager 우선 선택, bundled public fallback digest 검증, 기본 domain/action 생략, invalid-routing-metadata 매핑 포함)와 spyware gate 테스트, fail-closed receipt, High 차단, Medium 승인 gate, 검사 commit·checksum 결합, secret evidence redaction, private sync 상태 전달, 저장·검증·검색·자연어 select 확인. workload 스킬은 영구 설치하지 않음 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.

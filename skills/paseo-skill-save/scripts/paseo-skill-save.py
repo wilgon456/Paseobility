@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save a user-selected skill through Paseobility's pinned routing engine."""
+"""Save a user-selected skill through Paseobility's verified routing manager."""
 
 from __future__ import annotations
 
@@ -442,22 +442,54 @@ def _manager_prefix(args: argparse.Namespace, runtime: ManagerRuntime) -> list[s
     return command
 
 
+def _manager_failure_detail(process: subprocess.CompletedProcess[str]) -> str:
+    return (process.stderr or "").strip() or (process.stdout or "").strip()
+
+
+def _is_invalid_routing_metadata_failure(detail: str) -> bool:
+    """Detect invented or out-of-taxonomy --domain/--action values from the engine."""
+    lowered = detail.lower()
+    markers = (
+        "unknown routing domain",
+        "unknown routing action",
+        "routing.domains is invalid",
+        "routing.actions is invalid",
+        "routing.behavior_classes is invalid",
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _raise_manager_failure(process: subprocess.CompletedProcess[str]) -> None:
+    detail = _manager_failure_detail(process)
+    if "No module named skillhub" in detail:
+        raise SaveError(
+            "manager-runtime-unavailable",
+            "The active routing manager failed to load",
+            detail,
+        )
+    if _is_invalid_routing_metadata_failure(detail):
+        raise SaveError(
+            "invalid-routing-metadata",
+            (
+                "Controlled --domain/--action values are invalid for the active "
+                "routing manager. Retry without --domain/--action (description and "
+                "Korean tags are enough), or supply verified taxonomy IDs from the "
+                "active manager. Do not invent domain or action identifiers."
+            ),
+            detail,
+        )
+    raise SaveError(
+        "manager-command-failed",
+        "The routing engine rejected the request",
+        detail,
+    )
+
+
 def _run_json(command: Sequence[str], timeout: int) -> dict[str, Any]:
     process = _run_process(command, timeout)
 
     if process.returncode:
-        stderr = process.stderr.strip()
-        if "No module named skillhub" in stderr:
-            raise SaveError(
-                "manager-runtime-unavailable",
-                "The pinned routing engine failed to load",
-                stderr,
-            )
-        raise SaveError(
-            "manager-command-failed",
-            "The routing engine rejected the request",
-            stderr or process.stdout.strip(),
-        )
+        _raise_manager_failure(process)
     try:
         payload = json.loads(process.stdout)
     except json.JSONDecodeError as exc:
@@ -865,10 +897,34 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "source", help="GitHub skill URL, repository URL, or local skill directory"
     )
-    parser.add_argument("--description-ko")
-    parser.add_argument("--tag-ko", action="append", default=[])
-    parser.add_argument("--domain", action="append", default=[])
-    parser.add_argument("--action", action="append", default=[])
+    parser.add_argument(
+        "--description-ko",
+        help="one natural Korean sentence describing the skill outcome (preferred)",
+    )
+    parser.add_argument(
+        "--tag-ko",
+        action="append",
+        default=[],
+        help="repeatable Korean routing tag; preferred over inventing domain/action",
+    )
+    parser.add_argument(
+        "--domain",
+        action="append",
+        default=[],
+        help=(
+            "optional controlled taxonomy domain ID from the verified active manager only; "
+            "omit unless the exact ID is known"
+        ),
+    )
+    parser.add_argument(
+        "--action",
+        action="append",
+        default=[],
+        help=(
+            "optional controlled taxonomy action ID from the verified active manager only; "
+            "omit unless the exact ID is known"
+        ),
+    )
     parser.add_argument("--name")
     parser.add_argument(
         "--risk",
@@ -897,7 +953,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="comma-separated router targets (default: codex for .agents/skills)",
     )
     parser.add_argument(
-        "--repo", help="advanced: use an explicit routing engine checkout instead of the pinned runtime"
+        "--repo", help="advanced: use an explicit routing manager checkout instead of auto-selection"
     )
     parser.add_argument(
         "--manager-dir", help="advanced: alternate parent directory for the pinned runtime"
@@ -907,7 +963,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--state-dir", help="alternate state directory used only for isolated tests"
     )
     parser.add_argument(
-        "--python", default=sys.executable, help="Python interpreter used by the pinned routing engine"
+        "--python", default=sys.executable, help="Python interpreter used by the selected routing manager"
     )
     parser.add_argument("--timeout", type=int, default=180)
     return parser

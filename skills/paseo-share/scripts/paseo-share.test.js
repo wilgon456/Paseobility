@@ -7,6 +7,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
+const { spawnSync } = require("node:child_process");
+
 const {
   MAX_BYTES,
   resolveDefaultGithubRepository,
@@ -18,8 +20,18 @@ const {
   validatePortableFileName
 } = require("./paseo-share.js");
 
+const CLI_SCRIPT = path.join(__dirname, "paseo-share.js");
+
 function commandResult(ok, stdout = "", stderr = "", status = ok ? 0 : 1) {
   return { ok, status, stdout, stderr };
+}
+
+function runCli(args, env = {}) {
+  return spawnSync(process.execPath, [CLI_SCRIPT, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+    windowsHide: true
+  });
 }
 
 function createGithubRunner(options = {}) {
@@ -85,6 +97,36 @@ function createGithubRunner(options = {}) {
 
   return { calls, runGh };
 }
+
+test("help and --help exit 0, print usage, and cause no side effects", () => {
+  const shareHome = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-share-help-"));
+  try {
+    for (const args of [[], ["help"], ["--help"]]) {
+      const result = runCli(args, { PASEO_SHARE_HOME: shareHome });
+      assert.equal(result.status, 0, `expected exit 0 for ${JSON.stringify(args)}`);
+      assert.match(result.stdout, /Paseo Share/);
+      assert.match(result.stdout, /Usage:/);
+      assert.match(result.stdout, /paseo-share\.js status/);
+      assert.equal(result.stderr, "");
+    }
+    assert.deepEqual(fs.readdirSync(shareHome), []);
+  } finally {
+    fs.rmSync(shareHome, { recursive: true, force: true });
+  }
+});
+
+test("unknown command exits nonzero without printing usage as success", () => {
+  const shareHome = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-share-unknown-"));
+  try {
+    const result = runCli(["not-a-real-command"], { PASEO_SHARE_HOME: shareHome });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unknown command: not-a-real-command/);
+    assert.equal(result.stdout, "");
+    assert.deepEqual(fs.readdirSync(shareHome), []);
+  } finally {
+    fs.rmSync(shareHome, { recursive: true, force: true });
+  }
+});
 
 test("requests GitHub connection when gh is missing or unauthenticated", () => {
   const missing = createGithubRunner({ ghAvailable: false });

@@ -178,6 +178,88 @@ class PaseoSkillSaveTests(unittest.TestCase):
         )
         self.assertNotIn("--local-only", default_command)
 
+    def test_default_add_command_omits_domain_and_action(self) -> None:
+        args = MODULE.build_parser().parse_args(
+            [
+                "fixture",
+                "--description-ko",
+                "회의 내용을 정리합니다",
+                "--tag-ko",
+                "회의록",
+            ]
+        )
+        command = MODULE._build_add_command(args, ["python", "skillhub.py"])
+        self.assertIn("--description-ko", command)
+        self.assertIn("회의 내용을 정리합니다", command)
+        self.assertIn("--tag-ko", command)
+        self.assertIn("회의록", command)
+        self.assertNotIn("--domain", command)
+        self.assertNotIn("--action", command)
+
+        with_routing = MODULE.build_parser().parse_args(
+            [
+                "fixture",
+                "--description-ko",
+                "설명",
+                "--domain",
+                "documents",
+                "--action",
+                "read",
+            ]
+        )
+        routed = MODULE._build_add_command(with_routing, ["python", "skillhub.py"])
+        self.assertIn("--domain", routed)
+        self.assertIn("documents", routed)
+        self.assertIn("--action", routed)
+        self.assertIn("read", routed)
+
+    def test_invalid_routing_metadata_maps_to_actionable_error(self) -> None:
+        failed = response(
+            {},
+            returncode=2,
+            stderr='{"status":"error","code":"error","error":"unknown routing domain(s): invented-domain"}',
+        )
+        with mock.patch.object(
+            MODULE, "_bootstrap_manager", return_value=fake_runtime()
+        ), mock.patch.object(
+            MODULE.subprocess,
+            "run",
+            side_effect=[
+                response({"status": "initialized", "router": "core.skill-hub-router"}),
+                failed,
+            ],
+        ):
+            args = MODULE.build_parser().parse_args(
+                [
+                    "https://github.com/example/repo",
+                    "--description-ko",
+                    "설명",
+                    "--domain",
+                    "invented-domain",
+                ]
+            )
+            with self.assertRaises(MODULE.SaveError) as raised:
+                MODULE.save_skill(args)
+        self.assertEqual(raised.exception.code, "invalid-routing-metadata")
+        message = str(raised.exception)
+        self.assertIn("Retry without --domain/--action", message)
+        self.assertIn("verified taxonomy", message.lower())
+        self.assertIn("invented-domain", raised.exception.detail)
+
+        action_failed = response(
+            {},
+            returncode=2,
+            stderr="error: unknown routing action(s): made-up-action",
+        )
+        with self.assertRaises(MODULE.SaveError) as raised_action:
+            MODULE._raise_manager_failure(action_failed)
+        self.assertEqual(raised_action.exception.code, "invalid-routing-metadata")
+
+        generic = response({}, returncode=1, stderr="something else failed")
+        with self.assertRaises(MODULE.SaveError) as raised_generic:
+            MODULE._raise_manager_failure(generic)
+        self.assertEqual(raised_generic.exception.code, "manager-command-failed")
+
     def test_missing_manager_has_clear_error(self) -> None:
         failed = response({}, returncode=1, stderr="No module named skillhub")
         with mock.patch.object(
@@ -399,7 +481,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
 
         self.assertEqual(runtime.details["mode"], "installed-private-runtime")
         self.assertEqual(runtime.details["private_catalog_items"], 3)
-        self.assertEqual(Path(runtime.details["path"]), root)
+        self.assertEqual(Path(runtime.details["path"]).resolve(), root.resolve())
 
     def test_public_managed_runtime_uses_bundled_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

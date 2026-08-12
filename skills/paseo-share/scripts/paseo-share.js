@@ -956,9 +956,15 @@ function printHelp() {
 }
 
 function main() {
-  const command = process.argv[2];
-  const { positionals, options } = parseArgs(process.argv.slice(3));
-  if (!command || command === "help" || options.help) {
+  const argv = process.argv.slice(2);
+  // Top-level help must never touch config, Git, GitHub, or the filesystem.
+  if (!argv.length || argv[0] === "help" || argv[0] === "--help") {
+    printHelp();
+    return;
+  }
+  const command = argv[0];
+  const { positionals, options } = parseArgs(argv.slice(1));
+  if (options.help) {
     printHelp();
     return;
   }

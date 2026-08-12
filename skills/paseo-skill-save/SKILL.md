@@ -14,7 +14,7 @@ Save user-selected skills to a private local overlay and synchronize the
 portable library through the user's private `paseo_skill_save` Git repository.
 Registration is persistent; activation is not. The router may attach one
 selected skill for a task without permanently installing every saved skill.
-The wrapper manages its pinned routing engine automatically; never require the
+The wrapper selects and verifies its routing manager automatically; never require the
 user to install or invoke skillNload separately.
 
 ## Required workflow
@@ -28,18 +28,27 @@ user to install or invoke skillNload separately.
    installs dependencies, builds, imports, or executes target code. It blocks
    High or Critical findings. For Medium findings, show the receipt and obtain
    explicit user approval before rerunning with `--approve-medium`.
-3. Derive a concise Korean description and tags from the verified source.
-   Prefer a controlled domain and action when clear. Do not invent capabilities
-   that are absent from `SKILL.md`.
+3. Derive a concise Korean description and tags from the verified source. Do
+   not invent capabilities that are absent from `SKILL.md`. Description and
+   Korean tags are sufficient for registration. Omit `--domain` and
+   `--action` unless you already know the exact controlled taxonomy IDs from
+   the verified active manager. Never invent domain or action identifiers; an
+   invented ID fails with `invalid-routing-metadata`.
 4. Resolve this skill's installed directory and run the bundled wrapper using
    an argv list, never a shell-built command string:
 
    ```text
    python <skill-dir>/scripts/paseo-skill-save.py <source> \
      --description-ko "<Korean description>" \
-     --tag-ko "<tag>" \
-     --domain <domain> \
-     --action <action>
+     --tag-ko "<tag>"
+   ```
+
+   Only when an exact controlled taxonomy ID is known from the verified active
+   manager, you may also pass:
+
+   ```text
+     --domain <verified-domain-id> \
+     --action <verified-action-id>
    ```
 
    Add `--approve-medium` only after the user has seen the Medium findings and
@@ -63,7 +72,7 @@ user to install or invoke skillNload separately.
 
    - spyware receipt digest, severity counts, findings, scanned checksum, and
      immutable source
-   - internal manager mode, pinned commit, tree, and cache path
+   - internal manager mode, provenance, digest, and revision/tree when applicable
    - router target and initialization status
    - pinned source repository, commit, and skill path
    - checksum, inferred risk, activation policy, and catalog ID
@@ -117,5 +126,9 @@ local overlay.
   or execute the manager silently.
 - Missing Korean metadata: generate a conservative description from verified
   source text and label it as generated.
+- `invalid-routing-metadata` (unknown or invented `--domain`/`--action`): stop;
+  do not silently drop the supplied values. Retry without optional
+  `--domain`/`--action`, or retry only with verified taxonomy IDs from the
+  active manager. Description and Korean tags alone are enough.
 - Search or match smoke failure: keep the archive registered, report that its
   routing metadata needs correction, and do not claim automatic use works.
