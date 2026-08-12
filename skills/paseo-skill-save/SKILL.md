@@ -10,20 +10,24 @@ description: >-
 
 # Paseo Skill Save
 
-Save user-selected skills to a private local overlay. Registration is
-persistent; activation is not. The router may attach a selected skill for one
-task without permanently installing every saved skill. The wrapper manages its
-pinned routing engine automatically; never require the user to install or
-invoke skillNload separately.
+Save user-selected skills to a private local overlay and synchronize the
+portable library through the user's private `paseo_skill_save` Git repository.
+Registration is persistent; activation is not. The router may attach one
+selected skill for a task without permanently installing every saved skill.
+The wrapper manages its pinned routing engine automatically; never require the
+user to install or invoke skillNload separately.
 
 ## Required workflow
 
 1. Identify the exact GitHub repository, `/tree/<revision>/<skill-path>` URL,
    or local skill directory. Reject credentials, query strings, and fragments.
-2. Apply `paseo-spyware-check` to the source before registration. Keep the
-   target inert: do not install dependencies, build it, import it, or execute
-   its scripts. Stop on High or Critical findings. Explain Medium findings and
-   obtain approval before continuing.
+2. Run the bundled wrapper, which invokes the bundled cross-platform Python
+   `paseo-spyware-check` gate before manager bootstrap or registration. Do not
+   bypass this gate by calling the routing engine directly. The gate snapshots
+   local sources and pins GitHub sources to the exact scanned commit. It never
+   installs dependencies, builds, imports, or executes target code. It blocks
+   High or Critical findings. For Medium findings, show the receipt and obtain
+   explicit user approval before rerunning with `--approve-medium`.
 3. Derive a concise Korean description and tags from the verified source.
    Prefer a controlled domain and action when clear. Do not invent capabilities
    that are absent from `SKILL.md`.
@@ -38,12 +42,24 @@ invoke skillNload separately.
      --action <action>
    ```
 
+   Add `--approve-medium` only after the user has seen the Medium findings and
+   explicitly approved registration. Never infer approval from the original
+   save request.
+
+   By default, let the manager onboard or reuse the authenticated user's
+   private `paseo_skill_save` repository and sync the verified overlay. Add
+   `--local-only` only when the user explicitly requests storage on this
+   computer alone. If GitHub authentication is missing, preserve the local
+   skill and report `saved-locally-sync-pending` with the exact login command.
+
    On first use, the wrapper automatically fetches the official public
    skillNload engine at its hard-coded commit, verifies both the commit and the
    complete Git tree, and caches it under `~/.paseo/skill-save/manager/`. It
    uses no pip installation. Do not ask the user to prepare skillNload.
 5. Require the wrapper to report all of the following:
 
+   - spyware receipt digest, severity counts, findings, scanned checksum, and
+     immutable source
    - internal manager mode, pinned commit, tree, and cache path
    - router target and initialization status
    - pinned source repository, commit, and skill path
@@ -52,6 +68,8 @@ invoke skillNload separately.
    - search discovery result
    - natural-language match decision and selected catalog ID
    - bounded skill body evidence for an instructions-only selection
+   - library sync status (`pushed`, `up-to-date`, `saved-locally-sync-pending`,
+     `review-required`, or `skipped-local-only`) and safe retry guidance
 
    A saved `instructions-only` skill is ready only when its activation policy
    is `on-demand`, the match decision is `select`, and confirmation is false.
@@ -79,9 +97,12 @@ snapshot or backup.
 
 ## Multi-computer behavior
 
-The personal overlay is local to one computer. Do not upload it to the public
-Paseobility or skillNload repositories. If the user wants synchronization, use
-a separate user-owned private Git repository and preserve license metadata.
+Use the fixed, user-owned private repository `<github-login>/paseo_skill_save`.
+Each computer pulls and verifies the complete portable library into its local
+overlay; the router searches locally and never contacts GitHub for every
+natural-language request. Never upload saved skills to the public Paseobility
+or skillNload repositories. A sync failure must not disable an already verified
+local overlay.
 
 ## Failure handling
 
