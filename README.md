@@ -33,7 +33,7 @@
 
 Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에게 던져 설치하게 만든 **agent-installable Paseo 슬래쉬 스킬팩**입니다.
 
-설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 테스트 agent 정리, 기기 간 산출물 공유 흐름을 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
+설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 비활성 서브에이전트 정리, 기기 간 산출물 공유와 개인 스킬 라이브러리 동기화를 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
 
 기본 Paseo만으로도 내장 도구를 조합하면 비슷한 일을 할 수 있습니다. 다만 매번 에이전트가 그 조합을 새로 판단하게 두면 느리고 결과가 들쭉날쭉할 수 있어서, 자주 쓰는 패턴을 바로 꺼내 쓰기 쉽게 묶었습니다.
 
@@ -47,16 +47,16 @@ v2.4.0에서는 `/paseo-share`가 인증 계정의 private `paseo_share` 저장�
 
 | 추가/보강 기능 | 역할 |
 | --- | --- |
-| `/paseo-skill-save` | GitHub 스킬을 읽기 전용으로 검사하고 커밋·체크섬을 고정해 개인 라이브러리에 저장한 뒤 자연어 검색·선택까지 검증 |
-| `/paseo-share` | 파일을 전용 private Git 저장소에 게시하고 공유 ID, 미리보기 링크, 다운로드 링크 반환. 다른 컴퓨터에서는 최신 목록 조회와 로컬 가져오기를 자동 수행 |
+| `/paseo-skill-save` | 검증한 개인 스킬을 private `paseo_skill_save`에 동기화하고, 각 컴퓨터에서 필요한 스킬만 자연어로 선택해 일시 적용 |
+| `/paseo-share` | private `paseo_share`에 파일을 게시하고 공유 ID와 미리보기·다운로드 링크 반환. 다른 컴퓨터에서는 검증 후 자동 가져오기 |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
-| `/paseo-agent-cleanup` | 모든 비활성 agent를 확인 없이 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
+| `/paseo-agent-cleanup` | 서브에이전트를 포함한 모든 비활성 agent를 재확인 없이 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
 | Installer backup | 기존 같은 이름의 skill 디렉터리를 덮어쓰기 전에 `skills-backups/` 아래로 자동 백업 |
 | Report summary | spyware helper report에 `High / Medium / Info` count와 verdict hint 추가 |
 
 `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 scanner CLI를 호출하는 방식입니다. Paseobility는 해당 scanner의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
-`/paseo-agent-cleanup`은 이름이나 용도와 무관하게 모든 비활성 agent를 묻지 않고 기본 archive합니다. running 등 활성 agent는 건드리지 않고, workspace cleanup은 승인 후 archive-only 방식으로만 처리합니다.
+`/paseo-agent-cleanup`은 서브에이전트를 포함해 이름이나 용도와 무관한 모든 비활성 agent를 다시 묻지 않고 archive합니다. running 등 활성 agent는 건드리지 않고, workspace cleanup은 승인 후 archive-only 방식으로만 처리합니다.
 
 `/paseo-share`는 첫 실제 공유 요청에서 GitHub CLI 인증을 확인하고 `<로그인 계정>/paseo_share`를 private 저장소로 준비합니다. 다른 컴퓨터에서 같은 GitHub 계정으로 온보딩하면 기존 저장소를 안전 검사 후 재사용합니다. Forgejo나 다른 저장소는 명시적인 `setup <repo-url>`로 연결할 수 있습니다. 업로드한 파일은 모바일에서 링크로 바로 미리볼 수 있고, 다른 컴퓨터의 Paseo는 공유 ID를 이용해 자동으로 가져옵니다.
 
@@ -75,7 +75,7 @@ https://github.com/wilgon456/Paseobility
 
 이 저장소의 지침을 읽고 paseo-share만 이 컴퓨터에 설치하고 검증해줘.
 기존 설치본은 백업하고 Paseo daemon은 재시작하지 마.
-설치가 끝나면 새 세션/reload 방법과 private 공유 저장소 연결 프롬프트를 알려줘.
+설치가 끝나면 새 세션/reload 방법과 최초 공유 요청 방법을 알려줘.
 ```
 
 ```text
@@ -94,9 +94,9 @@ https://github.com/wilgon456/Paseobility
 - 작업을 여러 에이전트에게 나눠 맡기고 결과를 합성합니다.
 - GPT/Claude/DeepSeek/Grok 같은 여러 모델의 답을 비교해 winner 또는 merged plan을 고릅니다.
 - GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
-- 테스트 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive합니다.
+- 테스트 후 쌓인 비활성 서브에이전트를 다시 묻지 않고 archive하고, workspace는 승인 후 archive합니다.
 - 작업 산출물을 private Git 공유함에 올리고 다른 컴퓨터나 모바일에서 바로 열거나 가져옵니다.
-- GitHub 스킬 링크를 개인 라이브러리에 저장하고 이후 평범한 자연어 요청에서 자동으로 찾아 씁니다.
+- GitHub 스킬 링크를 private 개인 라이브러리에 동기화하고, 다른 컴퓨터에서도 평범한 자연어 요청으로 필요한 스킬만 찾아 씁니다.
 - 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
 - 새 프로젝트에 들어갈 때 README, docs, Claude/Codex/Cursor 계열 지침을 모아 작업 맥락을 만듭니다.
 - Codex로 구현하고 Claude로 리뷰하는 식의 크로스 프로바이더 협업을 설계합니다.
@@ -113,10 +113,10 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-agent-tournament` | 멀티 모델 비교/심사 | GPT vs Claude vs DeepSeek, 찬반 토론, 설계안 비교, judge 기반 winner 선정 |
 | `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
 | `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
-| `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private Git 저장소 게시, 클릭 가능한 미리보기/다운로드 링크, 최신 목록, 공유 ID 기반 자동 가져오기 |
-| `/paseo-skill-save` | 개인 스킬 저장·등록 | GitHub 스킬 정적 검사, 한국어 메타데이터 생성, 커밋·체크섬 고정, 자연어 검색·선택 검증 |
+| `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private `paseo_share` 자동 준비, 클릭 가능한 미리보기/다운로드 링크, 공유 ID 기반 검증·가져오기 |
+| `/paseo-skill-save` | 개인 스킬 저장·동기화 | fail-closed 정적 검사, private `paseo_skill_save` 동기화, 자연어 검색, 필요한 스킬만 일시 적용 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
-| `/paseo-agent-cleanup` | 비활성 agent/workspace 정리 | 모든 비활성 agent 자동 archive, 활성 agent 보호, workspace는 승인 후 archive |
+| `/paseo-agent-cleanup` | 비활성 agent/workspace 정리 | 비활성 서브에이전트 재확인 없는 archive, 활성 agent 보호, workspace는 승인 후 archive |
 
 ---
 
@@ -234,7 +234,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
 | `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안·온보딩 테스트 13개, private 저장소 생성/재사용과 public·비관련 저장소 거부 검증, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
 | `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
-| `/paseo-skill-save` on Windows | Tested locally | 공식 skill validator, wrapper 단위 테스트 12개와 spyware gate 테스트 6개, fail-closed receipt, High 차단, Medium 승인 gate, 검사 commit·checksum 결합, secret evidence redaction, 고정 manager 자동 bootstrap·재사용·변조 차단, 실제 GitHub 스킬 저장·검증·검색·자연어 select·본문 증거 확인. 전역 router는 변경하지 않음 |
+| `/paseo-skill-save` wrapper | Tested locally | 공식 skill validator, wrapper 단위 테스트 12개와 spyware gate 테스트 6개, fail-closed receipt, High 차단, Medium 승인 gate, 검사 commit·checksum 결합, secret evidence redaction, 고정 skillNload 0.7 manager와 private sync 상태 전달, 실제 GitHub 스킬 저장·검증·검색·자연어 select 확인. workload 스킬은 영구 설치하지 않음 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -255,7 +255,7 @@ Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치
 회의 녹취에서 결정사항과 담당자별 할 일을 정리해줘
 ```
 
-이후 `skill-hub-router`가 개인 라이브러리에서 맞는 스킬을 골라 이번 작업에만 연결합니다. 설명 전용 스킬은 다시 묻지 않고 적용하며, 실행·외부 변경·삭제 동작은 기존 확인 절차를 유지합니다. 라우터를 처음 설치한 직후에는 새 agent 세션이나 integration reload가 필요할 수 있습니다.
+다른 컴퓨터에서는 같은 GitHub 계정의 portable library를 검증해 로컬 overlay를 재구성합니다. 이후 `skill-hub-router`가 로컬에서 맞는 스킬을 골라 이번 작업에만 연결합니다. 모든 workload 스킬을 agent 경로에 설치하지 않으며, 설명 전용 스킬은 다시 묻지 않고 적용하고 실행·외부 변경·삭제 동작은 기존 확인 절차를 유지합니다. 라우터를 처음 설치한 직후에는 새 agent 세션이나 integration reload가 필요할 수 있습니다.
 
 ### 다른 컴퓨터와 모바일로 산출물 공유하기
 
@@ -416,7 +416,9 @@ GitHub 저장소나 정확한 스킬 경로를 받아 `/paseo-spyware-check`로 
 - 원본 repository, 고정 commit, skill path, checksum, license와 정적 검사 결과를 기록합니다.
 - 저장 직후 `verify`, `search`, 자연어 `match --agent-packet`을 실행해 실제 선택과 본문 증거까지 확인합니다.
 - 기본 저장은 `<github-login>/paseo_skill_save`를 private으로 준비하거나 안전하게 재사용하며, `--local-only`는 사용자가 이 컴퓨터에만 저장하라고 요청했을 때 사용합니다.
+- 동명 저장소가 public이거나 다른 용도로 사용 중이거나 완전히 검사되지 않으면 가시성 변경·초기화·덮어쓰기 없이 중단합니다.
 - 다른 컴퓨터는 portable library의 marker, schema, checksum과 경로를 검증한 뒤 로컬 overlay를 재구성합니다. 기기별 절대 경로·활성화·TTL 상태는 동기화하지 않습니다.
+- 원격 sync가 실패해도 검증된 로컬 overlay는 보존하고 `saved-locally-sync-pending`과 안전한 재시도 방법을 보고합니다.
 - `instructions-only` 스킬만 확인 없이 `on-demand`로 적용합니다.
 - scripts, external-write, destructive 위험은 저장 후에도 사용자 확인을 유지합니다.
 - workload 스킬은 로컬 library에 보관할 수 있지만 agent skill target에 일괄 설치하지 않습니다. Paseobility나 공개 skillNload 저장소에는 업로드하지 않습니다.
@@ -580,7 +582,7 @@ Paseo의 비활성 agent와 테스트 workspace를 안전하게 정리합니다.
 
 핵심 규칙:
 
-- 모든 비활성 agent는 사전 확인 없이 기본 archive합니다.
+- 모든 비활성 agent는 서브에이전트를 포함해 다시 확인하지 않고 기본 archive합니다.
 - running, working, active, starting, queued, pending, busy, executing,
   in-progress 상태의 agent는 archive하지 않습니다.
 - delete는 지원하지 않습니다.
@@ -732,7 +734,7 @@ CLAUDE.md
 
 ## 같이 보면 좋은 프로젝트
 
-- [skillNload](https://github.com/wilgon456/skillNload) - 사용자 선택 스킬을 검증·저장하고 자연어 요청에 연결하는 개인 스킬 라이브러리
+- [skillNload](https://github.com/wilgon456/skillNload) - 사용자 선택 스킬을 검증·동기화하고 자연어 요청에 필요한 스킬만 연결하는 개인 스킬 라이브러리
 
 ---
 
