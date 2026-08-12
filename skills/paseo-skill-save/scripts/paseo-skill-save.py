@@ -20,8 +20,8 @@ from typing import Any, Sequence
 
 
 MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload.git"
-MANAGER_REVISION = "b1dd1890d6a71d66e7451cdac39d44e0722943e1"
-MANAGER_TREE = "8f8477fca5d891b1f265ea3364e5a8a65e5296fb"
+MANAGER_REVISION = "5fc339d03370f16b1425d57240c56c2db9f3e14a"
+MANAGER_TREE = "8d1585839cc78f46fd534fa1c47103c4b6fd9008"
 
 
 class SaveError(RuntimeError):
