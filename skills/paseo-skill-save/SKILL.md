@@ -20,9 +20,12 @@ user to install or invoke skillNload separately.
 The wrapper defaults to provider-aware router setup. It detects supported local
 AI CLIs and, when Paseo is installed, reads `paseo --json provider ls` without
 starting or restarting the daemon. It connects the router to each available,
-enabled Codex, Claude, or OpenCode provider path. Paseo is the supervisor, so
-its CLI alone is not treated as the workload provider. Use `--router-target`
-only when the user explicitly wants to restrict or add targets.
+enabled Codex, Claude, or OpenCode provider path, plus Hermes when the selected
+routing manager advertises Hermes support. The bundled public manager may omit
+Hermes, while an installed private manager can enable it. Paseo is the
+supervisor, so its CLI alone is not treated as the workload provider. Use
+`--router-target` only when the user explicitly wants to restrict or add
+targets.
 
 ## Required workflow
 
