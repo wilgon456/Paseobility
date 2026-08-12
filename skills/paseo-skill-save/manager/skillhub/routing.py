@@ -230,6 +230,12 @@ def availability_reason(item: dict[str, Any]) -> str | None:
         return f"{status}: {blocker}" if blocker else f"{status}: not acquirable"
     if item.get("activation_policy") == "blocked":
         return "activation policy is blocked"
+    security_policy = item.get("security_policy")
+    if isinstance(security_policy, dict):
+        if security_policy.get("malware_verdict") == "blocked" or security_policy.get("execution_policy") == "denied":
+            return "security policy denies activation"
+        if security_policy.get("publication_status") in {"quarantined", "revoked"}:
+            return f"security policy status is {security_policy.get('publication_status')}"
     plan = item.get("acquisition", {})
     if plan.get("status") != "available":
         return f"acquisition unavailable: {plan.get('reason') or 'no acquisition plan'}"
@@ -239,11 +245,15 @@ def availability_reason(item: dict[str, Any]) -> str | None:
 def risk_requirement(item: dict[str, Any], allow_risk: str) -> str | None:
     """Return the explicit authorization flag still needed, if any."""
     risk = str(item.get("risk", "destructive"))
-    if risk_allowed(risk, allow_risk):
-        return None
+    required: str | None = None
     if risk == "destructive":
-        return "--allow-risk destructive --confirm-destructive"
-    return f"--allow-risk {risk}"
+        required = "--allow-risk destructive --confirm-destructive"
+    elif not risk_allowed(risk, allow_risk):
+        required = f"--allow-risk {risk}"
+    security_policy = item.get("security_policy")
+    if isinstance(security_policy, dict) and security_policy.get("execution_policy") in {"confirm", "sandbox-only"}:
+        required = f"{required} + --confirm-policy" if required else "--confirm-policy"
+    return required
 
 
 def provenance_row(item: dict[str, Any]) -> dict[str, Any]:
@@ -317,6 +327,7 @@ def route_task(
                 "tier": item.get("trust", {}).get("tier"),
                 "security_review": item.get("trust", {}).get("security_review"),
             },
+            "security_policy": item.get("security_policy"),
             "routing": {
                 "description_ko": item.get("routing", {}).get("description_ko"),
                 "primary_path": item.get("routing", {}).get("primary_path"),

@@ -38,8 +38,9 @@ explicitly wants to restrict or add targets.
    bypass this gate by calling the routing engine directly. The gate snapshots
    local sources and pins GitHub sources to the exact scanned commit. It never
    installs dependencies, builds, imports, or executes target code. It blocks
-   High or Critical findings. For Medium findings, show the receipt and obtain
-   explicit user approval before rerunning with `--approve-medium`.
+   High or Critical findings. For a review-required policy (Medium findings or
+   declared risky capabilities), show the receipt and obtain explicit user
+   approval before rerunning with `--approve-medium`/`--approve-policy`.
 3. Derive a concise Korean description and tags from the verified source. Do
    not invent capabilities that are absent from `SKILL.md`. Description and
    Korean tags are sufficient for registration. Omit `--domain` and
@@ -82,8 +83,10 @@ explicitly wants to restrict or add targets.
    ask the user to prepare skillNload.
 5. Require the wrapper to report all of the following:
 
-   - spyware receipt digest, severity counts, findings, scanned checksum, and
-     immutable source
+   - spyware receipt digest, severity counts, findings, scanned checksum, immutable
+     source, and the versioned security policy decision
+   - policy visibility/publication/execution state and artifact/finding-scoped
+     local approval status; approval must never be presented as global trust
    - internal manager mode, provenance, digest, and revision/tree when applicable
    - router target discovery evidence and initialization status
    - pinned source repository, commit, and skill path
@@ -98,7 +101,12 @@ explicitly wants to restrict or add targets.
    A saved `instructions-only` skill is ready only when its activation policy
    is `on-demand`, the match decision is `select`, and confirmation is false.
    Executable or externally mutating skills may return `confirm`; keep that
-   gate. Never claim that static checks prove absolute safety.
+   gate. `published` in the policy means visible in the user's private router
+   catalog, not publicly released. There is no enforced sandbox in this
+   increment, so the manager never upgrades a script to `sandbox-only` merely
+   because scripts exist. After local registration approval, a capability-bearing
+   artifact still needs activation-time `--confirm-policy` in addition to the
+   existing risk/`--yes` gates. Never claim that static checks prove absolute safety.
 6. Do not run `enable`, `install`, or target skill code merely because the
    skill was saved. The installed `skill-hub-router` will select the minimum
    useful saved skill for later natural-language requests. A session that was

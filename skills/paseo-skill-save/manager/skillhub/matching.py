@@ -474,6 +474,12 @@ def archive_status(record: dict[str, Any]) -> str:
 
 def record_available(record: dict[str, Any]) -> bool:
     source = source_spec(record)
+    security_policy = record.get("security_policy")
+    if isinstance(security_policy, dict):
+        if security_policy.get("malware_verdict") == "blocked" or security_policy.get("execution_policy") == "denied":
+            return False
+        if security_policy.get("publication_status") in {"quarantined", "revoked"}:
+            return False
     return (
         archive_status(record) == "archived"
         and source.get("status") != "blocked"
@@ -1106,6 +1112,8 @@ def _candidate_card(
     fit_score -= len(forbidden_conflicts) * 24
     fit_score -= len(hard_negative_hits) * 28
     runtime_risk = str(record.get("runtime_risk", record.get("risk", "destructive")))
+    security_policy = record.get("security_policy") if isinstance(record.get("security_policy"), dict) else {}
+    policy_confirmation = security_policy.get("execution_policy") in {"confirm", "sandbox-only"}
     hard_gate_passed = (
         not forbidden_conflicts
         and not hard_negative_hits
@@ -1146,6 +1154,8 @@ def _candidate_card(
         "selectable": selectable,
         "runtime_risk": runtime_risk,
         "activation_policy": record.get("activation_policy"),
+        "security_policy": security_policy,
+        "policy_confirmation_required": policy_confirmation,
         "trust_tier": record.get("trust_tier"),
         "match_reasons": record.get("explanation", {}).get("match_reasons", []),
     }
@@ -1266,6 +1276,7 @@ def _candidate_contract(record: dict[str, Any], candidate: dict[str, Any]) -> di
     automatic_ephemeral_application = (
         candidate["runtime_risk"] == "instructions-only"
         and candidate.get("activation_policy") in {"default", "on-demand"}
+        and not candidate.get("policy_confirmation_required")
         and not bool(auth.get("auth_required"))
         and not sensitive_permissions
     )
@@ -1328,7 +1339,7 @@ def _candidate_contract(record: dict[str, Any], candidate: dict[str, Any]) -> di
             "reason": (
                 "The locally archived skill contains instructions only and can guide the current task without persistent activation."
                 if automatic_ephemeral_application
-                else "The candidate can execute code, write externally, perform destructive actions, require authentication, or uses a manual activation policy."
+                else "The candidate can execute code, use a declared capability, write externally, perform destructive actions, require authentication, or uses a manual activation policy."
             ),
         },
         "retrieval_evidence": {
@@ -1544,6 +1555,7 @@ def match_request(
             requires_confirmation = (
                 top["runtime_risk"] != "instructions-only"
                 or top.get("activation_policy") in {"manual", "blocked"}
+                or top.get("policy_confirmation_required", False)
             )
             decision = {
                 "status": "confirm" if requires_confirmation else "select",

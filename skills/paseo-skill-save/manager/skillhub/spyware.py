@@ -18,6 +18,14 @@ import subprocess
 from typing import Any, Iterable
 from urllib.parse import urlparse
 
+try:
+    from . import policy
+except ImportError:  # pragma: no cover - direct script execution
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from skillhub import policy  # type: ignore
+
 
 TEXT_SUFFIXES = {
     ".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".ini",
@@ -37,7 +45,18 @@ SKIP_PARTS = {
 MAX_SCAN_BYTES = 2 * 1024 * 1024
 MAX_FINDINGS = 500
 SCANNER_NAME = "paseo-spyware-check"
-SCANNER_SCHEMA_VERSION = 1
+SCANNER_SCHEMA_VERSION = 2
+
+LIFECYCLE_FIELDS = frozenset({"preinstall", "install", "postinstall", "prepare", "prepublish", "prepublishOnly"})
+DOCUMENTATION_NAMES = frozenset({"skill.md", "readme", "readme.md", "readme.txt", "changelog.md", "license", "license.md"})
+CONFIGURATION_NAMES = frozenset({
+    "package.json", "pyproject.toml", "setup.py", "setup.cfg", "cargo.toml", "go.mod",
+    "dockerfile", "makefile", "justfile", "taskfile.yml", "taskfile.yaml",
+})
+EXECUTABLE_SUFFIXES = frozenset({
+    ".py", ".js", ".cjs", ".mjs", ".ts", ".tsx", ".jsx", ".sh", ".bash", ".zsh",
+    ".bat", ".cmd", ".ps1", ".rb", ".pl", ".php", ".rs", ".go",
+})
 
 SECRET_TOKEN_PATTERN = re.compile(
     r"gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{20,}",
@@ -73,15 +92,32 @@ HIGH_PATTERNS = (
         ),
     ),
 )
-MEDIUM_PATTERNS = (
-    (
-        "install-time script indicator",
-        re.compile(r"preinstall|postinstall|prepare|prepublish", re.IGNORECASE),
-    ),
-    (
-        "dynamic execution, obfuscation, or environment access indicator",
-        re.compile(r"child_process|\beval\s*\(|\bFunction\s*\(|base64|atob|Buffer\.from|process\.env", re.IGNORECASE),
-    ),
+REMOTE_PIPE_PATTERN = re.compile(r"\b(?:curl|wget)\b[^\n]{0,240}\|\s*(?:ba|z|da|k)?sh\b", re.IGNORECASE)
+PERSISTENCE_PATTERN = re.compile(
+    r"(?:launchctl|LaunchAgents|crontab|systemctl\s+(?:enable|start)|"
+    r"schtasks\s+/create|New-ScheduledTask|CurrentVersion\\Run|startup\s+folder)",
+    re.IGNORECASE,
+)
+PRIVATE_KEY_PATTERN = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")
+DYNAMIC_EXECUTION_PATTERN = re.compile(
+    r"child_process|\beval\s*\(|\bFunction\s*\(|base64|atob|Buffer\.from|"
+    r"subprocess\.(?:run|Popen|call)|os\.system|shell\s*=\s*True",
+    re.IGNORECASE,
+)
+API_KEY_NAME_PATTERN = re.compile(
+    r"\b(?:[A-Z][A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD)|API[_-]?KEY)\b"
+)
+NETWORK_PATTERN = re.compile(
+    r"(?:https?://|\b(?:fetch|axios|requests?\.(?:get|post|put|delete)|urllib|httpx)\s*\(|"
+    r"\b(?:openai|anthropic|google\.generativeai|slack_sdk)\b)",
+    re.IGNORECASE,
+)
+SUBPROCESS_PATTERN = re.compile(r"(?:child_process|subprocess\.|os\.system|shell\s*=\s*True)", re.IGNORECASE)
+FILESYSTEM_PATTERN = re.compile(r"(?:\bopen\s*\(|fs\.(?:read|write|append)|pathlib\.|readFile|writeFile)", re.IGNORECASE)
+EXTERNAL_WRITE_PATTERN = re.compile(
+    r"(?:requests?\.(?:post|put|delete)|fetch\s*\([^\n]{0,160}\b(?:POST|PUT|DELETE)\b|"
+    r"github\.com/[^\n]{0,100}/(?:issues|pulls|contents)|webhook)",
+    re.IGNORECASE,
 )
 
 
@@ -239,43 +275,215 @@ def _redact_evidence(line: str) -> str:
     return redacted.strip()[:300]
 
 
-def _classify(relative: str, line: str, *, scanner_payload: bool = False) -> tuple[str, str] | None:
-    if scanner_payload or relative.startswith("skills/paseo-spyware-check/"):
-        patterns = (*HIGH_PATTERNS, *MEDIUM_PATTERNS)
-        if any(pattern.search(line) for _, pattern in patterns):
-            return "Info", "self-reference in scanner implementation or documentation"
-        return None
-    for reason, pattern in HIGH_PATTERNS:
-        if pattern.search(line):
-            return "High", reason
-    for reason, pattern in MEDIUM_PATTERNS:
-        if pattern.search(line):
-            return "Medium", reason
-    return None
+def _source_role(path: Path) -> str:
+    name = path.name.casefold()
+    parts = {part.casefold() for part in path.parts}
+    if name in DOCUMENTATION_NAMES or path.suffix.casefold() in {".md", ".markdown", ".txt"} or parts & {"docs", "documentation", "examples", "references"}:
+        return "documentation"
+    if name in CONFIGURATION_NAMES or name in HIGH_SIGNAL_NAMES:
+        return "configuration"
+    if path.suffix.casefold() in EXECUTABLE_SUFFIXES:
+        return "executable"
+    return "data"
 
 
-def _scan_files(root: Path) -> list[dict[str, Any]]:
+def _finding(
+    *, severity: str, rule_id: str, relative: str, line: int, reason: str,
+    evidence: str, role: str, confidence: str, mitigation: str,
+    capabilities: Iterable[str] = (), blocks: bool = False, review: bool = False,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "severity": severity,
+        "rule_id": rule_id,
+        "path": relative,
+        "line": line,
+        "source_role": role,
+        "reason": reason,
+        "evidence": _redact_evidence(evidence),
+        "confidence": confidence,
+        "mitigation": mitigation,
+        "capabilities": sorted(set(capabilities)),
+        "blocks": bool(blocks),
+        "review": bool(review),
+    }
+    row["finding_id"] = policy.finding_id(row)
+    return row
+
+
+def _package_json_findings(relative: str, text: str, role: str) -> list[dict[str, Any]]:
+    if Path(relative).name.casefold() != "package.json":
+        return []
+    try:
+        value = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    scripts = value.get("scripts") if isinstance(value, dict) else None
+    if not isinstance(scripts, dict):
+        return []
+    rows: list[dict[str, Any]] = []
+    for field in sorted(set(str(key) for key in scripts) & LIFECYCLE_FIELDS):
+        rows.append(_finding(
+            severity="Medium", rule_id=f"package.lifecycle.{field}", relative=relative, line=0,
+            reason=f"package.json defines the {field} lifecycle field",
+            evidence=f"scripts.{field} = {scripts.get(field)!r}", role=role,
+            confidence="high", mitigation="Review the lifecycle command and register only after explicit local approval.",
+            capabilities=("subprocess",), review=True,
+        ))
+    return rows
+
+
+def _line_findings(relative: str, line: str, number: int, role: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    redacted = _redact_evidence(line)
+    if SECRET_TOKEN_PATTERN.search(line):
+        rows.append(_finding(
+            severity="High", rule_id="secret.actual-token", relative=relative, line=number,
+            reason="credential token material was found", evidence=redacted, role=role,
+            confidence="high", mitigation="Remove the token and rotate it before registration.",
+            capabilities=("credentials",), blocks=True,
+        ))
+    if PRIVATE_KEY_PATTERN.search(line):
+        rows.append(_finding(
+            severity="High", rule_id="secret.private-key", relative=relative, line=number,
+            reason="private-key material was found", evidence=redacted, role=role,
+            confidence="high", mitigation="Remove and rotate the private key before registration.",
+            capabilities=("credentials",), blocks=True,
+        ))
+    if role != "documentation" and REMOTE_PIPE_PATTERN.search(line):
+        rows.append(_finding(
+            severity="High", rule_id="execution.remote-pipe", relative=relative, line=number,
+            reason="remote content is piped directly into a shell", evidence=redacted, role=role,
+            confidence="high", mitigation="Remove remote shell piping and use a reviewed, pinned artifact.",
+            capabilities=("network", "subprocess"), blocks=True,
+        ))
+    elif role == "documentation" and REMOTE_PIPE_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Info", rule_id="documentation.remote-pipe-example", relative=relative, line=number,
+            reason="documentation mentions a remote shell-pipe example", evidence=redacted, role=role,
+            confidence="medium", mitigation="Treat the example as untrusted text; do not execute it.",
+        ))
+    if role != "documentation" and PERSISTENCE_PATTERN.search(line):
+        rows.append(_finding(
+            severity="High", rule_id="persistence.autostart", relative=relative, line=number,
+            reason="an operating-system persistence mechanism was found", evidence=redacted, role=role,
+            confidence="high", mitigation="Remove autostart/persistence behavior before registration.",
+            capabilities=("filesystem", "subprocess"), blocks=True,
+        ))
+    elif role == "documentation" and PERSISTENCE_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Info", rule_id="documentation.persistence-example", relative=relative, line=number,
+            reason="documentation mentions a persistence mechanism", evidence=redacted, role=role,
+            confidence="medium", mitigation="Treat the mention as untrusted text; do not apply it automatically.",
+        ))
+    if role != "documentation" and DYNAMIC_EXECUTION_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Medium", rule_id="execution.dynamic-code", relative=relative, line=number,
+            reason="dynamic execution or shell invocation was found in executable/configuration content", evidence=redacted, role=role,
+            confidence="medium", mitigation="Review the exact call and keep execution behind an explicit local confirmation gate.",
+            capabilities=("subprocess",), review=True,
+        ))
+    if API_KEY_NAME_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Info", rule_id="capability.credentials.api-key-name", relative=relative, line=number,
+            reason="an API-key or credential variable name indicates credential capability", evidence=redacted, role=role,
+            confidence="high", mitigation="Provide credentials only through the host's approved secret flow; never embed them in the skill.",
+            capabilities=("credentials",),
+        ))
+    if NETWORK_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Info", rule_id="capability.network.external-api", relative=relative, line=number,
+            reason="an external API or network operation indicates network capability", evidence=redacted, role=role,
+            confidence="medium", mitigation="Review the destination, data flow, and host confirmation before network use.",
+            capabilities=("network",),
+        ))
+    if role != "documentation" and SUBPROCESS_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Info", rule_id="capability.subprocess", relative=relative, line=number,
+            reason="executable content can invoke a subprocess", evidence=redacted, role=role,
+            confidence="high", mitigation="Keep subprocess execution behind explicit local confirmation.",
+            capabilities=("subprocess",),
+        ))
+    if role != "documentation" and FILESYSTEM_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Info", rule_id="capability.filesystem", relative=relative, line=number,
+            reason="executable content accesses the filesystem", evidence=redacted, role=role,
+            confidence="medium", mitigation="Review paths and limit filesystem access to the intended scope.",
+            capabilities=("filesystem",),
+        ))
+    if EXTERNAL_WRITE_PATTERN.search(line):
+        rows.append(_finding(
+            severity="Info", rule_id="capability.external-write", relative=relative, line=number,
+            reason="an API write or webhook operation indicates external-write capability", evidence=redacted, role=role,
+            confidence="medium", mitigation="Require a separate confirmation immediately before the external write.",
+            capabilities=("external-write", "network"),
+        ))
+    return rows
+
+
+def _scan_files_with_metadata(root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     findings: list[dict[str, Any]] = []
+    files_considered = 0
+    files_scanned = 0
+    truncated = False
+    truncation_reasons: list[str] = []
     manifest = root / "SKILL.md"
     scanner_payload = manifest.is_file() and bool(re.search(r"(?m)^name:\s*paseo-spyware-check\s*$", manifest.read_text(encoding="utf-8", errors="replace")))
     for candidate in _iter_payload_files(root):
         if not _is_high_signal(candidate):
             continue
+        files_considered += 1
         relative = candidate.relative_to(root).as_posix()
+        role = _source_role(candidate)
         size = candidate.stat().st_size
         if size > MAX_SCAN_BYTES:
-            findings.append({"severity": "Info", "path": relative, "line": 0, "reason": "high-signal file exceeded the static text scan size limit", "evidence": f"size={size}"})
+            truncated = True
+            truncation_reasons.append(f"file-too-large:{relative}")
+            findings.append(_finding(
+                severity="Info", rule_id="scan.file-truncated", relative=relative, line=0,
+                reason="high-signal file exceeded the static text scan size limit", evidence=f"size={size}", role=role,
+                confidence="high", mitigation="Review the file separately before registration.",
+            ))
             continue
         text = candidate.read_text(encoding="utf-8", errors="replace")
+        files_scanned += 1
+        self_reference = scanner_payload or relative.startswith("skills/paseo-spyware-check/")
+        rows = _package_json_findings(relative, text, role)
         for number, line in enumerate(text.splitlines(), start=1):
-            classification = _classify(relative, line, scanner_payload=scanner_payload)
-            if classification is None:
-                continue
-            severity, reason = classification
-            findings.append({"severity": severity, "path": relative, "line": number, "reason": reason, "evidence": _redact_evidence(line)})
-            if len(findings) >= MAX_FINDINGS:
-                return findings
-    return findings
+            rows.extend(_line_findings(relative, line, number, role))
+        if self_reference:
+            informational: list[dict[str, Any]] = []
+            for row in rows:
+                row = dict(row)
+                row["severity"] = "Info"
+                row["rule_id"] = f"scanner.self-reference.{row['rule_id']}"
+                row["reason"] = "the bundled scanner source contains a static rule pattern"
+                row["mitigation"] = "This is scanner implementation text, not target payload behavior."
+                row["capabilities"] = []
+                row["blocks"] = False
+                row["review"] = False
+                row["finding_id"] = policy.finding_id(row)
+                informational.append(row)
+            rows = informational
+        findings.extend(rows)
+        if len(findings) >= MAX_FINDINGS:
+            findings = findings[:MAX_FINDINGS]
+            truncated = True
+            truncation_reasons.append("max-findings")
+            break
+    return findings, {
+        "schema_version": SCANNER_SCHEMA_VERSION,
+        "files_considered": files_considered,
+        "files_scanned": files_scanned,
+        "max_findings": MAX_FINDINGS,
+        "max_scan_bytes_per_file": MAX_SCAN_BYTES,
+        "truncated": truncated,
+        "truncation_reasons": sorted(set(truncation_reasons)),
+        "target_code_executed": False,
+    }
+
+
+def _scan_files(root: Path) -> list[dict[str, Any]]:
+    return _scan_files_with_metadata(root)[0]
 
 
 def scan_target_with_path(target: str, workspace: Path, timeout: int = 180) -> tuple[dict[str, Any], str, Path]:
@@ -285,22 +493,32 @@ def scan_target_with_path(target: str, workspace: Path, timeout: int = 180) -> t
         raise ScanError("unsafe-workspace", "scan workspace is a link or reparse point")
     selected, source, add_source = _acquire_source(target, workspace, timeout)
     _assert_link_free(selected)
-    findings = _scan_files(selected)
+    findings, scan_metadata = _scan_files_with_metadata(selected)
     counts = {severity.casefold(): sum(1 for row in findings if row["severity"] == severity) for severity in ("Critical", "High", "Medium", "Info")}
     verdict = "high" if counts["critical"] or counts["high"] else ("medium" if counts["medium"] else "low")
+    checksum = directory_checksum(selected)
+    security_policy = policy.build_policy(
+        source=source,
+        checksum=checksum,
+        findings=findings,
+        scanner_schema_version=SCANNER_SCHEMA_VERSION,
+    )
     receipt: dict[str, Any] = {
         "status": "scan-complete",
         "scanner": {"name": SCANNER_NAME, "schema_version": SCANNER_SCHEMA_VERSION, "mode": "bundled-python-static"},
         "target": target,
         "source": source,
         "pinned_source": add_source if source["kind"] == "github" else None,
-        "content_checksum": directory_checksum(selected),
+        "content_checksum": checksum,
         "verdict": verdict,
         "counts": counts,
         "findings": findings,
+        "scan": scan_metadata,
+        "policy": security_policy,
         "limitations": [
             "Static pattern checks do not prove that a skill is safe.",
             "Dependencies and target code were not installed, imported, built, or executed.",
+            "Receipt SHA-256 is an integrity digest, not a digital or server signature.",
         ],
     }
     canonical = json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -328,15 +546,45 @@ def validate_receipt(receipt: Any) -> dict[str, Any]:
         value = counts.get(severity)
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ScanError("spyware-check-invalid", "Spyware scan receipt has invalid finding counts")
+    finding_identifiers: list[str] = []
     for finding in findings:
         if not isinstance(finding, dict) or str(finding.get("severity", "")).casefold() not in expected_counts:
             raise ScanError("spyware-check-invalid", "Spyware scan finding is invalid")
+        for field in ("finding_id", "rule_id", "confidence", "evidence", "mitigation", "path", "source_role"):
+            if not isinstance(finding.get(field), (str, int)) or finding.get(field) in {"", None}:
+                raise ScanError("spyware-check-invalid", f"Spyware scan finding is missing {field}")
+        if not isinstance(finding.get("capabilities"), list) or not isinstance(finding.get("blocks"), bool) or not isinstance(finding.get("review"), bool):
+            raise ScanError("spyware-check-invalid", "Spyware scan finding has invalid policy metadata")
+        if finding.get("finding_id") != policy.finding_id(finding):
+            raise ScanError("spyware-check-invalid", "Spyware finding ID is not stable for its rule/evidence")
+        finding_identifiers.append(str(finding["finding_id"]))
         expected_counts[str(finding["severity"]).casefold()] += 1
     if counts != expected_counts:
         raise ScanError("spyware-check-invalid", "Spyware scan counts do not match its findings")
     verdict = "high" if counts["critical"] or counts["high"] else ("medium" if counts["medium"] else "low")
     if receipt.get("verdict") != verdict:
         raise ScanError("spyware-check-invalid", "Spyware scan verdict is inconsistent")
+    scan_metadata = receipt.get("scan")
+    if (
+        not isinstance(scan_metadata, dict)
+        or scan_metadata.get("schema_version") != SCANNER_SCHEMA_VERSION
+        or not all(isinstance(scan_metadata.get(field), int) and not isinstance(scan_metadata.get(field), bool) and scan_metadata.get(field) >= 0 for field in ("files_considered", "files_scanned", "max_findings", "max_scan_bytes_per_file"))
+        or scan_metadata.get("files_scanned") > scan_metadata.get("files_considered")
+        or not isinstance(scan_metadata.get("truncated"), bool)
+        or not isinstance(scan_metadata.get("truncation_reasons"), list)
+        or not all(isinstance(reason, str) and reason for reason in scan_metadata.get("truncation_reasons", []))
+        or scan_metadata.get("target_code_executed") is not False
+    ):
+        raise ScanError("spyware-check-invalid", "Spyware scan truncation metadata is invalid")
+    try:
+        policy.validate_policy(
+            receipt.get("policy"),
+            expected_source=source,
+            expected_checksum=receipt["content_checksum"],
+            expected_finding_ids=finding_identifiers,
+        )
+    except policy.PolicyError as exc:
+        raise ScanError("spyware-check-invalid", f"Spyware policy binding is invalid: {exc}") from exc
     unsigned = dict(receipt)
     unsigned.pop("receipt_sha256", None)
     expected_digest = hashlib.sha256(json.dumps(unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()

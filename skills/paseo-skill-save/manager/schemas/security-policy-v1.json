@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillNload security policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy_name",
+    "schema_version",
+    "policy_version",
+    "malware_verdict",
+    "capabilities",
+    "visibility",
+    "publication_status",
+    "execution_policy",
+    "artifact",
+    "finding_ids",
+    "decision_basis",
+    "approval",
+    "limitations"
+  ],
+  "properties": {
+    "policy_name": {"const": "skill-security-policy"},
+    "schema_version": {"const": 1},
+    "policy_version": {"const": 1},
+    "malware_verdict": {"enum": ["clean", "suspicious", "blocked"]},
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["network", "credentials", "subprocess", "filesystem", "external-write"]}
+    },
+    "visibility": {"enum": ["private", "unlisted", "public"]},
+    "publication_status": {"enum": ["quarantined", "review-required", "published", "revoked"]},
+    "execution_policy": {"enum": ["instructions-only", "confirm", "sandbox-only", "denied"]},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_kind", "source_repository", "source_commit", "source_tree", "source_path", "normalized_content_checksum", "checksum_algorithm"],
+      "properties": {
+        "source_kind": {"enum": ["github", "local"]},
+        "source_repository": {"type": "string"},
+        "source_commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+        "source_tree": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+        "source_path": {"type": "string"},
+        "normalized_content_checksum": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "checksum_algorithm": {"const": "sha256-normalized-content"}
+      }
+    },
+    "finding_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "decision_basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scanner", "scanner_schema_version", "blocking_finding_ids", "review_finding_ids", "capability_finding_ids", "sandbox_enforced"],
+      "properties": {
+        "scanner": {"type": "string"},
+        "scanner_schema_version": {"type": "integer", "minimum": 1},
+        "blocking_finding_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "review_finding_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "capability_finding_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "sandbox_enforced": {"type": "boolean"}
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "scope", "local_user_id", "approved_at", "effect", "global_trust_effect"],
+      "properties": {
+        "status": {"enum": ["not-required", "required", "approved", "not-permitted"]},
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy_version", "artifact_checksum", "finding_ids"],
+          "properties": {
+            "policy_version": {"const": 1},
+            "artifact_checksum": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "finding_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+          }
+        },
+        "local_user_id": {"type": ["string", "null"]},
+        "approved_at": {"type": ["string", "null"]},
+        "effect": {"const": "local-private-registration-only"},
+        "global_trust_effect": {"const": "none"}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

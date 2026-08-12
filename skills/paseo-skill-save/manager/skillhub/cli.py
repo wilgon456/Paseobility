@@ -19,7 +19,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 try:
-    from . import acquire, matching, remote, routing, spyware, trust
+    from . import acquire, matching, policy, remote, routing, spyware, trust
     from .github_onboarding import clone_remote, onboard_github
     from .library import (
         KNOWN_TARGETS,
@@ -57,7 +57,7 @@ try:
     from .taxonomy import compile_routing_tree
 except ImportError:  # pragma: no cover - direct script execution
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from skillhub import acquire, matching, remote, routing, spyware, trust  # type: ignore
+    from skillhub import acquire, matching, policy, remote, routing, spyware, trust  # type: ignore
     from skillhub.github_onboarding import clone_remote, onboard_github  # type: ignore
     from skillhub.library import (  # type: ignore
         KNOWN_TARGETS,
@@ -599,6 +599,30 @@ def gate_item_for_acquisition(item: dict[str, Any]) -> None:
         if not ok:
             raise UserError(f"{item['catalog_id']}: {reason}")
     else:
+        security_policy = item.get("security_policy")
+        if isinstance(security_policy, dict):
+            try:
+                source = item.get("source", {}) if isinstance(item.get("source"), dict) else {}
+                repository = str(source.get("repository") or "")
+                policy.validate_policy(
+                    security_policy,
+                    expected_source={
+                        "kind": "github" if repository.startswith("https://github.com/") and source.get("commit") else "local",
+                        "repository": repository,
+                        "commit": source.get("commit"),
+                        "tree": source.get("tree"),
+                        "path": source.get("path", ""),
+                    },
+                    expected_checksum=item.get("verification", {}).get("checksum"),
+                )
+            except policy.PolicyError as exc:
+                raise UserError(f"{item['catalog_id']}: security policy is invalid", code="policy-invalid", details={"detail": str(exc)}) from exc
+            if security_policy.get("malware_verdict") == "blocked" or security_policy.get("execution_policy") == "denied":
+                raise UserError(f"{item['catalog_id']}: policy denies execution", code="policy-denied")
+            if security_policy.get("publication_status") in {"quarantined", "revoked"}:
+                raise UserError(f"{item['catalog_id']}: policy status is not activatable", code="policy-not-activatable")
+            if policy.policy_requires_approval(security_policy):
+                raise UserError(f"{item['catalog_id']}: local policy approval is required", code="policy-approval-required")
         return
     acquire.acquisition_plan(item)
 
@@ -620,6 +644,16 @@ def gate_risk(item: dict[str, Any], allow_risk: str | None, confirm_destructive:
         return
     if allow_risk and not risk_allowed(risk, allow_risk):
         raise UserError(f"risk gate: allowance {allow_risk} is below item risk {risk}")
+
+
+def gate_policy_confirmation(item: dict[str, Any], confirmed: bool = False) -> None:
+    """Require an activation-time acknowledgement for policy capabilities."""
+    if policy.policy_requires_confirmation(item.get("security_policy")) and not confirmed:
+        raise UserError(
+            f"policy gate: {item['catalog_id']} declares a capability or review finding; "
+            "--confirm-policy is required after reviewing the policy",
+            code="policy-confirmation-required",
+        )
 
 
 def confirm_action(args: argparse.Namespace, summary: dict[str, Any]) -> None:
@@ -660,7 +694,17 @@ def run_spyware_receipt_gate(
         ) from exc
     detail = json_dump(receipt)
     counts = receipt["counts"]
-    if counts["critical"] or counts["high"]:
+    security_policy = receipt.get("policy")
+    try:
+        policy.validate_policy(
+            security_policy,
+            expected_source=receipt.get("source"),
+            expected_checksum=receipt.get("content_checksum"),
+            expected_finding_ids=[str(row["finding_id"]) for row in receipt.get("findings", [])],
+        )
+    except (policy.PolicyError, KeyError, TypeError) as exc:
+        raise UserError("spyware receipt policy binding is invalid", code="spyware-check-invalid", details={"detail": str(exc)}) from exc
+    if security_policy.get("malware_verdict") == "blocked" or counts["critical"] or counts["high"]:
         if not getattr(args, "json", False):
             print(detail, file=sys.stderr, end="")
         raise UserError(
@@ -668,11 +712,12 @@ def run_spyware_receipt_gate(
             code="spyware-check-blocked",
             details={"receipt": receipt},
         )
-    if counts["medium"] and not getattr(args, "approve_medium", False):
+    approval_requested = bool(getattr(args, "approve_medium", False) or getattr(args, "approve_policy", False))
+    if policy.policy_requires_approval(security_policy) and not approval_requested:
         if not getattr(args, "json", False):
             print(detail, file=sys.stderr, end="")
         raise UserError(
-            "Medium findings require explicit --approve-medium after reviewing the receipt",
+            "review-required policy needs explicit --approve-policy/--approve-medium after reviewing the receipt",
             code="spyware-check-approval-required",
             details={"receipt": receipt},
         )
@@ -685,16 +730,43 @@ def run_spyware_receipt_gate(
 
 
 def bind_item_to_spyware_receipt(
-    receipt: dict[str, Any], item: dict[str, Any]
+    receipt: dict[str, Any], item: dict[str, Any], *, approved: bool = False
 ) -> None:
     """Bind an overlay record's source identity to the accepted receipt."""
     scanned = receipt.get("source")
     if not isinstance(scanned, dict):
         raise UserError("spyware receipt has no source", code="spyware-check-invalid")
+    receipt_policy = receipt.get("policy")
+    try:
+        policy.validate_policy(
+            receipt_policy,
+            expected_source=scanned,
+            expected_checksum=receipt.get("content_checksum"),
+            expected_finding_ids=[str(row["finding_id"]) for row in receipt.get("findings", [])],
+        )
+    except (policy.PolicyError, KeyError, TypeError) as exc:
+        raise UserError("spyware receipt policy binding is invalid", code="spyware-check-invalid", details={"detail": str(exc)}) from exc
     verification = item.setdefault("verification", {})
     verification["spyware_receipt_sha256"] = receipt["receipt_sha256"]
     verification["spyware_content_checksum"] = receipt["content_checksum"]
     verification["spyware_verdict"] = receipt["verdict"]
+    item_policy = copy.deepcopy(receipt_policy)
+    if approved and policy.policy_requires_approval(item_policy):
+        try:
+            item_policy = policy.approve_locally(item_policy)
+        except policy.PolicyError as exc:
+            raise UserError("local approval could not be bound to this artifact", code="spyware-check-invalid", details={"detail": str(exc)}) from exc
+    try:
+        policy.validate_policy(
+            item_policy,
+            expected_source=scanned,
+            expected_checksum=receipt.get("content_checksum"),
+            expected_finding_ids=[str(row["finding_id"]) for row in receipt.get("findings", [])],
+        )
+    except (policy.PolicyError, KeyError, TypeError) as exc:
+        raise UserError("saved item policy binding is invalid", code="scan-receipt-mismatch", details={"detail": str(exc)}) from exc
+    item["security_policy"] = item_policy
+    verification["security_policy_sha256"] = policy.policy_digest(item_policy)
     if scanned.get("kind") == "local":
         if scanned.get("skill_manifest") and item.get("verification", {}).get("checksum") != receipt.get("content_checksum"):
             raise UserError(
@@ -1312,7 +1384,12 @@ def enable_targets(
 
 
 def lock_identity(item: dict[str, Any]) -> dict[str, Any]:
-    return {"revision": item.get("revision"), "checksum": item.get("verification", {}).get("checksum"), "version": item.get("version")}
+    return {
+        "revision": item.get("revision"),
+        "checksum": item.get("verification", {}).get("checksum"),
+        "version": item.get("version"),
+        "security_policy_sha256": item.get("verification", {}).get("security_policy_sha256"),
+    }
 
 
 def ensure_fetched(
@@ -1367,6 +1444,7 @@ def cmd_fetch(args: argparse.Namespace, repo: Path, mode: str, state_dir: Path) 
     registry = load_registry(repo, state_dir)
     item = find_item(registry, args.item)
     gate_item_for_acquisition(item)
+    gate_policy_confirmation(item, getattr(args, "confirm_policy", False))
     gate_risk(item, args.allow_risk, confirm_destructive=getattr(args, "confirm_destructive", False))
     state = load_state(state_dir)
     cleanup_one_shot(state, Path(args_home_for_cleanup(args)))
@@ -1521,7 +1599,7 @@ def cmd_verify(args: argparse.Namespace, repo: Path, mode: str, home: Path, stat
                 if not cache_result["manifest_match"] and cache_result.get("status") == "verified":
                     cache_result["status"] = "mismatch"
                     cache_result["manifest_only_violation"] = True
-        if cache_result.get("status") in {"mismatch", "unsafe"}:
+        if cache_result.get("status") in {"mismatch", "unsafe", "policy-invalid", "policy-denied"}:
             results["enforcement"] = enforce_cache_failure(home, state_dir, state, item, cache_result)
             results["quarantined"] = True
     statuses = [row.get("status") for row in (results.get("cache"), results.get("checkout_archive"), results.get("overlay")) if isinstance(row, dict)]
@@ -1534,6 +1612,7 @@ def cmd_install(args: argparse.Namespace, repo: Path, mode: str, home: Path, sta
     registry = load_registry(repo, state_dir)
     item = find_item(registry, args.item)
     gate_item_for_acquisition(item)
+    gate_policy_confirmation(item, getattr(args, "confirm_policy", False))
     gate_risk(item, args.allow_risk, confirm_destructive=getattr(args, "confirm_destructive", False))
     targets = parse_target_list(args.target)
     state = load_state(state_dir)
@@ -1595,6 +1674,7 @@ def cmd_use(args: argparse.Namespace, repo: Path, mode: str, home: Path, state_d
     if not args.once:
         raise UserError("use requires --once; for persistent activation run 'skillhub install'")
     gate_item_for_acquisition(item)
+    gate_policy_confirmation(item, getattr(args, "confirm_policy", False))
     gate_risk(item, args.allow_risk, confirm_destructive=getattr(args, "confirm_destructive", False))
     targets = parse_target_list(args.target, allow_all=False)
     if len(targets) != 1:
@@ -1933,6 +2013,7 @@ def cmd_enable(args: argparse.Namespace, repo: Path, mode: str, home: Path, stat
         ok, reason = acquire.license_gate(item)
         if not ok:
             raise UserError(f"{item['catalog_id']}: {reason}")
+    gate_policy_confirmation(item, getattr(args, "confirm_policy", False))
     gate_risk(item, args.allow_risk, confirm_destructive=getattr(args, "confirm_destructive", False))
     state = load_state(state_dir)
     cleanup_one_shot(state, home)
@@ -2590,10 +2671,11 @@ def _github_source(value: str, stack: ExitStack) -> tuple[Path, dict[str, str]] 
             raise UserError(f"GitHub revision fetch failed: {fetch.stderr.strip()[:400]}", code="git-fetch-failed")
         subprocess.run(["git", "-C", str(checkout), "checkout", "--detach", "FETCH_HEAD"], check=True, env=env, capture_output=True)
     commit = run_git(checkout, "rev-parse", "HEAD").strip()
+    tree = run_git(checkout, "rev-parse", "HEAD^{tree}").strip()
     selected = (checkout / subdirectory).resolve() if subdirectory else checkout.resolve()
     if not path_within(selected, checkout) or not selected.is_dir():
         raise UserError("GitHub skill path is missing or leaves the repository")
-    return selected, {"repository": repository.removesuffix(".git"), "commit": commit, "path": subdirectory}
+    return selected, {"repository": repository.removesuffix(".git"), "commit": commit, "tree": tree, "path": subdirectory}
 
 
 def _personal_routing(registry: dict[str, Any], name: str, description: str, args: argparse.Namespace) -> dict[str, Any]:
@@ -2705,7 +2787,14 @@ def _personal_item(
         "added_at": utc_now(),
         "adapters": {},
     }
-    bind_item_to_spyware_receipt(receipt, item)
+    bind_item_to_spyware_receipt(
+        receipt,
+        item,
+        approved=bool(getattr(args, "approve_medium", False) or getattr(args, "approve_policy", False)),
+    )
+    if policy.policy_requires_confirmation(item.get("security_policy")):
+        item["activation_policy"] = "manual"
+        item["verification"]["security_policy_sha256"] = policy.policy_digest(item["security_policy"])
     item["security_receipt"] = receipt
     return name, item
 
@@ -2774,15 +2863,25 @@ def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
                 state.setdefault("overlays", {})[item["catalog_id"]] = {
                     "catalog_id": item["catalog_id"], "name": item["name"], "path": str(destination),
                     "root": str(overlay_root), "checksum": checksum, "added": utc_now(),
-                    "activation": item["activation_policy"], "item": item,
+                    "activation": item["activation_policy"], "security_policy": item.get("security_policy"), "item": item,
                 }
+                if isinstance(item.get("security_policy"), dict):
+                    state.setdefault("policy_records", {})[item["catalog_id"]] = copy.deepcopy(item["security_policy"])
             save_state(state_dir, state)
         except Exception:
             for destination in reversed(created):
                 if destination.is_dir() and path_within(destination, overlay_root):
                     shutil.rmtree(destination)
             raise
-    rows = [{"catalog_id": item["catalog_id"], "path": str(destination), "checksum": item["verification"]["checksum"], "risk": item["risk"], "routing": item["routing"]} for _, destination, item in prepared]
+    rows = [{
+        "catalog_id": item["catalog_id"],
+        "path": str(destination),
+        "checksum": item["verification"]["checksum"],
+        "risk": item["risk"],
+        "routing": item["routing"],
+        "security_policy": item.get("security_policy"),
+        "security_policy_sha256": item.get("verification", {}).get("security_policy_sha256"),
+    } for _, destination, item in prepared]
     result: dict[str, Any] = {"status": "added-to-personal-library", "count": len(rows), "items": rows}
 
     if getattr(args, "local_only", False):
@@ -3058,6 +3157,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--refresh", action="store_true")
     fetch.add_argument("--allow-risk", choices=tuple(RISK_ORDER), default=None)
     fetch.add_argument("--confirm-destructive", action="store_true")
+    fetch.add_argument("--confirm-policy", action="store_true", help="acknowledge the saved artifact security policy before activation")
     fetch.add_argument("--yes", "--approve", dest="approved", action="store_true", help="approve after reviewing inspect output")
 
     verify = common("verify")
@@ -3068,6 +3168,7 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--target", required=True, help="comma-separated targets: codex,claude,opencode,paseo,generic")
     install.add_argument("--allow-risk", choices=tuple(RISK_ORDER), default=None)
     install.add_argument("--confirm-destructive", action="store_true")
+    install.add_argument("--confirm-policy", action="store_true", help="acknowledge the saved artifact security policy before activation")
     install.add_argument("--yes", "--approve", dest="approved", action="store_true", help="approve after reviewing inspect output")
     install.add_argument("--from-repo", default=None)
     install.add_argument("--refresh", action="store_true")
@@ -3078,6 +3179,7 @@ def build_parser() -> argparse.ArgumentParser:
     use.add_argument("--target", required=True)
     use.add_argument("--allow-risk", choices=tuple(RISK_ORDER), default=None)
     use.add_argument("--confirm-destructive", action="store_true")
+    use.add_argument("--confirm-policy", action="store_true", help="acknowledge the saved artifact security policy before activation")
     use.add_argument("--ttl-minutes", type=int, default=DEFAULT_ONE_SHOT_TTL_MINUTES)
     use.add_argument("--yes", "--approve", dest="approved", action="store_true", help="approve after reviewing inspect output")
     use.add_argument("--from-repo", default=None)
@@ -3096,6 +3198,7 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "enable":
             child.add_argument("--allow-risk", choices=tuple(RISK_ORDER), default=None)
             child.add_argument("--confirm-destructive", action="store_true")
+            child.add_argument("--confirm-policy", action="store_true", help="acknowledge the saved artifact security policy before activation")
             child.add_argument("--yes", "--approve", dest="approved", action="store_true", help="approve after reviewing inspect output")
 
     bootstrap = common("bootstrap")
@@ -3125,7 +3228,7 @@ def build_parser() -> argparse.ArgumentParser:
     overlay_update.add_argument("--dry-run", action="store_true", help="show the validated file and metadata diff")
     overlay_update.add_argument("--yes", action="store_true", help="approve the preview and atomically replace the overlay")
     overlay_update.add_argument("--expected-state", help="state fingerprint returned by --dry-run")
-    overlay_update.add_argument("--approve-medium", action="store_true", help="approve Medium spyware findings after reviewing the receipt")
+    overlay_update.add_argument("--approve-medium", "--approve-policy", dest="approve_medium", action="store_true", help="approve a review-required local policy after reviewing the receipt")
 
     overlay_rollback = common("overlay-rollback")
     overlay_rollback.add_argument("item")
@@ -3180,9 +3283,9 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--action", action="append", default=[], help="repeatable controlled action")
     add.add_argument("--risk", choices=tuple(RISK_ORDER), default=None, help="reviewed runtime risk; inferred conservatively when omitted")
     add.add_argument(
-        "--approve-medium",
+        "--approve-medium", "--approve-policy", dest="approve_medium",
         action="store_true",
-        help="explicitly approve Medium spyware findings after reviewing the receipt",
+        help="explicitly approve a review-required local policy after reviewing the receipt",
     )
 
     return parser

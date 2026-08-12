@@ -11,6 +11,7 @@ raise RemoteError. Imports are transactional (stage-all, promote on success).
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -22,6 +23,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from . import policy
 from .acquire import MAX_FILE_BYTES, MAX_FILES, MAX_TOTAL_BYTES, BINARY_SUFFIXES, unsafe_rel_path
 from .library import (
     SECRET_PATTERNS,
@@ -177,6 +179,32 @@ def validate_portable_item(item: dict[str, Any]) -> list[str]:
             issues.append("invalid-checksum")
     else:
         issues.append("invalid-verification")
+
+    security_policy = item.get("security_policy")
+    if security_policy is not None:
+        if not isinstance(security_policy, dict):
+            issues.append("invalid-security-policy")
+        else:
+            source = item.get("source", {}) if isinstance(item.get("source"), dict) else {}
+            repository = str(source.get("repository") or "")
+            expected_source = {
+                "kind": "github" if repository.startswith("https://github.com/") and source.get("commit") else "local",
+                "repository": repository,
+                "commit": source.get("commit"),
+                "tree": source.get("tree"),
+                "path": source.get("path", ""),
+            }
+            try:
+                policy.validate_policy(
+                    security_policy,
+                    expected_source=expected_source,
+                    expected_checksum=verification.get("checksum") if isinstance(verification, dict) else None,
+                )
+                expected_policy_digest = verification.get("security_policy_sha256") if isinstance(verification, dict) else None
+                if expected_policy_digest and expected_policy_digest != policy.policy_digest(security_policy):
+                    issues.append("security-policy-digest-mismatch")
+            except policy.PolicyError as exc:
+                issues.append(f"invalid-security-policy:{exc}")
 
     if not isinstance(item.get("routing"), dict):
         issues.append("invalid-routing")
@@ -337,6 +365,7 @@ def make_portable_item(item: dict[str, Any]) -> dict[str, Any]:
         "source": {
             "repository": source.get("repository", ""),
             "commit": source.get("commit", ""),
+            "tree": source.get("tree", ""),
             "path": source.get("path", ""),
             "status": source.get("status", ""),
             "publisher": source.get("publisher", ""),
@@ -361,7 +390,9 @@ def make_portable_item(item: dict[str, Any]) -> dict[str, Any]:
         "verification": {
             "status": verification.get("status", ""),
             "checksum": verification.get("checksum", ""),
+            "security_policy_sha256": verification.get("security_policy_sha256", ""),
         },
+        "security_policy": copy.deepcopy(item.get("security_policy")) if isinstance(item.get("security_policy"), dict) else None,
         "version": item.get("version", "personal"),
         "revision": item.get("revision", ""),
         "compatibility": item.get("compatibility", ["codex", "claude-code", "opencode", "paseo", "generic-agent"]),
@@ -732,8 +763,11 @@ def import_from_portable(
                 "checksum": dest_checksum,
                 "added": utc_now_iso(),
                 "activation": item.get("activation_policy", "on-demand"),
+                "security_policy": copy.deepcopy(item.get("security_policy")) if isinstance(item.get("security_policy"), dict) else None,
                 "item": item,
             }
+            if isinstance(item.get("security_policy"), dict):
+                state.setdefault("policy_records", {})[item["catalog_id"]] = copy.deepcopy(item["security_policy"])
             imported.append({
                 "catalog_id": item["catalog_id"],
                 "name": item.get("name", ""),

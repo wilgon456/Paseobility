@@ -16,6 +16,7 @@
     "one_shot": {"type": "object"},
     "feedback": {"type": "object"},
     "sync": {"type": "object"},
-    "remote": {"type": "object"}
+    "remote": {"type": "object"},
+    "policy_records": {"type": "object", "additionalProperties": {"$ref": "security-policy-v1.json"}}
   }
 }

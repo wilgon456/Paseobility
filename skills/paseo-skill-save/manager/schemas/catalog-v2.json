@@ -13,6 +13,7 @@
     "source": {"$ref": "#/$defs/source"},
     "archive": {"$ref": "#/$defs/archive"},
     "verification": {"$ref": "#/$defs/verification"},
+    "security_policy": {"$ref": "security-policy-v1.json"},
     "acquisition": {"$ref": "#/$defs/acquisition"},
     "trust": {"type": "object"},
     "risk": {"enum": ["instructions-only", "local-management", "scripts", "external-write", "destructive"]},

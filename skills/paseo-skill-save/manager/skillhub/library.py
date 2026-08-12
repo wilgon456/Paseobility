@@ -288,6 +288,7 @@ def blank_state() -> dict[str, Any]:
         "feedback": {},
         "sync": {},
         "remote": {},
+        "policy_records": {},
     }
 
 

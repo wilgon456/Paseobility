@@ -58,28 +58,64 @@ def fake_runtime() -> object:
     )
 
 
-def signed_receipt(*, high: int = 0, medium: int = 0) -> dict:
-    findings = [
-        {"severity": "High", "path": "fixture", "line": 1, "reason": "test"}
-        for _ in range(high)
-    ] + [
-        {"severity": "Medium", "path": "fixture", "line": 1, "reason": "test"}
-        for _ in range(medium)
-    ]
+def signed_receipt(*, high: int = 0, medium: int = 0, source: dict | None = None) -> dict:
+    contract = MODULE._load_policy_contract()
+    source = source or {
+        "kind": "github",
+        "repository": "https://github.com/example/repo",
+        "commit": "a" * 40,
+        "tree": "c" * 40,
+        "path": "skills/demo",
+        "skill_manifest": True,
+    }
+    findings = []
+    for index in range(high):
+        row = {
+            "severity": "High", "rule_id": "test.blocking", "path": "run.sh",
+            "line": index + 1, "source_role": "executable", "reason": "test",
+            "evidence": "blocked fixture", "confidence": "high", "mitigation": "remove it",
+            "capabilities": ["subprocess"], "blocks": True, "review": False,
+        }
+        row["finding_id"] = contract.finding_id(row)
+        findings.append(row)
+    for index in range(medium):
+        row = {
+            "severity": "Medium", "rule_id": "test.review", "path": "helper.py",
+            "line": index + 1, "source_role": "executable", "reason": "test",
+            "evidence": "review fixture", "confidence": "medium", "mitigation": "review it",
+            "capabilities": ["subprocess"], "blocks": False, "review": True,
+        }
+        row["finding_id"] = contract.finding_id(row)
+        findings.append(row)
+    checksum = "b" * 64
+    security_policy = contract.build_policy(
+        source=source, checksum=checksum, findings=findings, scanner_schema_version=2
+    )
     receipt = {
         "status": "scan-complete",
         "scanner": {
             "name": "paseo-spyware-check",
-            "schema_version": 1,
+            "schema_version": 2,
             "mode": "bundled-python-static",
         },
         "target": "fixture",
-        "source": {"kind": "local", "path": "fixture"},
+        "source": source,
         "pinned_source": None,
-        "content_checksum": "b" * 64,
+        "content_checksum": checksum,
         "verdict": "high" if high else ("medium" if medium else "low"),
         "counts": {"critical": 0, "high": high, "medium": medium, "info": 0},
         "findings": findings,
+        "scan": {
+            "schema_version": 2,
+            "files_considered": 1,
+            "files_scanned": 1,
+            "max_findings": 500,
+            "max_scan_bytes_per_file": 2 * 1024 * 1024,
+            "truncated": False,
+            "truncation_reasons": [],
+            "target_code_executed": False,
+        },
+        "policy": security_policy,
         "limitations": [],
     }
     canonical = json.dumps(
@@ -87,6 +123,24 @@ def signed_receipt(*, high: int = 0, medium: int = 0) -> dict:
     )
     receipt["receipt_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return receipt
+
+
+def inspection_record(catalog_id: str = "overlay.demo", *, receipt: dict | None = None, source: dict | None = None, risk: str = "instructions-only", activation_policy: str = "on-demand") -> dict:
+    receipt = receipt or signed_receipt(source=source)
+    return {
+        "catalog_id": catalog_id,
+        "source": receipt["source"],
+        "revision": receipt["source"].get("commit", ""),
+        "risk": risk,
+        "activation_policy": activation_policy,
+        "archive": {"license": {"declared": "MIT"}},
+        "verification": {
+            "checksum": receipt["content_checksum"],
+            "security_policy_sha256": MODULE._load_policy_contract().policy_digest(receipt["policy"]),
+        },
+        "trust_verdict": {"verdict": "installable-caution"},
+        "security_policy": receipt["policy"],
+    }
 
 
 class PaseoSkillSaveTests(unittest.TestCase):
@@ -334,16 +388,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
             ),
             response({"status": "verified"}),
             response(
-                {
-                    "catalog_id": "overlay.demo",
-                    "source": {"commit": "a" * 40, "path": "skills/demo"},
-                    "revision": "a" * 40,
-                    "risk": "instructions-only",
-                    "activation_policy": "on-demand",
-                    "archive": {"license": {"declared": "MIT"}},
-                    "verification": {"checksum": "b" * 64},
-                    "trust_verdict": {"verdict": "installable-caution"},
-                }
+                inspection_record()
             ),
             response({"results": [{"catalog_id": "overlay.demo"}]}),
             response(selected_match()),
@@ -368,6 +413,8 @@ class PaseoSkillSaveTests(unittest.TestCase):
         self.assertEqual(result["router"]["status"], "initialized")
         self.assertEqual(result["records"][0]["source"]["commit"], "a" * 40)
         self.assertEqual(result["records"][0]["checksum"], "b" * 64)
+        self.assertEqual(result["records"][0]["security_policy"]["visibility"], "private")
+        self.assertEqual(result["records"][0]["security_policy"]["approval"]["global_trust_effect"], "none")
         self.assertTrue(result["matches"][0]["skill_body_evidence_available"])
         self.assertEqual(result["library_sync"]["status"], "pushed")
 
@@ -507,15 +554,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
             ),
             response({"status": "verified"}),
             response(
-                {
-                    "catalog_id": "overlay.demo",
-                    "source": {},
-                    "verification": {},
-                    "risk": "instructions-only",
-                    "activation_policy": "on-demand",
-                    "archive": {},
-                    "trust_verdict": {},
-                }
+                inspection_record()
             ),
             response({"results": [{"catalog_id": "overlay.demo"}]}),
             response(
@@ -557,15 +596,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
             ),
             response({"status": "verified"}),
             response(
-                {
-                    "catalog_id": "overlay.scripted",
-                    "source": {},
-                    "verification": {},
-                    "risk": "scripts",
-                    "activation_policy": "manual",
-                    "archive": {},
-                    "trust_verdict": {},
-                }
+                inspection_record("overlay.scripted", risk="scripts", activation_policy="manual")
             ),
             response({"results": [{"catalog_id": "overlay.scripted"}]}),
             response(

@@ -603,6 +603,19 @@ def _load_spyware_scanner() -> Any:
     return module
 
 
+def _load_policy_contract() -> Any:
+    contract = Path(__file__).resolve().parents[2] / "paseo-spyware-check" / "scripts" / "security_policy.py"
+    spec = importlib.util.spec_from_file_location("paseo_skill_save_policy", contract)
+    if spec is None or spec.loader is None:
+        raise SaveError("spyware-check-unavailable", "The bundled security policy contract is missing")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise SaveError("spyware-check-unavailable", "The bundled security policy contract could not be loaded", str(exc)) from exc
+    return module
+
+
 def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
     if not isinstance(receipt, dict):
         raise SaveError("spyware-check-invalid", "Spyware scan returned no valid receipt")
@@ -615,7 +628,7 @@ def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
         receipt.get("status") != "scan-complete"
         or not isinstance(scanner, dict)
         or scanner.get("name") != "paseo-spyware-check"
-        or scanner.get("schema_version") != 1
+        or scanner.get("schema_version") != 2
         or not isinstance(counts, dict)
         or not isinstance(findings, list)
         or not isinstance(source, dict)
@@ -633,12 +646,22 @@ def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
                 "spyware-check-invalid", "Spyware scan receipt has invalid finding counts"
             )
     calculated = {severity: 0 for severity in ("critical", "high", "medium", "info")}
+    contract = _load_policy_contract()
+    finding_ids: list[str] = []
     for finding in findings:
         if not isinstance(finding, dict):
             raise SaveError("spyware-check-invalid", "Spyware scan finding is invalid")
         severity = str(finding.get("severity", "")).casefold()
         if severity not in calculated:
             raise SaveError("spyware-check-invalid", "Spyware scan severity is invalid")
+        for field in ("finding_id", "rule_id", "confidence", "evidence", "mitigation", "path", "source_role"):
+            if not isinstance(finding.get(field), (str, int)) or finding.get(field) in {"", None}:
+                raise SaveError("spyware-check-invalid", f"Spyware scan finding is missing {field}")
+        if not isinstance(finding.get("capabilities"), list) or not isinstance(finding.get("blocks"), bool) or not isinstance(finding.get("review"), bool):
+            raise SaveError("spyware-check-invalid", "Spyware scan finding has invalid policy metadata")
+        if finding.get("finding_id") != contract.finding_id(finding):
+            raise SaveError("spyware-check-invalid", "Spyware finding ID is not stable for its rule/evidence")
+        finding_ids.append(str(finding["finding_id"]))
         calculated[severity] += 1
     if counts != calculated:
         raise SaveError(
@@ -651,6 +674,27 @@ def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
     )
     if receipt.get("verdict") != expected_verdict:
         raise SaveError("spyware-check-invalid", "Spyware scan verdict is inconsistent")
+    scan = receipt.get("scan")
+    if (
+        not isinstance(scan, dict)
+        or scan.get("schema_version") != 2
+        or not all(isinstance(scan.get(field), int) and not isinstance(scan.get(field), bool) and scan.get(field) >= 0 for field in ("files_considered", "files_scanned", "max_findings", "max_scan_bytes_per_file"))
+        or scan.get("files_scanned") > scan.get("files_considered")
+        or not isinstance(scan.get("truncated"), bool)
+        or not isinstance(scan.get("truncation_reasons"), list)
+        or not all(isinstance(reason, str) and reason for reason in scan.get("truncation_reasons", []))
+        or scan.get("target_code_executed") is not False
+    ):
+        raise SaveError("spyware-check-invalid", "Spyware scan truncation metadata is invalid")
+    try:
+        contract.validate_policy(
+            receipt.get("policy"),
+            expected_source=source,
+            expected_checksum=receipt["content_checksum"],
+            expected_finding_ids=finding_ids,
+        )
+    except Exception as exc:
+        raise SaveError("spyware-check-invalid", "Spyware scan policy binding is invalid", str(exc)) from exc
     unsigned = dict(receipt)
     unsigned.pop("receipt_sha256", None)
     canonical = json.dumps(
@@ -679,13 +723,14 @@ def _run_spyware_gate(
     receipt = _validate_scan_receipt(raw_receipt)
     counts = receipt["counts"]
     detail = json.dumps(receipt, ensure_ascii=True, sort_keys=True)
-    if counts["critical"] or counts["high"]:
+    security_policy = receipt.get("policy", {})
+    if security_policy.get("malware_verdict") == "blocked" or counts["critical"] or counts["high"]:
         raise SaveError(
             "spyware-check-blocked",
             "Registration was blocked by Critical or High spyware findings",
             detail,
         )
-    if counts["medium"] and not args.approve_medium:
+    if security_policy.get("approval", {}).get("status") == "required" and not getattr(args, "approve_medium", False):
         raise SaveError(
             "spyware-check-approval-required",
             "Medium findings require explicit approval before registration",
@@ -700,6 +745,24 @@ def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> Non
     scanned = receipt.get("source")
     if not isinstance(scanned, dict):
         return
+    contract = _load_policy_contract()
+    security_policy = record.get("security_policy")
+    if not isinstance(security_policy, dict):
+        raise SaveError("scan-receipt-mismatch", "Saved skill has no versioned security policy")
+    try:
+        contract.validate_policy(
+            security_policy,
+            expected_source=scanned,
+            expected_checksum=receipt.get("content_checksum"),
+            expected_finding_ids=[str(row["finding_id"]) for row in receipt.get("findings", [])],
+        )
+    except Exception as exc:
+        raise SaveError("scan-receipt-mismatch", "Saved security policy does not match the scan receipt", str(exc)) from exc
+    expected_policy_digest = record.get("security_policy_sha256")
+    if not isinstance(expected_policy_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_policy_digest):
+        raise SaveError("scan-receipt-mismatch", "Saved skill has no valid security policy digest")
+    if expected_policy_digest != contract.policy_digest(security_policy):
+        raise SaveError("scan-receipt-mismatch", "Saved security policy digest does not match its policy")
     if scanned.get("kind") == "local":
         if scanned.get("skill_manifest") and record.get("checksum") != receipt.get(
             "content_checksum"
@@ -1078,6 +1141,8 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
             "activation_policy": inspection.get("activation_policy"),
             "license": inspection.get("archive", {}).get("license"),
             "trust_verdict": inspection.get("trust_verdict", {}).get("verdict"),
+            "security_policy": inspection.get("security_policy"),
+            "security_policy_sha256": inspection.get("verification", {}).get("security_policy_sha256"),
         }
         records.append(record)
         _bind_record_to_scan(scan_receipt, record)
@@ -1124,6 +1189,8 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         "spyware_check": {
             "receipt": scan_receipt,
             "medium_approved": bool(args.approve_medium),
+            "policy": scan_receipt.get("policy"),
+            "approval_scope": (scan_receipt.get("policy") or {}).get("approval", {}).get("scope"),
         },
         "manager": runtime.details,
         "library_sync": {
@@ -1200,9 +1267,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="save only to this computer and skip paseo_skill_save onboarding/sync",
     )
     parser.add_argument(
-        "--approve-medium",
+        "--approve-medium", "--approve-policy", dest="approve_medium",
         action="store_true",
-        help="register despite displayed Medium findings after explicit user approval",
+        help="register after explicit approval of a review-required local policy",
     )
     parser.add_argument(
         "--router-target",
