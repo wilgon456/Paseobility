@@ -85,6 +85,11 @@ The helper never executes target project code. It:
 - marks scanner documentation/self-reference matches as `Info`
 - summarizes `High`, `Medium`, and `Info` counts with a verdict hint
 - writes a Markdown report
+- exits nonzero when required temporary/report setup or report writes fail
+
+An optional scanner's nonzero exit is recorded in `tools.log` and does not
+prevent the remaining scanners or fallback heuristics from running. Do not
+interpret a missing report or a nonzero helper exit as a clean scan.
 
 Use:
 
