@@ -1,0 +1,3 @@
+# The bundled manager has a signed byte-level digest. Never apply checkout
+# line-ending conversion inside this directory.
+skills/paseo-skill-save/manager/** -text

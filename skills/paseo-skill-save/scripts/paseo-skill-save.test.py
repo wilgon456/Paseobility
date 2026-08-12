@@ -18,6 +18,7 @@ MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
+RESOLVE_ROUTER_TARGETS = MODULE._resolve_router_targets
 
 
 def response(
@@ -97,6 +98,59 @@ class PaseoSkillSaveTests(unittest.TestCase):
         )
         self.gate.start()
         self.addCleanup(self.gate.stop)
+        self.router_targets = mock.patch.object(
+            MODULE,
+            "_resolve_router_targets",
+            return_value=("codex", {"mode": "test", "targets": ["codex"]}),
+        )
+        self.router_targets.start()
+        self.addCleanup(self.router_targets.stop)
+
+    def test_router_target_default_is_provider_aware_auto(self) -> None:
+        args = MODULE.build_parser().parse_args(["fixture"])
+        self.assertEqual(args.router_target, "auto")
+
+    def test_router_target_auto_combines_cli_and_paseo_providers(self) -> None:
+        def which(name: str) -> str | None:
+            return {
+                "codex": "/tools/codex",
+                "paseo": "/tools/paseo",
+            }.get(name)
+
+        paseo_detail = {
+            "status": "ok",
+            "providers": [
+                {
+                    "provider": "claude",
+                    "status": "available",
+                    "enabled": True,
+                    "supported": True,
+                    "target": "claude",
+                }
+            ],
+            "mapped_targets": ["claude"],
+        }
+        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
+            MODULE.shutil, "which", side_effect=which
+        ), mock.patch.object(
+            MODULE,
+            "_discover_paseo_provider_targets",
+            return_value=(["claude"], paseo_detail),
+        ):
+            targets, detail = RESOLVE_ROUTER_TARGETS("auto")
+
+        self.assertEqual(targets, "codex,claude")
+        self.assertEqual(detail["mode"], "auto-detected")
+        self.assertEqual(detail["targets"], ["codex", "claude"])
+        self.assertEqual(detail["paseo"]["mapped_targets"], ["claude"])
+
+    def test_router_target_explicit_skips_discovery(self) -> None:
+        with mock.patch.object(MODULE.shutil, "which") as which:
+            targets, detail = RESOLVE_ROUTER_TARGETS("claude-code,opencode")
+
+        self.assertEqual(targets, "claude,opencode")
+        self.assertEqual(detail, {"mode": "explicit", "targets": ["claude", "opencode"]})
+        which.assert_not_called()
 
     def test_add_verify_search_and_match_use_argv_without_shell(self) -> None:
         replies = [
