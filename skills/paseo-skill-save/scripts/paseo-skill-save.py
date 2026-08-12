@@ -20,8 +20,18 @@ from typing import Any, Sequence
 
 
 MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload.git"
-MANAGER_REVISION = "5fc339d03370f16b1425d57240c56c2db9f3e14a"
+MANAGER_REVISION = "6e50a0b292d29767d25f9cef986b57860ff5bd21"
 MANAGER_TREE = "8d1585839cc78f46fd534fa1c47103c4b6fd9008"
+MANAGER_COPY_DIRECTORIES = (
+    "skillhub",
+    "scripts",
+    "catalog",
+    "profiles",
+    "schemas",
+    "skills/skill-hub-router",
+)
+MANAGER_COPY_FILES = ("registry.json", "LICENSE", "NOTICE")
+MANAGER_SKIP_NAMES = {".git", "__pycache__", ".pytest_cache", "build", "dist"}
 
 
 class SaveError(RuntimeError):
@@ -86,6 +96,183 @@ def _is_link_or_reparse(path: Path) -> bool:
     except OSError:
         return True
     return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+
+def _path_within(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(parent.resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
+def _manager_payload_files(root: Path) -> Sequence[tuple[str, Path]]:
+    files: list[tuple[str, Path]] = []
+    for relative in MANAGER_COPY_FILES:
+        path = root / relative
+        if path.is_file():
+            files.append((relative, path))
+    for relative in MANAGER_COPY_DIRECTORIES:
+        directory = root / relative
+        if not directory.is_dir():
+            continue
+        if _is_link_or_reparse(directory):
+            raise SaveError(
+                "manager-verification-failed",
+                "Routing engine contains a linked manager directory",
+                relative,
+            )
+        for path in sorted(directory.rglob("*"), key=lambda item: item.as_posix()):
+            child = path.relative_to(root)
+            if any(part in MANAGER_SKIP_NAMES for part in child.parts):
+                continue
+            if _is_link_or_reparse(path):
+                raise SaveError(
+                    "manager-verification-failed",
+                    "Routing engine contains a link or reparse point",
+                    child.as_posix(),
+                )
+            if path.is_file():
+                files.append((child.as_posix(), path))
+    return files
+
+
+def _manager_payload_digest(root: Path) -> str:
+    digest = hashlib.sha256()
+    found = False
+    for relative, path in _manager_payload_files(root):
+        found = True
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        with path.open("rb") as handle:
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+        digest.update(b"\0")
+    if not found:
+        raise SaveError("manager-checkout-invalid", "Routing engine payload is empty")
+    return digest.hexdigest()
+
+
+def _manager_ready(root: Path) -> bool:
+    required_files = (root / "registry.json", root / "scripts" / "skillhub.py")
+    required_dirs = (
+        root / "skillhub",
+        root / "catalog",
+        root / "skills" / "skill-hub-router",
+    )
+    return (
+        root.is_dir()
+        and not _is_link_or_reparse(root)
+        and all(path.is_file() and not _is_link_or_reparse(path) for path in required_files)
+        and all(path.is_dir() and not _is_link_or_reparse(path) for path in required_dirs)
+    )
+
+
+def _manager_state_dir(args: argparse.Namespace) -> Path:
+    if args.state_dir:
+        return Path(args.state_dir).expanduser().resolve()
+    override = os.environ.get("SKILLHUB_STATE_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")
+        return (Path(base) / "ai-skill-library").resolve()
+    base = os.environ.get("XDG_STATE_HOME")
+    return ((Path(base) if base else Path.home() / ".local" / "state") / "ai-skill-library").resolve()
+
+
+def _private_catalog_count(root: Path) -> int:
+    try:
+        registry = json.loads((root / "registry.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SaveError(
+            "manager-verification-failed", "Managed routing engine registry is invalid"
+        ) from exc
+    return sum(
+        1
+        for item in registry.get("skills", [])
+        if isinstance(item, dict) and item.get("source_id") == "private-library"
+    )
+
+
+def _installed_private_manager(args: argparse.Namespace) -> ManagerRuntime | None:
+    state_dir = _manager_state_dir(args)
+    runtime_root = (state_dir / "runtime").resolve()
+    record_path = runtime_root / "manager.json"
+    if not record_path.is_file():
+        return None
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        root = Path(str(record["path"])).expanduser().resolve()
+        expected_digest = str(record["content_digest"])
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise SaveError(
+            "manager-verification-failed", "Managed routing engine record is invalid"
+        ) from exc
+    if not _path_within(root, runtime_root) or not _manager_ready(root):
+        raise SaveError(
+            "manager-verification-failed",
+            "Managed routing engine is missing or outside manager-owned state",
+        )
+    actual_digest = _manager_payload_digest(root)
+    if actual_digest != expected_digest:
+        raise SaveError(
+            "manager-verification-failed",
+            "Managed routing engine content changed",
+            f"expected={expected_digest}; actual={actual_digest}",
+        )
+    private_items = _private_catalog_count(root)
+    if private_items == 0:
+        return None
+    launcher = root / "scripts" / "skillhub.py"
+    return ManagerRuntime(
+        command=(args.python, str(launcher), "--repo", str(root)),
+        details={
+            "mode": "installed-private-runtime",
+            "path": str(root),
+            "state_dir": str(state_dir),
+            "content_digest": actual_digest,
+            "revision": record.get("revision"),
+            "private_catalog_items": private_items,
+        },
+    )
+
+
+def _bundled_manager(args: argparse.Namespace) -> ManagerRuntime | None:
+    root = Path(__file__).resolve().parents[1] / "manager"
+    manifest_path = root / "manager-manifest.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected_digest = str(manifest["content_digest"])
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise SaveError(
+            "manager-verification-failed", "Bundled routing engine manifest is invalid"
+        ) from exc
+    if manifest.get("schema_version") != 1 or not _manager_ready(root):
+        raise SaveError(
+            "manager-verification-failed", "Bundled routing engine is incomplete"
+        )
+    actual_digest = _manager_payload_digest(root)
+    if actual_digest != expected_digest:
+        raise SaveError(
+            "manager-verification-failed",
+            "Bundled routing engine content changed",
+            f"expected={expected_digest}; actual={actual_digest}",
+        )
+    launcher = root / "scripts" / "skillhub.py"
+    return ManagerRuntime(
+        command=(args.python, str(launcher), "--repo", str(root)),
+        details={
+            "mode": "bundled-public-fallback",
+            "repository": manifest.get("repository"),
+            "revision": manifest.get("revision"),
+            "tree": manifest.get("tree"),
+            "content_digest": actual_digest,
+            "path": str(root),
+        },
+    )
 
 
 def _validate_manager_checkout(path: Path, timeout: int) -> tuple[str, str]:
@@ -165,6 +352,14 @@ def _provided_manager(args: argparse.Namespace) -> ManagerRuntime:
 def _bootstrap_manager(args: argparse.Namespace) -> ManagerRuntime:
     if args.repo:
         return _provided_manager(args)
+
+    installed = _installed_private_manager(args)
+    if installed is not None:
+        return installed
+
+    bundled = _bundled_manager(args)
+    if bundled is not None:
+        return bundled
 
     cache_root = _manager_cache_root(args)
     cache_root.mkdir(parents=True, exist_ok=True)

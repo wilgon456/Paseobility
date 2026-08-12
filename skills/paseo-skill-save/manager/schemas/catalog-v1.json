@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillNload catalog item",
+  "type": "object",
+  "required": ["catalog_id", "kind", "name", "description", "source", "archive", "risk", "activation_policy"],
+  "properties": {
+    "catalog_id": {"type": "string", "minLength": 3},
+    "kind": {"enum": ["skill", "plugin", "template", "source-pointer"]},
+    "name": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "source_id": {"type": "string"},
+    "source": {"$ref": "#/$defs/source"},
+    "archive": {"$ref": "#/$defs/archive"},
+    "trust": {"type": "object"},
+    "verification": {"type": "object"},
+    "risk": {"enum": ["instructions-only", "local-management", "scripts", "external-write", "destructive"]},
+    "activation_policy": {"enum": ["default", "on-demand", "manual", "blocked"]},
+    "compatibility": {"type": "array", "items": {"type": "string"}},
+    "oses": {"type": "array", "items": {"type": "string"}},
+    "tags": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["repository", "commit", "path", "url"],
+      "properties": {
+        "repository": {"type": "string", "format": "uri"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "path": {"type": "string"},
+        "url": {"type": "string", "format": "uri"}
+      }
+    },
+    "archive": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["archived", "metadata-only", "blocked", "deprecated"]},
+        "path": {"type": ["string", "null"]},
+        "license": {"type": "object"},
+        "blocker": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
+

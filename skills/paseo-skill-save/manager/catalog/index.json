@@ -1,0 +1,46 @@
+{
+  "counts": {
+    "acquirable": 1,
+    "by_kind": {
+      "skill": 1
+    },
+    "by_risk": {
+      "local-management": 1
+    },
+    "by_source": {
+      "core-router": 1
+    },
+    "by_status": {
+      "archived": 1
+    },
+    "total": 1
+  },
+  "generated_by": "scripts/build_catalog.py",
+  "items": [
+    {
+      "acquirable": true,
+      "added_at": "2026-08-04T13:20:05+09:00",
+      "catalog_id": "core.skill-hub-router",
+      "kind": "skill",
+      "name": "skill-hub-router",
+      "primary_path": [
+        "technology-engineering",
+        "skill-management"
+      ],
+      "source_id": "core-router",
+      "status": "archived"
+    }
+  ],
+  "library_version": "0.7.0",
+  "schema_version": 2,
+  "sources": [
+    {
+      "added_at": "2026-08-04T13:20:05+09:00",
+      "catalog_role": "internal",
+      "commit": "1d1167259a1cb132db8679dce3fef13fb6373015",
+      "repository": "https://github.com/wilgon456/skillNload",
+      "source_id": "core-router",
+      "status": "archived"
+    }
+  ]
+}

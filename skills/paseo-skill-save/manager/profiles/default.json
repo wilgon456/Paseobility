@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "default",
+  "description": "Expose the public router only; workload skills remain searchable and inactive.",
+  "extends": null,
+  "enabled": ["core.skill-hub-router"],
+  "disabled": [],
+  "targets": ["codex", "claude", "opencode", "paseo", "generic"],
+  "max_risk": "local-management",
+  "locks": {}
+}

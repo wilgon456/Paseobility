@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "macos",
+  "extends": "default",
+  "enabled": ["core.skill-hub-router"],
+  "disabled": [],
+  "targets": ["codex", "claude", "opencode", "paseo", "generic"],
+  "max_risk": "local-management",
+  "locks": {}
+}

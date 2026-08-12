@@ -1,0 +1,52 @@
+{
+  "source_id": "core-router",
+  "items": [
+    {
+      "catalog_id": "core.skill-hub-router",
+      "kind": "skill",
+      "name": "skill-hub-router",
+      "description": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
+      "source_id": "core-router",
+      "source": {
+        "repository": "https://github.com/wilgon456/skillNload",
+        "commit": "1d1167259a1cb132db8679dce3fef13fb6373015",
+        "path": "skills/skill-hub-router",
+        "url": "https://github.com/wilgon456/skillNload/tree/1d1167259a1cb132db8679dce3fef13fb6373015/skills/skill-hub-router",
+        "status": "archived",
+        "publisher": "skillNload contributors"
+      },
+      "archive": {
+        "status": "archived",
+        "path": "skills/skill-hub-router",
+        "blocker": null,
+        "license": {"declared": "Apache-2.0", "redistribution": "permitted-by-root-license"}
+      },
+      "trust": {
+        "tier": "project-authored",
+        "publisher_identity": "skillNload contributors",
+        "security_review": "not-a-certification",
+        "compatibility_verification": "tested"
+      },
+      "verification": {
+        "status": "repository-checksummed",
+        "source_commit": "1d1167259a1cb132db8679dce3fef13fb6373015",
+        "checksum": "8b132899c1ad8a9f588d8609c98bf0c9b86fcf4102d4c7e1641e0287cb678805"
+      },
+      "version": "0.7.0",
+      "revision": "0.7.0",
+      "runtime_name": "skill-hub-router",
+      "compatibility": ["codex", "claude-code", "opencode", "paseo", "generic-agent"],
+      "oses": ["any"],
+      "dependencies": [],
+      "risk": "local-management",
+      "activation_policy": "default",
+      "update_policy": "pinned",
+      "aliases": ["router", "hub-router", "skillnload", "savenload"],
+      "tags": ["core", "router", "personal-library", "provenance", "risk-gate"],
+      "adapters": {
+        "codex": ".agents/plugins/skill-hub-router",
+        "claude-code": ".claude-plugin/plugins/skill-hub-router"
+      }
+    }
+  ]
+}

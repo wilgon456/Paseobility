@@ -330,7 +330,9 @@ class PaseoSkillSaveTests(unittest.TestCase):
             )
             with mock.patch.object(MODULE, "MANAGER_REPOSITORY", str(source)), mock.patch.object(
                 MODULE, "MANAGER_REVISION", revision
-            ), mock.patch.object(MODULE, "MANAGER_TREE", tree):
+            ), mock.patch.object(MODULE, "MANAGER_TREE", tree), mock.patch.object(
+                MODULE, "_installed_private_manager", return_value=None
+            ), mock.patch.object(MODULE, "_bundled_manager", return_value=None):
                 runtime = MODULE._bootstrap_manager(args)
                 self.assertEqual(runtime.details["mode"], "auto-pinned")
                 self.assertEqual(runtime.details["revision"], revision)
@@ -347,6 +349,71 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 with self.assertRaises(MODULE.SaveError) as raised:
                     MODULE._bootstrap_manager(args)
                 self.assertEqual(raised.exception.code, "manager-verification-failed")
+
+    def _write_managed_runtime(self, state: Path, *, private_items: int) -> Path:
+        root = state / "runtime" / "manager-fixture" / "source"
+        (root / "scripts").mkdir(parents=True)
+        (root / "skillhub").mkdir()
+        (root / "catalog").mkdir()
+        (root / "profiles").mkdir()
+        (root / "schemas").mkdir()
+        (root / "skills" / "skill-hub-router").mkdir(parents=True)
+        (root / "scripts" / "skillhub.py").write_text("print('fixture')\n", encoding="utf-8")
+        (root / "skillhub" / "__init__.py").write_text("", encoding="utf-8")
+        (root / "skills" / "skill-hub-router" / "SKILL.md").write_text(
+            "---\nname: skill-hub-router\ndescription: fixture\n---\n", encoding="utf-8"
+        )
+        (root / "LICENSE").write_text("fixture\n", encoding="utf-8")
+        (root / "NOTICE").write_text("fixture\n", encoding="utf-8")
+        items = [
+            {"catalog_id": f"private.{index}", "source_id": "private-library"}
+            for index in range(private_items)
+        ]
+        (root / "registry.json").write_text(
+            json.dumps({"skills": items}), encoding="utf-8"
+        )
+        digest = MODULE._manager_payload_digest(root)
+        (state / "runtime" / "manager.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "path": str(root),
+                    "content_digest": digest,
+                    "source_kind": "checkout-copy",
+                    "revision": "fixture-private",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return root
+
+    def test_installed_private_runtime_precedes_bundled_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary) / "state"
+            root = self._write_managed_runtime(state, private_items=3)
+            args = MODULE.build_parser().parse_args(
+                ["fixture", "--state-dir", str(state)]
+            )
+
+            runtime = MODULE._bootstrap_manager(args)
+
+        self.assertEqual(runtime.details["mode"], "installed-private-runtime")
+        self.assertEqual(runtime.details["private_catalog_items"], 3)
+        self.assertEqual(Path(runtime.details["path"]), root)
+
+    def test_public_managed_runtime_uses_bundled_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary) / "state"
+            self._write_managed_runtime(state, private_items=0)
+            args = MODULE.build_parser().parse_args(
+                ["fixture", "--state-dir", str(state)]
+            )
+
+            runtime = MODULE._bootstrap_manager(args)
+
+        self.assertEqual(runtime.details["mode"], "bundled-public-fallback")
+        self.assertEqual(runtime.details["revision"], MODULE.MANAGER_REVISION)
+        self.assertEqual(runtime.details["tree"], MODULE.MANAGER_TREE)
 
     def test_high_findings_block_registration(self) -> None:
         self.gate.stop()
