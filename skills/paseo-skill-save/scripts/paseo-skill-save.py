@@ -20,8 +20,8 @@ from typing import Any, Sequence
 
 
 MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload.git"
-MANAGER_REVISION = "c9f5b6e0a0273639abe8ddbf4dc8a5f1abfc73cd"
-MANAGER_TREE = "ed9f00aab7539774402e62e22b19a33e565e023b"
+MANAGER_REVISION = "b1dd1890d6a71d66e7451cdac39d44e0722943e1"
+MANAGER_TREE = "8f8477fca5d891b1f265ea3364e5a8a65e5296fb"
 
 
 class SaveError(RuntimeError):
@@ -296,6 +296,10 @@ def _build_add_command(
         command += ["--risk", args.risk]
     if args.overlay_dir:
         command += ["--overlay-dir", str(Path(args.overlay_dir).expanduser())]
+    if getattr(args, "approve_medium", False):
+        command.append("--approve-medium")
+    if getattr(args, "local_only", False):
+        command.append("--local-only")
     command.append("--json")
     return command
 
@@ -553,6 +557,9 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
                 "unexpected-add-result",
                 "The routing engine did not report a saved personal-library item",
             )
+        sync_status = added.get("sync")
+        if sync_status is None:
+            sync_status = "manager-sync-api-unavailable"
 
     verified: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
@@ -592,7 +599,12 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         records.append(record)
         _bind_record_to_scan(scan_receipt, record)
 
-        query = str(item.get("routing", {}).get("description_ko") or catalog_id)
+        routing_record = item.get("routing", {}) if isinstance(item.get("routing"), dict) else {}
+        actions = routing_record.get("actions", []) if isinstance(routing_record.get("actions"), list) else []
+        action = str(actions[0]) if actions else "read"
+        portable_name = catalog_id.removeprefix("overlay.")
+        description = str(routing_record.get("description_ko") or "")
+        query = " ".join(part for part in (action, portable_name, description) if part)
         search = _run_json(
             prefix + ["search", query, "--available-only", "--json"],
             args.timeout,
@@ -631,6 +643,13 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
             "medium_approved": bool(args.approve_medium),
         },
         "manager": runtime.details,
+        "library_sync": {
+            "status": sync_status,
+            "detail": added.get("sync_detail"),
+            "retry": added.get("sync_retry"),
+            "onboarding_error": added.get("onboarding_error"),
+            "local_only": bool(args.local_only),
+        },
         "router": router,
         "items": items,
         "records": records,
@@ -667,6 +686,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--overlay-dir")
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="save only to this computer and skip paseo_skill_save onboarding/sync",
+    )
     parser.add_argument(
         "--approve-medium",
         action="store_true",
@@ -713,6 +737,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result["automatic_discovery_ready"]
         and result["natural_language_ready"]
         and result["automatic_use_ready"]
+        and result["library_sync"]["status"] != "manager-sync-api-unavailable"
     )
     return 0 if ready else 1
 

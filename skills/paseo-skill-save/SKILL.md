@@ -10,11 +10,12 @@ description: >-
 
 # Paseo Skill Save
 
-Save user-selected skills to a private local overlay. Registration is
-persistent; activation is not. The router may attach a selected skill for one
-task without permanently installing every saved skill. The wrapper manages its
-pinned routing engine automatically; never require the user to install or
-invoke skillNload separately.
+Save user-selected skills to a private local overlay and synchronize the
+portable library through the user's private `paseo_skill_save` Git repository.
+Registration is persistent; activation is not. The router may attach one
+selected skill for a task without permanently installing every saved skill.
+The wrapper manages its pinned routing engine automatically; never require the
+user to install or invoke skillNload separately.
 
 ## Required workflow
 
@@ -45,6 +46,12 @@ invoke skillNload separately.
    explicitly approved registration. Never infer approval from the original
    save request.
 
+   By default, let the manager onboard or reuse the authenticated user's
+   private `paseo_skill_save` repository and sync the verified overlay. Add
+   `--local-only` only when the user explicitly requests storage on this
+   computer alone. If GitHub authentication is missing, preserve the local
+   skill and report `saved-locally-sync-pending` with the exact login command.
+
    On first use, the wrapper automatically fetches the official public
    skillNload engine at its hard-coded commit, verifies both the commit and the
    complete Git tree, and caches it under `~/.paseo/skill-save/manager/`. It
@@ -61,6 +68,8 @@ invoke skillNload separately.
    - search discovery result
    - natural-language match decision and selected catalog ID
    - bounded skill body evidence for an instructions-only selection
+   - library sync status (`pushed`, `up-to-date`, `saved-locally-sync-pending`,
+     `review-required`, or `skipped-local-only`) and safe retry guidance
 
    A saved `instructions-only` skill is ready only when its activation policy
    is `on-demand`, the match decision is `select`, and confirmation is false.
@@ -88,9 +97,12 @@ snapshot or backup.
 
 ## Multi-computer behavior
 
-The personal overlay is local to one computer. Do not upload it to the public
-Paseobility or skillNload repositories. If the user wants synchronization, use
-a separate user-owned private Git repository and preserve license metadata.
+Use the fixed, user-owned private repository `<github-login>/paseo_skill_save`.
+Each computer pulls and verifies the complete portable library into its local
+overlay; the router searches locally and never contacts GitHub for every
+natural-language request. Never upload saved skills to the public Paseobility
+or skillNload repositories. A sync failure must not disable an already verified
+local overlay.
 
 ## Failure handling
 
