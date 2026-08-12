@@ -2,7 +2,8 @@
 
 const { spawnSync } = require("node:child_process");
 
-const DEFAULT_PATTERN = "test|verify|validation|retest|recognition|paseobility|\\bpr\\b|pr[-_ ]?\\d+";
+const DEFAULT_PATTERN = ".*";
+const ACTIVE_STATUS_PATTERN = /(^|[\s_-])(running|working|active|starting|queued|pending|busy|executing|in[\s_-]?progress)([\s_-]|$)/i;
 
 function usage() {
   console.log(`Usage:
@@ -12,11 +13,11 @@ function usage() {
   agent-cleanup.js --workspace <id> [--workspace <id>] --archive --yes
 
 Options:
-  --auto                 Archive safe non-running agent candidates. This is the default.
+  --auto                 Archive all non-active agent candidates. This is the default.
   --dry-run              Show candidates without changing state.
   --archive              Archive selected candidates. Requires --yes.
   --yes                  Confirm archive execution.
-  --pattern <regex>      Candidate regex for names/titles/cwd/provider/id.
+  --pattern <regex>      Optionally narrow candidates by names/titles/cwd/provider/id.
   --agent <id>           Explicit agent ID to consider.
   --workspace <id>       Explicit workspace ID to consider.
   --include-workspaces   Also select workspace candidates by pattern.
@@ -114,8 +115,8 @@ function searchableValue(item) {
     .join(" ");
 }
 
-function isRunning(agent) {
-  return String(agent.status || "").toLowerCase().includes("running");
+function isActive(agent) {
+  return ACTIVE_STATUS_PATTERN.test(String(agent.status || ""));
 }
 
 function selectAgents(agents, opts, regex) {
@@ -123,12 +124,13 @@ function selectAgents(agents, opts, regex) {
     const explicit = opts.agentIds.includes(agent.id) || opts.agentIds.includes(agent.shortId);
     const patternMatch = regex.test(searchableValue(agent));
     const selected = explicit || (!opts.agentIds.length && patternMatch);
-    const skippedReason = isRunning(agent)
-      ? "running agents are never archived by this helper"
+    const active = isActive(agent);
+    const skippedReason = active
+      ? "active agents are never archived by this helper"
       : selected
         ? ""
         : "not selected";
-    return { item: agent, explicit, patternMatch, selected: selected && !isRunning(agent), skippedReason };
+    return { item: agent, explicit, patternMatch, selected: selected && !active, skippedReason };
   });
 }
 
@@ -204,7 +206,7 @@ function main() {
   }
 
   if (!opts.archive) {
-    if (!opts.json) console.log("\n[dry-run] No changes made. Run without --dry-run to auto-archive safe agent candidates.");
+    if (!opts.json) console.log("\n[dry-run] No changes made. Run without --dry-run to auto-archive all inactive agents.");
     return;
   }
 
