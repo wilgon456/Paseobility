@@ -32,6 +32,33 @@ MANAGER_COPY_DIRECTORIES = (
 )
 MANAGER_COPY_FILES = ("registry.json", "LICENSE", "NOTICE")
 MANAGER_SKIP_NAMES = {".git", "__pycache__", ".pytest_cache", "build", "dist"}
+ROUTER_TARGETS = ("codex", "claude", "opencode", "paseo", "generic")
+ROUTER_TARGET_ALIASES = {
+    "agents": "codex",
+    "claude-code": "claude",
+    "generic-agent": "generic",
+}
+ROUTER_ENV_MARKERS = {
+    "CODEX_HOME": "codex",
+    "CODEX_THREAD_ID": "codex",
+    "CLAUDECODE": "claude",
+    "CLAUDE_CODE_ENTRYPOINT": "claude",
+    "OPENCODE": "opencode",
+    "PASEO_HOME": "paseo",
+}
+ROUTER_EXECUTABLE_TARGETS = {
+    "codex": "codex",
+    "claude": "claude",
+    "opencode": "opencode",
+}
+PASEO_PROVIDER_TARGETS = {
+    "codex": "codex",
+    "claude": "claude",
+    "opencode": "opencode",
+}
+PASEO_AVAILABLE_STATUSES = {"available", "connected", "ready"}
+PASEO_ENABLED_VALUES = {"1", "enabled", "on", "true", "yes"}
+PASEO_DISABLED_VALUES = {"0", "disabled", "off", "false", "no"}
 
 
 class SaveError(RuntimeError):
@@ -712,6 +739,129 @@ def _primary_target(router_target: str) -> str:
     return target
 
 
+def _ordered_router_targets(values: Sequence[str]) -> list[str]:
+    selected = set(values)
+    return [target for target in ROUTER_TARGETS if target in selected]
+
+
+def _paseo_provider_rows(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        for key in ("providers", "items", "data"):
+            rows = value.get(key)
+            if isinstance(rows, list):
+                return [row for row in rows if isinstance(row, dict)]
+    raise ValueError("unexpected provider response")
+
+
+def _discover_paseo_provider_targets(executable: str) -> tuple[list[str], dict[str, Any]]:
+    detail: dict[str, Any] = {
+        "executable": executable,
+        "status": "unavailable",
+        "providers": [],
+        "mapped_targets": [],
+    }
+    try:
+        process = _run_process(
+            [executable, "--json", "provider", "ls"],
+            timeout=10,
+        )
+    except SaveError as exc:
+        detail["reason"] = exc.code
+        return [], detail
+    if process.returncode:
+        detail["reason"] = f"exit-{process.returncode}"
+        return [], detail
+    try:
+        rows = _paseo_provider_rows(json.loads(process.stdout))
+    except (json.JSONDecodeError, ValueError) as exc:
+        detail["reason"] = str(exc)
+        return [], detail
+
+    targets: list[str] = []
+    providers: list[dict[str, Any]] = []
+    for row in rows:
+        raw_provider = row.get("provider") or row.get("id") or row.get("name")
+        provider = str(raw_provider or "").strip().casefold().split("/", 1)[0]
+        if not provider:
+            continue
+        status = str(row.get("status", "")).strip().casefold()
+        raw_enabled = row.get("enabled")
+        enabled_text = str(raw_enabled).strip().casefold() if raw_enabled is not None else "enabled"
+        enabled = enabled_text in PASEO_ENABLED_VALUES
+        if enabled_text in PASEO_DISABLED_VALUES:
+            enabled = False
+        target = PASEO_PROVIDER_TARGETS.get(provider)
+        provider_detail: dict[str, Any] = {
+            "provider": provider,
+            "status": status or "unknown",
+            "enabled": enabled,
+            "supported": target is not None,
+        }
+        if target:
+            provider_detail["target"] = target
+        providers.append(provider_detail)
+        if status in PASEO_AVAILABLE_STATUSES and enabled and target and target not in targets:
+            targets.append(target)
+
+    mapped = _ordered_router_targets(targets)
+    detail.update({"status": "ok", "providers": providers, "mapped_targets": mapped})
+    return mapped, detail
+
+
+def _resolve_router_targets(value: str) -> tuple[str, dict[str, Any]]:
+    raw = [part.strip().casefold() for part in value.split(",") if part.strip()]
+    if not raw:
+        raise SaveError("missing-router-target", "router target cannot be empty")
+    if raw != ["auto"]:
+        targets: list[str] = []
+        for part in raw:
+            target = ROUTER_TARGET_ALIASES.get(part, part)
+            if target not in ROUTER_TARGETS:
+                raise SaveError("unknown-router-target", f"unknown router target: {part}")
+            if target not in targets:
+                targets.append(target)
+        return ",".join(targets), {"mode": "explicit", "targets": targets}
+
+    detected: list[str] = []
+    environment: list[dict[str, str]] = []
+    executables: list[dict[str, str]] = []
+    for marker, target in ROUTER_ENV_MARKERS.items():
+        if os.environ.get(marker):
+            environment.append({"marker": marker, "target": target})
+            if target not in detected:
+                detected.append(target)
+    for executable, target in ROUTER_EXECUTABLE_TARGETS.items():
+        resolved = shutil.which(executable)
+        if not resolved:
+            continue
+        executables.append({"name": executable, "path": resolved, "target": target})
+        if target not in detected:
+            detected.append(target)
+
+    paseo_detail: dict[str, Any] = {"status": "not-found", "providers": [], "mapped_targets": []}
+    paseo_executable = shutil.which("paseo")
+    if paseo_executable:
+        provider_targets, paseo_detail = _discover_paseo_provider_targets(paseo_executable)
+        for target in provider_targets:
+            if target not in detected:
+                detected.append(target)
+
+    targets = _ordered_router_targets(detected)
+    mode = "auto-detected"
+    if not targets:
+        targets = ["codex", "claude"]
+        mode = "auto-fallback"
+    return ",".join(targets), {
+        "mode": mode,
+        "environment": environment,
+        "executables": executables,
+        "paseo": paseo_detail,
+        "targets": targets,
+    }
+
+
 def _match_record(
     prefix: list[str],
     target: str,
@@ -761,8 +911,11 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         scan_receipt, scanned_source = _run_spyware_gate(args, Path(temporary))
         runtime = _bootstrap_manager(args)
         prefix = _manager_prefix(args, runtime)
+        router_targets, router_target_discovery = _resolve_router_targets(
+            args.router_target
+        )
         router = _run_json(
-            prefix + ["init", "--target", args.router_target, "--json"],
+            prefix + ["init", "--target", router_targets, "--json"],
             args.timeout,
         )
         if router.get("status") != "initialized":
@@ -792,7 +945,7 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     discovered: list[dict[str, Any]] = []
     matches: list[dict[str, Any]] = []
-    match_target = _primary_target(args.router_target)
+    match_target = _primary_target(router_targets)
     for item in items:
         catalog_id = str(item.get("catalog_id", ""))
         if not catalog_id:
@@ -878,6 +1031,7 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
             "local_only": bool(args.local_only),
         },
         "router": router,
+        "router_target_discovery": router_target_discovery,
         "items": items,
         "records": records,
         "verification": verified,
@@ -949,8 +1103,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--router-target",
-        default="codex",
-        help="comma-separated router targets (default: codex for .agents/skills)",
+        default="auto",
+        help="auto-detect local AI CLIs and available Paseo providers, or use comma-separated targets",
     )
     parser.add_argument(
         "--repo", help="advanced: use an explicit routing manager checkout instead of auto-selection"

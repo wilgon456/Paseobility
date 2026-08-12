@@ -17,6 +17,13 @@ selected skill for a task without permanently installing every saved skill.
 The wrapper selects and verifies its routing manager automatically; never require the
 user to install or invoke skillNload separately.
 
+The wrapper defaults to provider-aware router setup. It detects supported local
+AI CLIs and, when Paseo is installed, reads `paseo --json provider ls` without
+starting or restarting the daemon. It connects the router to each available,
+enabled Codex, Claude, or OpenCode provider path. Paseo is the supervisor, so
+its CLI alone is not treated as the workload provider. Use `--router-target`
+only when the user explicitly wants to restrict or add targets.
+
 ## Required workflow
 
 1. Identify the exact GitHub repository, `/tree/<revision>/<skill-path>` URL,
@@ -73,7 +80,7 @@ user to install or invoke skillNload separately.
    - spyware receipt digest, severity counts, findings, scanned checksum, and
      immutable source
    - internal manager mode, provenance, digest, and revision/tree when applicable
-   - router target and initialization status
+   - router target discovery evidence and initialization status
    - pinned source repository, commit, and skill path
    - checksum, inferred risk, activation policy, and catalog ID
    - checksum verification result
