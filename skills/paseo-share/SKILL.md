@@ -2,9 +2,11 @@
 name: paseo-share
 description: >-
   Share small Paseo artifacts through a dedicated private Git repository and
-  return clickable preview/download links. Use when the user asks to share,
-  upload, publish, find, list, preview, open, or fetch documents, code files,
-  PDFs, or images across Paseo computers or on mobile. Triggers include
+  return clickable preview/download links, with automatic first-use GitHub
+  onboarding to the authenticated account’s private paseo_share repository.
+  Use when the user asks to share, upload, publish, find, list, preview, open,
+  or fetch documents, code files, PDFs, or images across Paseo computers or on
+  mobile. Triggers include
   "share this file", "upload this result", "show the file from my other
   computer", "latest shared artifact", "공유해줘", "올려줘", "다른 컴퓨터
   파일", and "공유한 파일 가져와".
@@ -19,11 +21,14 @@ bundled Node.js CLI for deterministic Git operations. It uses only local
 ## Requirements
 
 - Require `node` and `git` on every computer.
-- Use one dedicated private GitHub or Forgejo repository for all computers.
+- Require GitHub CLI (`gh`) for automatic GitHub onboarding. Keep explicit
+  `setup <repo-url>` support for Forgejo or another dedicated remote.
+- Use one dedicated private repository for all computers.
 - Use one repository per person or fully trusted device group. Do not treat it
   as a multi-tenant exchange for mutually untrusted collaborators.
-- Configure Git authentication outside this skill with SSH or the operating
-  system credential manager. Never put a token in the repository URL.
+- Let automatic onboarding configure local Git authentication through `gh`.
+  For custom remotes, use SSH or the operating system credential manager.
+  Never put a token in the repository URL.
 - Expect mobile viewers to be signed in to the Git host for private links.
 
 The CLI stores machine-local configuration and its clone under
@@ -41,6 +46,7 @@ node <skill-dir>/scripts/paseo-share.js <command> [arguments]
 Commands:
 
 ```text
+onboard [--machine <name>] [--branch <name>]
 setup <repo-url> [--machine <name>] [--branch <name>]
 publish <file> [--note <text>]
 list [--limit <number>]
@@ -55,19 +61,29 @@ machine-readable output helps.
 ## First-time setup
 
 1. Run `status` first.
-2. If configuration is missing, obtain the dedicated private repository URL
-   from the user. Do not create a remote repository unless the user asks.
-3. For GitHub, verify repository visibility with `gh repo view <owner/repo>
-   --json visibility` when `gh` is available. Refuse a public repository unless
-   the user explicitly chose public sharing. If visibility cannot be verified,
-   warn the user before the first publish.
-4. Run `setup`. Let the CLI infer the machine name unless the user wants a
-   stable friendly name such as `macbook`, `desktop`, or `laptop`.
-5. Report the machine name, branch, and checkout path. Do not expose
-   credential material.
+2. Treat the user’s first actual Paseo Share request as authorization to run
+   `onboard`; installation alone must remain side-effect free.
+3. If `gh` is missing or unauthenticated, ask the user to install it or run
+   `gh auth login --hostname github.com`, then retry. GitHub Connector access
+   alone does not prove that local `git push` is authenticated.
+4. Let `onboard` configure local Git authentication, resolve the authenticated
+   login, and target `<login>/paseo_share` with private visibility.
+5. Create the repository when absent. Reuse it only when it is private and
+   either empty or already contains a recognized Paseo Share artifact tree.
+6. Refuse automatic setup when the fixed-name repository is public, contains
+   unrelated data, cannot be completely inspected, or local Git authentication
+   fails. Never change visibility, rename, delete, or overwrite repository
+   contents automatically.
+7. For Forgejo or a user-selected custom repository, obtain its URL and run
+   `setup <repo-url>` instead of `onboard`.
+8. Let the CLI infer the machine name unless the user wants a stable friendly
+   name such as `macbook`, `desktop`, or `laptop`. Report the repository,
+   machine name, branch, and checkout path without exposing credentials.
 
 Run the same setup on every computer using the same repository URL and a
-different machine name. Setup also initializes an empty repository safely.
+different machine name. For the same GitHub account, `onboard` discovers and
+reuses the same valid private repository. Setup initializes an empty repository
+safely.
 
 ## Publish a file
 
@@ -133,6 +149,7 @@ LF/CRLF conversion. Fail closed if any remote artifact is malformed or modified.
 
 - Keep the remote repository private unless the user explicitly chooses
   public sharing.
+- Never repurpose a public or unrelated `<login>/paseo_share` repository.
 - Grant write access only to the same user or fully trusted collaborators.
 - Do not publish `.env` files, credentials, private keys, certificates,
   executables, package archives, or files larger than the limit.

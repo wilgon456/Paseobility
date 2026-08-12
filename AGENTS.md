@@ -45,9 +45,15 @@ Do not confuse the two repositories involved:
 - The user's separate private repository is the **artifact repository** used
   later by `paseo-share`.
 
-Installing the skill does not require the artifact repository. If the user has
-not supplied one, finish installation first and then tell them that initial
-`/paseo-share` setup will ask for a dedicated private GitHub or Forgejo URL.
+Installing the skill does not create the artifact repository. On the first
+actual share request, run `status`; when unconfigured, use `onboard`. If GitHub
+CLI is missing or unauthenticated, ask the user to install `gh` or run
+`gh auth login --hostname github.com`. After authentication, onboarding must
+target the authenticated account’s private `<login>/paseo_share` repository,
+creating it when absent or reusing it only when empty or already recognized as
+a Paseo Share repository. Refuse public, unrelated, or incompletely inspected
+same-name repositories. Use explicit `setup <repo-url>` for Forgejo or a custom
+remote.
 
 Use the convenience installer so an existing installation is backed up:
 
@@ -78,9 +84,9 @@ After installation, verify the installed `SKILL.md` and
 new agent session or reload integrations, and give this first-use prompt:
 
 ```text
-/paseo-share 전용 private 저장소를 이 컴퓨터에 연결해줘.
-저장소: <private artifact repository URL>
-컴퓨터 이름: <friendly machine name>
+/paseo-share 이 파일을 공유해줘.
+GitHub 연결이 필요하면 먼저 알려주고, 연결되어 있으면 내 계정의
+private paseo_share 저장소를 안전하게 준비해서 사용해줘.
 ```
 
 Paseobility is a skill document package. Installation means copying every

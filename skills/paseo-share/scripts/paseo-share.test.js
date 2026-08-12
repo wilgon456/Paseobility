@@ -9,12 +9,203 @@ const test = require("node:test");
 
 const {
   MAX_BYTES,
+  resolveDefaultGithubRepository,
   resolveWithin,
   sha256,
   validateArtifactMetadata,
+  validateDefaultRepositoryTree,
   validateFetchedPayload,
   validatePortableFileName
 } = require("./paseo-share.js");
+
+function commandResult(ok, stdout = "", stderr = "", status = ok ? 0 : 1) {
+  return { ok, status, stdout, stderr };
+}
+
+function createGithubRunner(options = {}) {
+  const owner = options.owner || "octocat";
+  const repositoryName = `${owner}/paseo_share`;
+  const calls = [];
+  let repositoryLookups = 0;
+  const repository = options.repository || {
+    full_name: repositoryName,
+    private: true,
+    size: 0,
+    default_branch: "main",
+    clone_url: `https://github.com/${repositoryName}.git`
+  };
+  const tree = options.tree || {
+    truncated: false,
+    tree: [
+      { path: "artifacts", type: "tree" },
+      { path: "artifacts/.gitkeep", type: "blob" }
+    ]
+  };
+
+  function runGh(args) {
+    calls.push(args);
+    const key = args.join(" ");
+    if (key === "--version") {
+      return options.ghAvailable === false
+        ? commandResult(false, "", "gh not found")
+        : commandResult(true, "gh version 2");
+    }
+    if (key === "auth status --hostname github.com") {
+      return options.authenticated === false
+        ? commandResult(false, "", "not logged in")
+        : commandResult(true);
+    }
+    if (key === "auth setup-git --hostname github.com") {
+      return options.gitAuth === false
+        ? commandResult(false, "", "credential helper failed")
+        : commandResult(true);
+    }
+    if (key === "api user --jq .login") return commandResult(true, owner);
+    if (key === `api repos/${repositoryName}`) {
+      repositoryLookups += 1;
+      if (options.repositoryMissing && repositoryLookups === 1) {
+        return commandResult(false, "", "HTTP 404: Not Found", 1);
+      }
+      if (options.repositoryError) {
+        return commandResult(false, "", options.repositoryError, 1);
+      }
+      return commandResult(true, JSON.stringify(repository));
+    }
+    if (key.startsWith(`repo create ${repositoryName} `)) {
+      return options.createFails
+        ? commandResult(false, "", "creation failed")
+        : commandResult(true, `https://github.com/${repositoryName}`);
+    }
+    if (key.startsWith(`api repos/${repositoryName}/git/trees/`)) {
+      if (options.treeError) return commandResult(false, "", options.treeError);
+      return commandResult(true, JSON.stringify(tree));
+    }
+    throw new Error(`unexpected mocked gh command: ${key}`);
+  }
+
+  return { calls, runGh };
+}
+
+test("requests GitHub connection when gh is missing or unauthenticated", () => {
+  const missing = createGithubRunner({ ghAvailable: false });
+  assert.throws(
+    () => resolveDefaultGithubRepository(missing.runGh),
+    /GitHub CLI is required/
+  );
+
+  const unauthenticated = createGithubRunner({ authenticated: false });
+  assert.throws(
+    () => resolveDefaultGithubRepository(unauthenticated.runGh),
+    /GitHub connection is required/
+  );
+
+  const gitAuthFailure = createGithubRunner({ gitAuth: false });
+  assert.throws(
+    () => resolveDefaultGithubRepository(gitAuthFailure.runGh),
+    /local Git authentication could not be configured/
+  );
+});
+
+test("creates owner/paseo_share as private when the repository is missing", () => {
+  const mocked = createGithubRunner({ repositoryMissing: true });
+  const result = resolveDefaultGithubRepository(mocked.runGh);
+  assert.deepEqual(result, {
+    owner: "octocat",
+    repositoryName: "octocat/paseo_share",
+    repositoryUrl: "https://github.com/octocat/paseo_share.git",
+    repositoryCreated: true
+  });
+  const createCall = mocked.calls.find((args) => args[0] === "repo" && args[1] === "create");
+  assert.ok(createCall);
+  assert.ok(createCall.includes("--private"));
+  assert.ok(mocked.calls.some((args) => args.join(" ") === "auth setup-git --hostname github.com"));
+});
+
+test("reuses an existing empty private paseo_share repository", () => {
+  const mocked = createGithubRunner({ treeError: "gh: Git Repository is empty. (HTTP 409)" });
+  const result = resolveDefaultGithubRepository(mocked.runGh);
+  assert.equal(result.repositoryCreated, false);
+  assert.equal(result.repositoryName, "octocat/paseo_share");
+  assert.equal(mocked.calls.some((args) => args[0] === "repo" && args[1] === "create"), false);
+});
+
+test("reuses an existing private repository only when it has the Paseo Share tree", () => {
+  const mocked = createGithubRunner({
+    repository: {
+      full_name: "octocat/paseo_share",
+      private: true,
+      size: 4,
+      default_branch: "main",
+      clone_url: "https://github.com/octocat/paseo_share.git"
+    }
+  });
+  const result = resolveDefaultGithubRepository(mocked.runGh);
+  assert.equal(result.repositoryCreated, false);
+  assert.ok(mocked.calls.some((args) => args.join(" ").includes("/git/trees/main?recursive=1")));
+});
+
+test("refuses a public paseo_share repository", () => {
+  const mocked = createGithubRunner({
+    repository: {
+      full_name: "octocat/paseo_share",
+      private: false,
+      size: 0,
+      default_branch: "main",
+      clone_url: "https://github.com/octocat/paseo_share.git"
+    }
+  });
+  assert.throws(
+    () => resolveDefaultGithubRepository(mocked.runGh),
+    /is public/
+  );
+});
+
+test("refuses an unrelated or incompletely inspected private repository", () => {
+  const apiFailure = createGithubRunner({ repositoryError: "HTTP 500: service unavailable" });
+  assert.throws(
+    () => resolveDefaultGithubRepository(apiFailure.runGh),
+    /could not inspect/
+  );
+  assert.equal(apiFailure.calls.some((args) => args[0] === "repo" && args[1] === "create"), false);
+
+  const createFailure = createGithubRunner({ repositoryMissing: true, createFails: true });
+  assert.throws(
+    () => resolveDefaultGithubRepository(createFailure.runGh),
+    /could not create private repository/
+  );
+
+  const smallUnrelated = createGithubRunner({
+    repository: {
+      full_name: "octocat/paseo_share",
+      private: true,
+      size: 0,
+      default_branch: "main",
+      clone_url: "https://github.com/octocat/paseo_share.git"
+    },
+    tree: {
+      truncated: false,
+      tree: [{ path: "README.md", type: "blob" }]
+    }
+  });
+  assert.throws(
+    () => resolveDefaultGithubRepository(smallUnrelated.runGh),
+    /not a recognized Paseo Share repository/
+  );
+  assert.throws(
+    () => validateDefaultRepositoryTree({
+      truncated: false,
+      tree: [{ path: "README.md", type: "blob" }]
+    }),
+    /not a recognized Paseo Share repository/
+  );
+  assert.throws(
+    () => validateDefaultRepositoryTree({
+      truncated: true,
+      tree: [{ path: "artifacts/.gitkeep", type: "blob" }]
+    }),
+    /could not safely inspect/
+  );
+});
 
 function fixture(t) {
   const checkoutPath = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-share-security-"));

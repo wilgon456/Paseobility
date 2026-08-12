@@ -1,4 +1,4 @@
 interface:
   display_name: "Paseo Skill Save"
-  short_description: "GitHub 스킬을 검사·저장하고 자연어로 다시 사용"
-  default_prompt: "Use $paseo-skill-save to inspect and save this GitHub skill for later natural-language use."
+  short_description: "개인 스킬을 검사·저장하고 여러 컴퓨터에 동기화"
+  default_prompt: "Use $paseo-skill-save to inspect, save, and synchronize this skill through my private library for later natural-language use."
