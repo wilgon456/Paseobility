@@ -46,7 +46,6 @@ ROUTER_ENV_MARKERS = {
     "CLAUDECODE": "claude",
     "CLAUDE_CODE_ENTRYPOINT": "claude",
     "OPENCODE": "opencode",
-    "PASEO_HOME": "paseo",
     "HERMES_HOME": "hermes",
 }
 ROUTER_EXECUTABLE_TARGETS = {
@@ -55,12 +54,15 @@ ROUTER_EXECUTABLE_TARGETS = {
     "opencode": "opencode",
     "hermes": "hermes",
 }
-PASEO_PROVIDER_TARGETS = {
+PASEO_PROVIDER_NATIVE_TARGETS = {
     "codex": "codex",
     "claude": "claude",
     "opencode": "opencode",
     "hermes": "hermes",
 }
+# The manager's historical "codex" target is the cross-provider
+# ~/.agents/skills channel, not a Codex-only directory.
+PASEO_SHARED_AGENT_TARGET = "codex"
 PASEO_AVAILABLE_STATUSES = {"available", "connected", "ready"}
 PASEO_ENABLED_VALUES = {"1", "enabled", "on", "true", "yes"}
 PASEO_DISABLED_VALUES = {"0", "disabled", "off", "false", "no"}
@@ -782,7 +784,21 @@ def _paseo_provider_rows(value: Any) -> list[dict[str, Any]]:
     raise ValueError("unexpected provider response")
 
 
-def _discover_paseo_provider_targets(executable: str) -> tuple[list[str], dict[str, Any]]:
+def _paseo_provider_router_target(
+    provider: str, supported_targets: Sequence[str]
+) -> tuple[str | None, str]:
+    supported = set(supported_targets)
+    native = PASEO_PROVIDER_NATIVE_TARGETS.get(provider)
+    if native in supported:
+        return native, "native"
+    if PASEO_SHARED_AGENT_TARGET in supported:
+        return PASEO_SHARED_AGENT_TARGET, "shared-agent-skills"
+    return None, "unavailable"
+
+
+def _discover_paseo_provider_targets(
+    executable: str, supported_targets: Sequence[str] = ROUTER_TARGETS
+) -> tuple[list[str], dict[str, Any]]:
     detail: dict[str, Any] = {
         "executable": executable,
         "status": "unavailable",
@@ -819,21 +835,40 @@ def _discover_paseo_provider_targets(executable: str) -> tuple[list[str], dict[s
         enabled = enabled_text in PASEO_ENABLED_VALUES
         if enabled_text in PASEO_DISABLED_VALUES:
             enabled = False
-        target = PASEO_PROVIDER_TARGETS.get(provider)
+        target, route = _paseo_provider_router_target(provider, supported_targets)
+        eligible = status in PASEO_AVAILABLE_STATUSES and enabled
         provider_detail: dict[str, Any] = {
             "provider": provider,
             "status": status or "unknown",
             "enabled": enabled,
             "supported": target is not None,
+            "eligible": eligible,
+            "route": route,
         }
         if target:
             provider_detail["target"] = target
         providers.append(provider_detail)
-        if status in PASEO_AVAILABLE_STATUSES and enabled and target and target not in targets:
+        if eligible and target and target not in targets:
             targets.append(target)
 
     mapped = _ordered_router_targets(targets)
-    detail.update({"status": "ok", "providers": providers, "mapped_targets": mapped})
+    eligible_providers = [
+        row["provider"] for row in providers if row["eligible"]
+    ]
+    unroutable_providers = [
+        row["provider"]
+        for row in providers
+        if row["eligible"] and not row["supported"]
+    ]
+    detail.update(
+        {
+            "status": "ok",
+            "providers": providers,
+            "eligible_providers": eligible_providers,
+            "unroutable_providers": unroutable_providers,
+            "mapped_targets": mapped,
+        }
+    )
     return mapped, detail
 
 
@@ -865,40 +900,60 @@ def _resolve_router_targets(
             "targets": targets,
         }
 
-    detected: list[str] = []
+    local_detected: list[str] = []
     environment: list[dict[str, str]] = []
     executables: list[dict[str, str]] = []
     for marker, target in ROUTER_ENV_MARKERS.items():
         if os.environ.get(marker):
             environment.append({"marker": marker, "target": target})
-            if target not in detected:
-                detected.append(target)
+            if target not in local_detected:
+                local_detected.append(target)
     for executable, target in ROUTER_EXECUTABLE_TARGETS.items():
         resolved = shutil.which(executable)
         if not resolved:
             continue
         executables.append({"name": executable, "path": resolved, "target": target})
-        if target not in detected:
-            detected.append(target)
+        if target not in local_detected:
+            local_detected.append(target)
 
     paseo_detail: dict[str, Any] = {"status": "not-found", "providers": [], "mapped_targets": []}
+    provider_targets: list[str] = []
     paseo_executable = shutil.which("paseo")
     if paseo_executable:
-        provider_targets, paseo_detail = _discover_paseo_provider_targets(paseo_executable)
-        for target in provider_targets:
-            if target not in detected:
-                detected.append(target)
+        provider_targets, paseo_detail = _discover_paseo_provider_targets(
+            paseo_executable, supported
+        )
+
+    if paseo_detail.get("status") == "ok":
+        unroutable = paseo_detail.get("unroutable_providers", [])
+        if unroutable:
+            raise SaveError(
+                "unroutable-paseo-providers",
+                "Some available Paseo providers cannot receive the skill router",
+                ",".join(str(provider) for provider in unroutable),
+            )
+        detected = provider_targets
+        detection_source = "paseo-provider-registry"
+    else:
+        detected = local_detected
+        detection_source = "local-cli-fallback"
 
     detected_targets = _ordered_router_targets(detected)
     targets = [target for target in detected_targets if target in supported]
     mode = "auto-detected"
     if not targets:
+        if detection_source == "paseo-provider-registry":
+            raise SaveError(
+                "no-available-paseo-providers",
+                "Paseo reports no available, enabled workload providers",
+            )
         targets = [target for target in ("codex", "claude") if target in supported]
         if not targets:
             targets = [supported[0]]
         mode = "auto-fallback"
     return ",".join(targets), {
         "mode": mode,
+        "detection_source": detection_source,
         "environment": environment,
         "executables": executables,
         "paseo": paseo_detail,

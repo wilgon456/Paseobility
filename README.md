@@ -46,6 +46,12 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 v2.5.2는 `/paseo-agent-cleanup`이 정상적인 idle Codex 세션을 상태만 보고
 archive하던 안전 문제를 수정합니다.
 
+`/paseo-skill-save`는 `paseo --json provider ls`에서 available/enabled로
+확인된 모든 workload provider를 자동 탐지합니다. Claude와 OpenCode는 전용
+스킬 경로를 사용하고, Grok 및 custom ACP provider를 포함한 나머지는 공용
+Agent Skills 경로로 연결합니다. Paseo provider 목록을 읽을 수 없을 때만 로컬
+AI CLI 탐지로 대체합니다.
+
 - 인자 없는 실행은 이제 dry-run이며 기본 `.*` 전체 선택을 사용하지 않습니다.
 - 무필터 `--auto`는 명확한 disposable/test/validation 표식이 있는 inactive
   agent만 대상으로 삼습니다. 일반 idle 세션은 이어서 사용할 수 있는 정상

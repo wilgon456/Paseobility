@@ -110,7 +110,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
         args = MODULE.build_parser().parse_args(["fixture"])
         self.assertEqual(args.router_target, "auto")
 
-    def test_router_target_auto_combines_cli_and_paseo_providers(self) -> None:
+    def test_router_target_auto_prefers_paseo_registry_over_local_cli(self) -> None:
         def which(name: str) -> str | None:
             return {
                 "codex": "/tools/codex",
@@ -139,10 +139,113 @@ class PaseoSkillSaveTests(unittest.TestCase):
         ):
             targets, detail = RESOLVE_ROUTER_TARGETS("auto")
 
-        self.assertEqual(targets, "codex,claude")
+        self.assertEqual(targets, "claude")
         self.assertEqual(detail["mode"], "auto-detected")
-        self.assertEqual(detail["targets"], ["codex", "claude"])
+        self.assertEqual(detail["detection_source"], "paseo-provider-registry")
+        self.assertEqual(detail["targets"], ["claude"])
         self.assertEqual(detail["paseo"]["mapped_targets"], ["claude"])
+
+    def test_paseo_registry_routes_grok_and_custom_acp_to_shared_agent_skills(self) -> None:
+        payload = [
+            {
+                "provider": "codex",
+                "status": "unavailable",
+                "enabled": "Enabled",
+            },
+            {
+                "provider": "grok",
+                "status": "available",
+                "enabled": "Enabled",
+            },
+            {
+                "provider": "custom-acp",
+                "status": "ready",
+                "enabled": True,
+            },
+            {
+                "provider": "copilot",
+                "status": "available",
+                "enabled": "Disabled",
+            },
+        ]
+        with mock.patch.object(
+            MODULE, "_run_process", return_value=response(payload)
+        ):
+            targets, detail = MODULE._discover_paseo_provider_targets(
+                "/tools/paseo", MODULE.LEGACY_ROUTER_TARGETS
+            )
+
+        self.assertEqual(targets, ["codex"])
+        providers = {row["provider"]: row for row in detail["providers"]}
+        self.assertEqual(providers["grok"]["target"], "codex")
+        self.assertEqual(providers["grok"]["route"], "shared-agent-skills")
+        self.assertTrue(providers["grok"]["eligible"])
+        self.assertEqual(providers["custom-acp"]["target"], "codex")
+        self.assertEqual(
+            providers["custom-acp"]["route"], "shared-agent-skills"
+        )
+        self.assertFalse(providers["codex"]["eligible"])
+        self.assertFalse(providers["copilot"]["eligible"])
+        self.assertEqual(detail["eligible_providers"], ["grok", "custom-acp"])
+        self.assertEqual(detail["unroutable_providers"], [])
+
+    def test_paseo_registry_fails_closed_when_no_provider_is_available(self) -> None:
+        paseo_detail = {
+            "status": "ok",
+            "providers": [],
+            "eligible_providers": [],
+            "unroutable_providers": [],
+            "mapped_targets": [],
+        }
+        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
+            MODULE.shutil, "which", return_value="/tools/paseo"
+        ), mock.patch.object(
+            MODULE,
+            "_discover_paseo_provider_targets",
+            return_value=([], paseo_detail),
+        ):
+            with self.assertRaises(MODULE.SaveError) as raised:
+                RESOLVE_ROUTER_TARGETS("auto")
+
+        self.assertEqual(raised.exception.code, "no-available-paseo-providers")
+
+    def test_paseo_registry_fails_closed_when_manager_cannot_cover_provider(self) -> None:
+        paseo_detail = {
+            "status": "ok",
+            "providers": [],
+            "eligible_providers": ["grok"],
+            "unroutable_providers": ["grok"],
+            "mapped_targets": [],
+        }
+        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
+            MODULE.shutil, "which", return_value="/tools/paseo"
+        ), mock.patch.object(
+            MODULE,
+            "_discover_paseo_provider_targets",
+            return_value=([], paseo_detail),
+        ):
+            with self.assertRaises(MODULE.SaveError) as raised:
+                RESOLVE_ROUTER_TARGETS("auto", ("claude",))
+
+        self.assertEqual(raised.exception.code, "unroutable-paseo-providers")
+
+    def test_paseo_registry_uses_native_hermes_target_when_supported(self) -> None:
+        payload = [
+            {
+                "provider": "hermes",
+                "status": "available",
+                "enabled": "Enabled",
+            }
+        ]
+        with mock.patch.object(
+            MODULE, "_run_process", return_value=response(payload)
+        ):
+            targets, detail = MODULE._discover_paseo_provider_targets(
+                "/tools/paseo", MODULE.ROUTER_TARGETS
+            )
+
+        self.assertEqual(targets, ["hermes"])
+        self.assertEqual(detail["providers"][0]["route"], "native")
 
     def test_router_target_explicit_skips_discovery(self) -> None:
         with mock.patch.object(MODULE.shutil, "which") as which:
