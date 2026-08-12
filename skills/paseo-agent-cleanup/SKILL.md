@@ -6,7 +6,8 @@ description: >-
   temporary Paseo agents/workspaces, reduce clutter, or inspect what can be
   cleaned up. The default mode auto-archives every non-active agent without
   asking first; never archive active agents, never delete anything, and require
-  explicit approval for workspace cleanup.
+  explicit approval for workspace cleanup. Inactive subagents follow the same
+  no-confirmation archive rule.
 ---
 
 # Paseo Agent Cleanup
@@ -17,7 +18,8 @@ approval, and delete is never used.
 
 ## Core rules
 
-- Default to auto-archive every non-active agent without asking for approval.
+- Default to auto-archive every non-active agent, including subagents, without
+  asking for approval again.
 - Use dry-run when the user asks to preview first.
 - Never delete agents or workspaces.
 - Never archive active agents, including `running`, `working`, `active`,

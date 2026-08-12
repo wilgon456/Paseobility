@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -17,8 +20,8 @@ from typing import Any, Sequence
 
 
 MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload.git"
-MANAGER_REVISION = "c9f5b6e0a0273639abe8ddbf4dc8a5f1abfc73cd"
-MANAGER_TREE = "ed9f00aab7539774402e62e22b19a33e565e023b"
+MANAGER_REVISION = "5fc339d03370f16b1425d57240c56c2db9f3e14a"
+MANAGER_TREE = "8d1585839cc78f46fd534fa1c47103c4b6fd9008"
 
 
 class SaveError(RuntimeError):
@@ -275,8 +278,10 @@ def _run_json(command: Sequence[str], timeout: int) -> dict[str, Any]:
     return payload
 
 
-def _build_add_command(args: argparse.Namespace, prefix: list[str]) -> list[str]:
-    command = prefix + ["add", args.source]
+def _build_add_command(
+    args: argparse.Namespace, prefix: list[str], source: str | None = None
+) -> list[str]:
+    command = prefix + ["add", source or args.source]
     if args.description_ko:
         command += ["--description-ko", args.description_ko]
     for tag in args.tag_ko:
@@ -291,8 +296,186 @@ def _build_add_command(args: argparse.Namespace, prefix: list[str]) -> list[str]
         command += ["--risk", args.risk]
     if args.overlay_dir:
         command += ["--overlay-dir", str(Path(args.overlay_dir).expanduser())]
+    if getattr(args, "approve_medium", False):
+        command.append("--approve-medium")
+    if getattr(args, "local_only", False):
+        command.append("--local-only")
     command.append("--json")
     return command
+
+
+def _spyware_scanner_path() -> Path:
+    return (
+        Path(__file__).resolve().parents[2]
+        / "paseo-spyware-check"
+        / "scripts"
+        / "spyware-check.py"
+    )
+
+
+def _load_spyware_scanner() -> Any:
+    scanner = _spyware_scanner_path()
+    if not scanner.is_file() or _is_link_or_reparse(scanner):
+        raise SaveError(
+            "spyware-check-unavailable",
+            "The bundled spyware scanner is missing or unsafe",
+            str(scanner),
+        )
+    spec = importlib.util.spec_from_file_location("paseo_bundled_spyware_check", scanner)
+    if spec is None or spec.loader is None:
+        raise SaveError(
+            "spyware-check-unavailable", "The bundled spyware scanner could not be loaded"
+        )
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise SaveError(
+            "spyware-check-unavailable",
+            "The bundled spyware scanner could not be loaded",
+            str(exc),
+        ) from exc
+    if not callable(getattr(module, "scan_target", None)):
+        raise SaveError(
+            "spyware-check-unavailable", "The bundled spyware scanner has no scan entrypoint"
+        )
+    return module
+
+
+def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
+    if not isinstance(receipt, dict):
+        raise SaveError("spyware-check-invalid", "Spyware scan returned no valid receipt")
+    scanner = receipt.get("scanner")
+    counts = receipt.get("counts")
+    findings = receipt.get("findings")
+    source = receipt.get("source")
+    supplied_digest = receipt.get("receipt_sha256")
+    if (
+        receipt.get("status") != "scan-complete"
+        or not isinstance(scanner, dict)
+        or scanner.get("name") != "paseo-spyware-check"
+        or scanner.get("schema_version") != 1
+        or not isinstance(counts, dict)
+        or not isinstance(findings, list)
+        or not isinstance(source, dict)
+        or source.get("kind") not in {"github", "local"}
+        or not isinstance(receipt.get("content_checksum"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", receipt["content_checksum"])
+        or not isinstance(supplied_digest, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", supplied_digest)
+    ):
+        raise SaveError("spyware-check-invalid", "Spyware scan receipt is incomplete")
+    for severity in ("critical", "high", "medium", "info"):
+        value = counts.get(severity)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise SaveError(
+                "spyware-check-invalid", "Spyware scan receipt has invalid finding counts"
+            )
+    calculated = {severity: 0 for severity in ("critical", "high", "medium", "info")}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise SaveError("spyware-check-invalid", "Spyware scan finding is invalid")
+        severity = str(finding.get("severity", "")).casefold()
+        if severity not in calculated:
+            raise SaveError("spyware-check-invalid", "Spyware scan severity is invalid")
+        calculated[severity] += 1
+    if counts != calculated:
+        raise SaveError(
+            "spyware-check-invalid", "Spyware scan counts do not match its findings"
+        )
+    expected_verdict = (
+        "high"
+        if counts["critical"] or counts["high"]
+        else ("medium" if counts["medium"] else "low")
+    )
+    if receipt.get("verdict") != expected_verdict:
+        raise SaveError("spyware-check-invalid", "Spyware scan verdict is inconsistent")
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_sha256", None)
+    canonical = json.dumps(
+        unsigned, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    expected_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    if supplied_digest != expected_digest:
+        raise SaveError("spyware-check-invalid", "Spyware scan receipt digest does not match")
+    return receipt
+
+
+def _run_spyware_gate(
+    args: argparse.Namespace, workspace: Path
+) -> tuple[dict[str, Any], str]:
+    module = _load_spyware_scanner()
+    try:
+        raw_receipt, add_source = module.scan_target(
+            args.source, workspace, args.timeout
+        )
+    except Exception as exc:
+        raise SaveError(
+            "spyware-check-failed",
+            "The source could not be acquired and statically inspected",
+            getattr(exc, "detail", "") or str(exc),
+        ) from exc
+    receipt = _validate_scan_receipt(raw_receipt)
+    counts = receipt["counts"]
+    detail = json.dumps(receipt, ensure_ascii=True, sort_keys=True)
+    if counts["critical"] or counts["high"]:
+        raise SaveError(
+            "spyware-check-blocked",
+            "Registration was blocked by Critical or High spyware findings",
+            detail,
+        )
+    if counts["medium"] and not args.approve_medium:
+        raise SaveError(
+            "spyware-check-approval-required",
+            "Medium findings require explicit approval before registration",
+            detail,
+        )
+    if not isinstance(add_source, str) or not add_source:
+        raise SaveError("spyware-check-invalid", "Spyware scan returned no immutable source")
+    return receipt, add_source
+
+
+def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> None:
+    scanned = receipt.get("source")
+    if not isinstance(scanned, dict):
+        return
+    if scanned.get("kind") == "local":
+        if scanned.get("skill_manifest") and record.get("checksum") != receipt.get(
+            "content_checksum"
+        ):
+            raise SaveError(
+                "scan-receipt-mismatch",
+                "Saved local skill checksum does not match the spyware scan receipt",
+            )
+        return
+    if scanned.get("kind") != "github":
+        raise SaveError(
+            "spyware-check-invalid", "Spyware scan receipt has an unknown source kind"
+        )
+    actual = record.get("source")
+    if not isinstance(actual, dict) or actual.get("commit") != scanned.get("commit"):
+        raise SaveError(
+            "scan-receipt-mismatch",
+            "Saved skill commit does not match the spyware scan receipt",
+            json.dumps({"scanned": scanned, "saved": actual}, sort_keys=True),
+        )
+    scanned_path = str(scanned.get("path") or "").strip("/")
+    actual_path = str(actual.get("path") or "").strip("/")
+    if scanned_path and not (
+        actual_path == scanned_path or actual_path.startswith(scanned_path + "/")
+    ):
+        raise SaveError(
+            "scan-receipt-mismatch",
+            "Saved skill path is outside the spyware-scanned subtree",
+            json.dumps({"scanned": scanned_path, "saved": actual_path}, sort_keys=True),
+        )
+    if actual_path == scanned_path and record.get("checksum") != receipt.get(
+        "content_checksum"
+    ):
+        raise SaveError(
+            "scan-receipt-mismatch",
+            "Saved skill checksum does not match the spyware scan receipt",
+        )
 
 
 def _primary_target(router_target: str) -> str:
@@ -347,29 +530,36 @@ def _match_record(
 
 
 def save_skill(args: argparse.Namespace) -> dict[str, Any]:
-    runtime = _bootstrap_manager(args)
-    prefix = _manager_prefix(args, runtime)
-    router = _run_json(
-        prefix + ["init", "--target", args.router_target, "--json"],
-        args.timeout,
-    )
-    if router.get("status") != "initialized":
-        raise SaveError(
-            "router-init-failed",
-            "The routing engine did not initialize the natural-language router",
+    with tempfile.TemporaryDirectory(prefix="paseo-skill-save-scan-") as temporary:
+        scan_receipt, scanned_source = _run_spyware_gate(args, Path(temporary))
+        runtime = _bootstrap_manager(args)
+        prefix = _manager_prefix(args, runtime)
+        router = _run_json(
+            prefix + ["init", "--target", args.router_target, "--json"],
+            args.timeout,
         )
+        if router.get("status") != "initialized":
+            raise SaveError(
+                "router-init-failed",
+                "The routing engine did not initialize the natural-language router",
+            )
 
-    added = _run_json(_build_add_command(args, prefix), args.timeout)
-    items = added.get("items")
-    if (
-        added.get("status") != "added-to-personal-library"
-        or not isinstance(items, list)
-        or not items
-    ):
-        raise SaveError(
-            "unexpected-add-result",
-            "The routing engine did not report a saved personal-library item",
+        added = _run_json(
+            _build_add_command(args, prefix, scanned_source), args.timeout
         )
+        items = added.get("items")
+        if (
+            added.get("status") != "added-to-personal-library"
+            or not isinstance(items, list)
+            or not items
+        ):
+            raise SaveError(
+                "unexpected-add-result",
+                "The routing engine did not report a saved personal-library item",
+            )
+        sync_status = added.get("sync")
+        if sync_status is None:
+            sync_status = "manager-sync-api-unavailable"
 
     verified: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
@@ -407,8 +597,14 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
             "trust_verdict": inspection.get("trust_verdict", {}).get("verdict"),
         }
         records.append(record)
+        _bind_record_to_scan(scan_receipt, record)
 
-        query = str(item.get("routing", {}).get("description_ko") or catalog_id)
+        routing_record = item.get("routing", {}) if isinstance(item.get("routing"), dict) else {}
+        actions = routing_record.get("actions", []) if isinstance(routing_record.get("actions"), list) else []
+        action = str(actions[0]) if actions else "read"
+        portable_name = catalog_id.removeprefix("overlay.")
+        description = str(routing_record.get("description_ko") or "")
+        query = " ".join(part for part in (action, portable_name, description) if part)
         search = _run_json(
             prefix + ["search", query, "--available-only", "--json"],
             args.timeout,
@@ -442,7 +638,18 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "status": "saved-and-verified",
         "source": args.source,
+        "spyware_check": {
+            "receipt": scan_receipt,
+            "medium_approved": bool(args.approve_medium),
+        },
         "manager": runtime.details,
+        "library_sync": {
+            "status": sync_status,
+            "detail": added.get("sync_detail"),
+            "retry": added.get("sync_retry"),
+            "onboarding_error": added.get("onboarding_error"),
+            "local_only": bool(args.local_only),
+        },
         "router": router,
         "items": items,
         "records": records,
@@ -479,6 +686,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--overlay-dir")
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="save only to this computer and skip paseo_skill_save onboarding/sync",
+    )
+    parser.add_argument(
+        "--approve-medium",
+        action="store_true",
+        help="register despite displayed Medium findings after explicit user approval",
+    )
     parser.add_argument(
         "--router-target",
         default="codex",
@@ -520,6 +737,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result["automatic_discovery_ready"]
         and result["natural_language_ready"]
         and result["automatic_use_ready"]
+        and result["library_sync"]["status"] != "manager-sync-api-unavailable"
     )
     return 0 if ready else 1
 
