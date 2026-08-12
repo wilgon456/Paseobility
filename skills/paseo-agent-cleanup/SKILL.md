@@ -1,26 +1,28 @@
 ---
 name: paseo-agent-cleanup
 description: >-
-  Clean up Paseo test agents and workspaces safely. Use when the user wants to
-  archive old, idle, validation, test, PR, or temporary Paseo agents/workspaces,
-  reduce clutter after testing skills, or inspect what can be cleaned up. The
-  default mode auto-archives clearly safe non-running test/validation agents;
-  never archive running agents, never delete anything, and require explicit
-  approval for workspace cleanup or ambiguous targets.
+  Clean up inactive Paseo agents and test workspaces safely. Use when the user
+  wants to archive old, idle, completed, stopped, validation, test, PR, or
+  temporary Paseo agents/workspaces, reduce clutter, or inspect what can be
+  cleaned up. The default mode auto-archives every non-active agent without
+  asking first; never archive active agents, never delete anything, and require
+  explicit approval for workspace cleanup.
 ---
 
 # Paseo Agent Cleanup
 
-This skill keeps Paseo agent/workspace lists manageable after validation runs.
-It is intentionally conservative: safe agent candidates can be archived
-automatically, workspaces require explicit approval, and delete is never used.
+This skill keeps Paseo agent/workspace lists manageable. Inactive agents are
+archived automatically without confirmation, workspaces require explicit
+approval, and delete is never used.
 
 ## Core rules
 
-- Default to auto-archive only clearly safe non-running test/validation agents.
+- Default to auto-archive every non-active agent without asking for approval.
 - Use dry-run when the user asks to preview first.
 - Never delete agents or workspaces.
-- Never archive running agents.
+- Never archive active agents, including `running`, `working`, `active`,
+  `starting`, `queued`, `pending`, `busy`, `executing`, or `in-progress`
+  states.
 - Never stop or interrupt agents automatically.
 - Archive workspaces only after the user explicitly approves the exact cleanup
   plan or provides explicit workspace IDs.
@@ -34,7 +36,7 @@ automatically, workspaces require explicit approval, and delete is never used.
    paseo ls --json
    paseo workspace ls --json
    ```
-2. Auto-archive safe finished test/validation agents:
+2. Auto-archive all inactive agents without asking first:
    ```bash
    node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto
    ```
@@ -42,7 +44,7 @@ automatically, workspaces require explicit approval, and delete is never used.
    ```bash
    node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run
    ```
-4. Archive explicit workspace or ambiguous targets only after approval:
+4. Archive an explicit workspace only after approval:
    ```bash
    node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
    ```
@@ -68,9 +70,9 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 Defaults:
 
-- candidates must be non-running agents
-- default pattern is `test|verify|validation|retest|recognition|paseobility|\bpr\b|pr[-_ ]?\d+`
-- auto mode archives selected agents only
+- every non-active agent is a candidate, regardless of its name or purpose
+- `--pattern <regex>` optionally narrows candidates by names/titles/cwd/provider/id
+- auto mode archives selected inactive agents only, without confirmation
 - workspaces are never auto-archived; use `--include-workspaces --dry-run` to
   preview and explicit `--workspace <id> --archive --yes` to archive
 - `--archive` without `--yes` still refuses to modify state
@@ -79,18 +81,15 @@ Defaults:
 
 Good cleanup candidates:
 
+- any agent whose status is inactive, including `idle`, completed, or stopped
 - idle test agents created for PR validation
 - recognition-only agents
 - skill validation agents
 - fixture or temporary workspaces created only for testing
-- agents whose title/name clearly contains `test`, `verify`, `validation`,
-  `retest`, `recognition`, `paseobility`, `pr`, or a `pr-123` style marker
 
 Do not clean up automatically:
 
-- running agents
-- unclear production/task agents
-- agents with active user work
+- agents in an active state
 - workspaces, unless explicitly specified with `--workspace <id> --archive --yes`
 - anything requiring delete rather than archive
 
@@ -114,7 +113,8 @@ paseo workspace ls --json
 paseo workspace archive <workspace-id> --json
 ```
 
-Only run archive commands after confirming the ID and status.
+For agents, verify the ID and status, then archive inactive entries without
+asking the user. Continue to require explicit approval for workspaces.
 
 ## Output expectations
 
@@ -124,7 +124,7 @@ Return:
 Cleanup Plan
 - agents considered
 - candidates selected
-- running agents skipped
+- active agents skipped
 - workspaces considered
 
 Actions

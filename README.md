@@ -50,13 +50,13 @@ v2.3에서는 GitHub의 AI 스킬을 정적 검사한 뒤 개인 로컬 라이�
 | `/paseo-skill-save` | GitHub 스킬을 읽기 전용으로 검사하고 커밋·체크섬을 고정해 개인 라이브러리에 저장한 뒤 자연어 검색·선택까지 검증 |
 | `/paseo-share` | 파일을 전용 private Git 저장소에 게시하고 공유 ID, 미리보기 링크, 다운로드 링크 반환. 다른 컴퓨터에서는 최신 목록 조회와 로컬 가져오기를 자동 수행 |
 | `/paseo-spyware-check` | GitHub URL이나 로컬 repo를 설치하기 전에 악성 install script, secret 접근, 원격 코드 실행, exfiltration, supply-chain 위험 신호를 읽기 전용으로 점검 |
-| `/paseo-agent-cleanup` | 테스트와 검증 후 쌓인 완료 agent를 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
+| `/paseo-agent-cleanup` | 모든 비활성 agent를 확인 없이 자동 archive하고, workspace는 승인 후 archive-only 방식으로 정리 |
 | Installer backup | 기존 같은 이름의 skill 디렉터리를 덮어쓰기 전에 `skills-backups/` 아래로 자동 백업 |
 | Report summary | spyware helper report에 `High / Medium / Info` count와 verdict hint 추가 |
 
 `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 scanner CLI를 호출하는 방식입니다. Paseobility는 해당 scanner의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
-`/paseo-agent-cleanup`은 명확한 테스트/검증용 완료 agent를 기본으로 archive합니다. running agent는 건드리지 않고, workspace cleanup과 애매한 대상은 승인 후 archive-only 방식으로만 처리합니다.
+`/paseo-agent-cleanup`은 이름이나 용도와 무관하게 모든 비활성 agent를 묻지 않고 기본 archive합니다. running 등 활성 agent는 건드리지 않고, workspace cleanup은 승인 후 archive-only 방식으로만 처리합니다.
 
 `/paseo-share`는 각 컴퓨터에서 동일한 private GitHub/Forgejo 저장소를 한 번 설정한 뒤 `공유해줘`, `최신 공유 파일 보여줘`, `다른 컴퓨터 파일 가져와` 같은 요청으로 사용합니다. 업로드한 파일은 모바일에서 링크로 바로 미리볼 수 있고, 다른 컴퓨터의 Paseo는 공유 ID를 이용해 자동으로 가져옵니다.
 
@@ -116,7 +116,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private Git 저장소 게시, 클릭 가능한 미리보기/다운로드 링크, 최신 목록, 공유 ID 기반 자동 가져오기 |
 | `/paseo-skill-save` | 개인 스킬 저장·등록 | GitHub 스킬 정적 검사, 한국어 메타데이터 생성, 커밋·체크섬 고정, 자연어 검색·선택 검증 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
-| `/paseo-agent-cleanup` | 테스트 agent/workspace 정리 | 완료된 테스트 agent 자동 archive, running agent 보호, workspace는 승인 후 archive |
+| `/paseo-agent-cleanup` | 비활성 agent/workspace 정리 | 모든 비활성 agent 자동 archive, 활성 agent 보호, workspace는 승인 후 archive |
 
 ---
 
@@ -230,7 +230,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | `/paseo-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인 |
 | `/paseo-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
-| `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 dry-run, running agent skip, safe agent auto-archive, temp HOME 설치, 실제 skill 인식 확인 |
+| `/paseo-agent-cleanup` on Apple Silicon macOS | Tested | Paseo 0.3.1에서 모든 비활성 agent 선택, running agent skip, idle agent 무확인 auto-archive, workspace 자동 제외, 실제 skill 설치 확인 |
 | `/paseo-agent-cleanup` on Windows | Tested | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 직접 실행, dry-run JSON, running agent skip, 완료 test agent auto-archive, workspace auto-archive 방지 확인 |
 | `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안 테스트 7개, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
 | `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
@@ -385,17 +385,17 @@ install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위
 
 ```text
 /paseo-agent-cleanup
-테스트용 agent랑 workspace 정리해줘.
-완료된 테스트 agent는 바로 archive하고, workspace는 후보만 보여줘.
-running agent는 건드리지 마.
+비활성 agent랑 테스트 workspace 정리해줘.
+비활성 agent는 묻지 말고 바로 archive하고, workspace는 후보만 보여줘.
+실행 중이거나 동작 중인 agent는 건드리지 마.
 ```
 
 기본 원칙:
 
-- 명확한 테스트/검증용 완료 agent는 자동 archive합니다.
+- 모든 비활성 agent는 이름이나 용도와 무관하게 묻지 않고 자동 archive합니다.
 - `delete`는 하지 않고 `archive`만 합니다.
-- running agent는 자동으로 정리하지 않습니다.
-- workspace archive와 애매한 대상은 사용자 승인 후에만 진행합니다.
+- 활성 agent는 자동으로 정리하지 않습니다.
+- workspace archive는 사용자 승인 후에만 진행합니다.
 
 ---
 
@@ -551,21 +551,23 @@ skills/paseo-spyware-check/scripts/install-scanners.sh --dry-run
 
 ## `/paseo-agent-cleanup`
 
-테스트, 검증, PR 확인 과정에서 쌓인 Paseo agent와 workspace를 안전하게 정리합니다.
+Paseo의 비활성 agent와 테스트 workspace를 안전하게 정리합니다.
 
 확인하는 것:
 
 - `paseo ls --json`의 agent 목록
 - `paseo workspace ls --json`의 workspace 목록
-- `test`, `verify`, `validation`, `retest`, `recognition`, `paseobility`, `pr-123` 같은 테스트/PR 패턴 후보
+- 이름이나 용도와 무관한 모든 비활성 agent
+- 필요하면 `--pattern`으로 좁힌 이름/경로 후보
 - 명시적으로 지정한 agent/workspace ID
 
 핵심 규칙:
 
-- 명확한 테스트/검증용 완료 agent는 기본으로 archive합니다.
-- running agent는 archive하지 않습니다.
+- 모든 비활성 agent는 사전 확인 없이 기본 archive합니다.
+- running, working, active, starting, queued, pending, busy, executing,
+  in-progress 상태의 agent는 archive하지 않습니다.
 - delete는 지원하지 않습니다.
-- workspace archive와 애매한 대상은 `--archive --yes` 또는 명확한 사용자 승인 후에만 실행합니다.
+- workspace archive는 `--archive --yes` 또는 명확한 사용자 승인 후에만 실행합니다.
 
 포함된 helper:
 
