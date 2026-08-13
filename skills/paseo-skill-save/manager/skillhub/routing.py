@@ -27,6 +27,7 @@ TARGET_COMPATIBILITY = {
     "claude": "claude-code",
     "opencode": "opencode",
     "paseo": "paseo",
+    "hermes": "hermes-agent",
     "generic": "generic-agent",
 }
 KNOWN_OSES = ("windows", "macos", "linux")
@@ -215,7 +216,7 @@ def recommendation_assessment(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def compatibility_reason(item: dict[str, Any], client: str, os_name: str) -> str | None:
     compatibility = [str(value) for value in item.get("compatibility", [])]
-    if client not in compatibility:
+    if client not in compatibility and not (client == "hermes-agent" and "generic-agent" in compatibility):
         return f"client unsupported: needs {client}, item lists {', '.join(sorted(compatibility)) or 'none'}"
     oses = [str(value) for value in item.get("oses", [])]
     if os_name not in oses and "any" not in oses:
@@ -230,6 +231,12 @@ def availability_reason(item: dict[str, Any]) -> str | None:
         return f"{status}: {blocker}" if blocker else f"{status}: not acquirable"
     if item.get("activation_policy") == "blocked":
         return "activation policy is blocked"
+    security_policy = item.get("security_policy")
+    if isinstance(security_policy, dict):
+        if security_policy.get("malware_verdict") == "blocked" or security_policy.get("execution_policy") == "denied":
+            return "security policy denies activation"
+        if security_policy.get("publication_status") in {"quarantined", "revoked"}:
+            return f"security policy status is {security_policy.get('publication_status')}"
     plan = item.get("acquisition", {})
     if plan.get("status") != "available":
         return f"acquisition unavailable: {plan.get('reason') or 'no acquisition plan'}"
@@ -239,11 +246,15 @@ def availability_reason(item: dict[str, Any]) -> str | None:
 def risk_requirement(item: dict[str, Any], allow_risk: str) -> str | None:
     """Return the explicit authorization flag still needed, if any."""
     risk = str(item.get("risk", "destructive"))
-    if risk_allowed(risk, allow_risk):
-        return None
+    required: str | None = None
     if risk == "destructive":
-        return "--allow-risk destructive --confirm-destructive"
-    return f"--allow-risk {risk}"
+        required = "--allow-risk destructive --confirm-destructive"
+    elif not risk_allowed(risk, allow_risk):
+        required = f"--allow-risk {risk}"
+    security_policy = item.get("security_policy")
+    if isinstance(security_policy, dict) and security_policy.get("execution_policy") in {"confirm", "sandbox-only"}:
+        required = f"{required} + --confirm-policy" if required else "--confirm-policy"
+    return required
 
 
 def provenance_row(item: dict[str, Any]) -> dict[str, Any]:
@@ -317,6 +328,7 @@ def route_task(
                 "tier": item.get("trust", {}).get("tier"),
                 "security_review": item.get("trust", {}).get("security_review"),
             },
+            "security_policy": item.get("security_policy"),
             "routing": {
                 "description_ko": item.get("routing", {}).get("description_ko"),
                 "primary_path": item.get("routing", {}).get("primary_path"),
@@ -385,6 +397,10 @@ def acquire_commands(catalog_id: str, target: str, risk: str) -> dict[str, str]:
         risk_flags = f" --allow-risk {risk}"
     if risk == "destructive":
         risk_flags += " --confirm-destructive"
+    if target == "hermes":
+        return {
+            "resolve": f"skillhub resolve {catalog_id} --target hermes{risk_flags} --yes --json",
+        }
     return {
         "one_shot": f"skillhub use {catalog_id} --once --target {target}{risk_flags} --yes --json",
         "install": f"skillhub install {catalog_id} --target {target}{risk_flags} --yes --json",
@@ -397,10 +413,11 @@ def next_steps(candidates: list[dict[str, Any]], risk_gated: list[dict[str, Any]
         top = candidates[0]["catalog_id"]
         steps.append(f"skillhub inspect {top} --json")
         steps.append("present provenance, license, integrity, risk, and trust limitations; ask the user for explicit approval")
-        steps.extend([
-            candidates[0]["acquire_commands"]["one_shot"],
-            candidates[0]["acquire_commands"]["install"],
-        ])
+        commands = candidates[0]["acquire_commands"]
+        if target == "hermes":
+            steps.append(commands["resolve"])
+        else:
+            steps.extend([commands["one_shot"], commands["install"]])
         steps.append("read SKILL.md from the returned verified skill_path immediately; do not rely on same-session rediscovery")
     elif risk_gated:
         top = risk_gated[0]

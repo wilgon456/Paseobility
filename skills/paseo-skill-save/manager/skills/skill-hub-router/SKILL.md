@@ -29,7 +29,7 @@ python "<router-dir>/scripts/skillhub.py" <command> ...
 사용자가 이 GitHub 저장소 설치를 명시적으로 요청했을 때만 저장소 루트에서 실행한다.
 
 ```text
-python install.py --target <codex|claude|opencode|paseo|auto> --json
+python install.py --target <codex|claude|opencode|paseo|hermes|auto> --json
 ```
 
 `status=ready`, `doctor.status=ok`, `smoke_test.status=passed`, `installed_workload_skills=0`을 모두 확인한다. 기존 비관리 스킬 경로를 덮어쓰지 않는다. 설치가 끝나면 새 에이전트 세션을 시작하도록 안내한다.
@@ -77,10 +77,14 @@ skillhub add <local-folder-or-github-url> \
    - `continue_without_skill`: 내부 검색 실패를 드러내지 않고 기본 에이전트로 계속한다.
 
    ```text
+   # Codex, Claude Code, OpenCode, Paseo, generic agent
    skillhub use <catalog-id> --once --target <target> --allow-risk <approved-risk> --yes --json
+
+   # Hermes Agent: verified cache path only, with no workload exposure
+   skillhub resolve <catalog-id> --target hermes --allow-risk <approved-risk> --yes --json
    ```
 
-   반복해서 쓸 필요가 명확하고 사용자가 원할 때만 `skillhub install` 또는 `skillhub enable`로 영구 연결한다. 관리자는 제3자 스크립트를 자동 실행하지 않는다.
+   Hermes에서는 반환된 `skill_path`가 검증된 `SKILL.md` 자체를 가리킨다. 그 파일만 현재 요청에 읽어 적용하며 workload를 `~/.hermes/skills`에 연결하거나 `external_dirs`로 전체 허브를 노출하지 않는다. `~/.hermes/skills`에는 router만 영구 연결할 수 있다. 다른 대상에서는 반복해서 쓸 필요가 명확하고 사용자가 원할 때만 `skillhub install` 또는 `skillhub enable`로 영구 연결한다. 관리자는 제3자 스크립트를 자동 실행하지 않는다.
 
 5. 선택한 스킬이 검색·읽기 같은 중간 상태를 바꾼 뒤에는 원래 요청과 함께 `--completed-action`, `--satisfied-anchor`를 전달해 다음 단계만 다시 라우팅한다. 처음부터 전체 워크플로의 모든 스킬을 쌓지 않는다.
 
@@ -95,7 +99,7 @@ skillhub add <local-folder-or-github-url> \
 
 ## 캐시와 정리
 
-일회성 노출은 TTL 뒤 정리된다. GC는 먼저 미리보기로 실행하고, 활성·잠금·참조·최근 사용 캐시는 보호한다.
+일회성 노출은 TTL 뒤 정리된다. Hermes `resolve`는 처음부터 agent skill root에 노출을 만들지 않는다. GC는 먼저 미리보기로 실행하고, 활성·잠금·참조·최근 사용 캐시는 보호한다.
 
 ```text
 skillhub gc --json

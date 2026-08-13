@@ -58,28 +58,64 @@ def fake_runtime() -> object:
     )
 
 
-def signed_receipt(*, high: int = 0, medium: int = 0) -> dict:
-    findings = [
-        {"severity": "High", "path": "fixture", "line": 1, "reason": "test"}
-        for _ in range(high)
-    ] + [
-        {"severity": "Medium", "path": "fixture", "line": 1, "reason": "test"}
-        for _ in range(medium)
-    ]
+def signed_receipt(*, high: int = 0, medium: int = 0, source: dict | None = None) -> dict:
+    contract = MODULE._load_policy_contract()
+    source = source or {
+        "kind": "github",
+        "repository": "https://github.com/example/repo",
+        "commit": "a" * 40,
+        "tree": "c" * 40,
+        "path": "skills/demo",
+        "skill_manifest": True,
+    }
+    findings = []
+    for index in range(high):
+        row = {
+            "severity": "High", "rule_id": "test.blocking", "path": "run.sh",
+            "line": index + 1, "source_role": "executable", "reason": "test",
+            "evidence": "blocked fixture", "confidence": "high", "mitigation": "remove it",
+            "capabilities": ["subprocess"], "blocks": True, "review": False,
+        }
+        row["finding_id"] = contract.finding_id(row)
+        findings.append(row)
+    for index in range(medium):
+        row = {
+            "severity": "Medium", "rule_id": "test.review", "path": "helper.py",
+            "line": index + 1, "source_role": "executable", "reason": "test",
+            "evidence": "review fixture", "confidence": "medium", "mitigation": "review it",
+            "capabilities": ["subprocess"], "blocks": False, "review": True,
+        }
+        row["finding_id"] = contract.finding_id(row)
+        findings.append(row)
+    checksum = "b" * 64
+    security_policy = contract.build_policy(
+        source=source, checksum=checksum, findings=findings, scanner_schema_version=2
+    )
     receipt = {
         "status": "scan-complete",
         "scanner": {
             "name": "paseo-spyware-check",
-            "schema_version": 1,
+            "schema_version": 2,
             "mode": "bundled-python-static",
         },
         "target": "fixture",
-        "source": {"kind": "local", "path": "fixture"},
+        "source": source,
         "pinned_source": None,
-        "content_checksum": "b" * 64,
+        "content_checksum": checksum,
         "verdict": "high" if high else ("medium" if medium else "low"),
         "counts": {"critical": 0, "high": high, "medium": medium, "info": 0},
         "findings": findings,
+        "scan": {
+            "schema_version": 2,
+            "files_considered": 1,
+            "files_scanned": 1,
+            "max_findings": 500,
+            "max_scan_bytes_per_file": 2 * 1024 * 1024,
+            "truncated": False,
+            "truncation_reasons": [],
+            "target_code_executed": False,
+        },
+        "policy": security_policy,
         "limitations": [],
     }
     canonical = json.dumps(
@@ -87,6 +123,24 @@ def signed_receipt(*, high: int = 0, medium: int = 0) -> dict:
     )
     receipt["receipt_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return receipt
+
+
+def inspection_record(catalog_id: str = "overlay.demo", *, receipt: dict | None = None, source: dict | None = None, risk: str = "instructions-only", activation_policy: str = "on-demand") -> dict:
+    receipt = receipt or signed_receipt(source=source)
+    return {
+        "catalog_id": catalog_id,
+        "source": receipt["source"],
+        "revision": receipt["source"].get("commit", ""),
+        "risk": risk,
+        "activation_policy": activation_policy,
+        "archive": {"license": {"declared": "MIT"}},
+        "verification": {
+            "checksum": receipt["content_checksum"],
+            "security_policy_sha256": MODULE._load_policy_contract().policy_digest(receipt["policy"]),
+        },
+        "trust_verdict": {"verdict": "installable-caution"},
+        "security_policy": receipt["policy"],
+    }
 
 
 class PaseoSkillSaveTests(unittest.TestCase):
@@ -110,7 +164,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
         args = MODULE.build_parser().parse_args(["fixture"])
         self.assertEqual(args.router_target, "auto")
 
-    def test_router_target_auto_combines_cli_and_paseo_providers(self) -> None:
+    def test_router_target_auto_prefers_paseo_registry_over_local_cli(self) -> None:
         def which(name: str) -> str | None:
             return {
                 "codex": "/tools/codex",
@@ -139,10 +193,113 @@ class PaseoSkillSaveTests(unittest.TestCase):
         ):
             targets, detail = RESOLVE_ROUTER_TARGETS("auto")
 
-        self.assertEqual(targets, "codex,claude")
+        self.assertEqual(targets, "claude")
         self.assertEqual(detail["mode"], "auto-detected")
-        self.assertEqual(detail["targets"], ["codex", "claude"])
+        self.assertEqual(detail["detection_source"], "paseo-provider-registry")
+        self.assertEqual(detail["targets"], ["claude"])
         self.assertEqual(detail["paseo"]["mapped_targets"], ["claude"])
+
+    def test_paseo_registry_routes_grok_and_custom_acp_to_shared_agent_skills(self) -> None:
+        payload = [
+            {
+                "provider": "codex",
+                "status": "unavailable",
+                "enabled": "Enabled",
+            },
+            {
+                "provider": "grok",
+                "status": "available",
+                "enabled": "Enabled",
+            },
+            {
+                "provider": "custom-acp",
+                "status": "ready",
+                "enabled": True,
+            },
+            {
+                "provider": "copilot",
+                "status": "available",
+                "enabled": "Disabled",
+            },
+        ]
+        with mock.patch.object(
+            MODULE, "_run_process", return_value=response(payload)
+        ):
+            targets, detail = MODULE._discover_paseo_provider_targets(
+                "/tools/paseo", MODULE.LEGACY_ROUTER_TARGETS
+            )
+
+        self.assertEqual(targets, ["codex"])
+        providers = {row["provider"]: row for row in detail["providers"]}
+        self.assertEqual(providers["grok"]["target"], "codex")
+        self.assertEqual(providers["grok"]["route"], "shared-agent-skills")
+        self.assertTrue(providers["grok"]["eligible"])
+        self.assertEqual(providers["custom-acp"]["target"], "codex")
+        self.assertEqual(
+            providers["custom-acp"]["route"], "shared-agent-skills"
+        )
+        self.assertFalse(providers["codex"]["eligible"])
+        self.assertFalse(providers["copilot"]["eligible"])
+        self.assertEqual(detail["eligible_providers"], ["grok", "custom-acp"])
+        self.assertEqual(detail["unroutable_providers"], [])
+
+    def test_paseo_registry_fails_closed_when_no_provider_is_available(self) -> None:
+        paseo_detail = {
+            "status": "ok",
+            "providers": [],
+            "eligible_providers": [],
+            "unroutable_providers": [],
+            "mapped_targets": [],
+        }
+        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
+            MODULE.shutil, "which", return_value="/tools/paseo"
+        ), mock.patch.object(
+            MODULE,
+            "_discover_paseo_provider_targets",
+            return_value=([], paseo_detail),
+        ):
+            with self.assertRaises(MODULE.SaveError) as raised:
+                RESOLVE_ROUTER_TARGETS("auto")
+
+        self.assertEqual(raised.exception.code, "no-available-paseo-providers")
+
+    def test_paseo_registry_fails_closed_when_manager_cannot_cover_provider(self) -> None:
+        paseo_detail = {
+            "status": "ok",
+            "providers": [],
+            "eligible_providers": ["grok"],
+            "unroutable_providers": ["grok"],
+            "mapped_targets": [],
+        }
+        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
+            MODULE.shutil, "which", return_value="/tools/paseo"
+        ), mock.patch.object(
+            MODULE,
+            "_discover_paseo_provider_targets",
+            return_value=([], paseo_detail),
+        ):
+            with self.assertRaises(MODULE.SaveError) as raised:
+                RESOLVE_ROUTER_TARGETS("auto", ("claude",))
+
+        self.assertEqual(raised.exception.code, "unroutable-paseo-providers")
+
+    def test_paseo_registry_uses_native_hermes_target_when_supported(self) -> None:
+        payload = [
+            {
+                "provider": "hermes",
+                "status": "available",
+                "enabled": "Enabled",
+            }
+        ]
+        with mock.patch.object(
+            MODULE, "_run_process", return_value=response(payload)
+        ):
+            targets, detail = MODULE._discover_paseo_provider_targets(
+                "/tools/paseo", MODULE.ROUTER_TARGETS
+            )
+
+        self.assertEqual(targets, ["hermes"])
+        self.assertEqual(detail["providers"][0]["route"], "native")
 
     def test_router_target_explicit_skips_discovery(self) -> None:
         with mock.patch.object(MODULE.shutil, "which") as which:
@@ -231,16 +388,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
             ),
             response({"status": "verified"}),
             response(
-                {
-                    "catalog_id": "overlay.demo",
-                    "source": {"commit": "a" * 40, "path": "skills/demo"},
-                    "revision": "a" * 40,
-                    "risk": "instructions-only",
-                    "activation_policy": "on-demand",
-                    "archive": {"license": {"declared": "MIT"}},
-                    "verification": {"checksum": "b" * 64},
-                    "trust_verdict": {"verdict": "installable-caution"},
-                }
+                inspection_record()
             ),
             response({"results": [{"catalog_id": "overlay.demo"}]}),
             response(selected_match()),
@@ -265,6 +413,8 @@ class PaseoSkillSaveTests(unittest.TestCase):
         self.assertEqual(result["router"]["status"], "initialized")
         self.assertEqual(result["records"][0]["source"]["commit"], "a" * 40)
         self.assertEqual(result["records"][0]["checksum"], "b" * 64)
+        self.assertEqual(result["records"][0]["security_policy"]["visibility"], "private")
+        self.assertEqual(result["records"][0]["security_policy"]["approval"]["global_trust_effect"], "none")
         self.assertTrue(result["matches"][0]["skill_body_evidence_available"])
         self.assertEqual(result["library_sync"]["status"], "pushed")
 
@@ -404,15 +554,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
             ),
             response({"status": "verified"}),
             response(
-                {
-                    "catalog_id": "overlay.demo",
-                    "source": {},
-                    "verification": {},
-                    "risk": "instructions-only",
-                    "activation_policy": "on-demand",
-                    "archive": {},
-                    "trust_verdict": {},
-                }
+                inspection_record()
             ),
             response({"results": [{"catalog_id": "overlay.demo"}]}),
             response(
@@ -454,15 +596,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
             ),
             response({"status": "verified"}),
             response(
-                {
-                    "catalog_id": "overlay.scripted",
-                    "source": {},
-                    "verification": {},
-                    "risk": "scripts",
-                    "activation_policy": "manual",
-                    "archive": {},
-                    "trust_verdict": {},
-                }
+                inspection_record("overlay.scripted", risk="scripts", activation_policy="manual")
             ),
             response({"results": [{"catalog_id": "overlay.scripted"}]}),
             response(
@@ -599,7 +733,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
         self.assertEqual(runtime.details["private_catalog_items"], 3)
         self.assertEqual(Path(runtime.details["path"]).resolve(), root.resolve())
 
-    def test_public_managed_runtime_uses_bundled_fallback(self) -> None:
+    def test_manager_only_runtime_is_preferred_over_bundled_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary) / "state"
             self._write_managed_runtime(state, private_items=0)
@@ -609,31 +743,28 @@ class PaseoSkillSaveTests(unittest.TestCase):
 
             runtime = MODULE._bootstrap_manager(args)
 
-        self.assertEqual(runtime.details["mode"], "bundled-public-fallback")
-        self.assertEqual(runtime.details["revision"], MODULE.MANAGER_REVISION)
-        self.assertEqual(runtime.details["tree"], MODULE.MANAGER_TREE)
+        self.assertEqual(runtime.details["mode"], "installed-private-runtime")
+        self.assertEqual(runtime.details["private_catalog_items"], 0)
 
-    def test_high_findings_block_registration(self) -> None:
+    def test_high_findings_are_archived_for_blocked_activation(self) -> None:
         self.gate.stop()
         module = mock.Mock()
         module.scan_target.return_value = (signed_receipt(high=1), "fixture")
         args = MODULE.build_parser().parse_args(["fixture"])
         with mock.patch.object(MODULE, "_load_spyware_scanner", return_value=module):
-            with self.assertRaises(MODULE.SaveError) as raised:
-                MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
-        self.assertEqual(raised.exception.code, "spyware-check-blocked")
+            receipt, source = MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
+        self.assertEqual(receipt["counts"]["high"], 1)
+        self.assertEqual(source, "fixture")
 
-    def test_medium_findings_require_and_accept_explicit_approval(self) -> None:
+    def test_medium_findings_are_archived_before_activation_approval(self) -> None:
         self.gate.stop()
         module = mock.Mock()
         module.scan_target.return_value = (signed_receipt(medium=1), "fixture")
         with mock.patch.object(MODULE, "_load_spyware_scanner", return_value=module):
             args = MODULE.build_parser().parse_args(["fixture"])
-            with self.assertRaises(MODULE.SaveError) as raised:
-                MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
-            self.assertEqual(
-                raised.exception.code, "spyware-check-approval-required"
-            )
+            receipt, source = MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
+            self.assertEqual(receipt["counts"]["medium"], 1)
+            self.assertEqual(source, "fixture")
 
             approved = MODULE.build_parser().parse_args(
                 ["fixture", "--approve-medium"]

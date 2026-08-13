@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from . import policy
 from .library import (
     PERMITTED_REDISTRIBUTION,
     REDISTRIBUTION_VALUES,
@@ -40,12 +41,37 @@ QUARANTINE_HISTORY_LIMIT = 100
 BINARY_SUFFIXES = {
     ".exe", ".dll", ".so", ".dylib", ".bin", ".msi", ".com", ".scr", ".pif",
     ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".whl",
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".woff", ".woff2",
-    ".ttf", ".otf", ".hwp", ".hwpx", ".docx", ".xlsx", ".pptx", ".class",
-    ".jar", ".wasm",
+    ".class", ".jar", ".wasm",
+}
+
+# Non-executable assets are valid skill payload data. They remain bounded by
+# the normal file and total-size limits and must match a conservative file
+# signature; renaming an executable to ``.png`` cannot make it pass.
+SAFE_STATIC_ASSET_SIGNATURES: dict[str, tuple[bytes, ...]] = {
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".jpg": (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+    ".gif": (b"GIF87a", b"GIF89a"),
+    ".ico": (b"\x00\x00\x01\x00",),
+    ".pdf": (b"%PDF-",),
+    ".woff": (b"wOFF",),
+    ".woff2": (b"wOF2",),
+    ".ttf": (b"\x00\x01\x00\x00", b"true", b"typ1"),
+    ".otf": (b"OTTO",),
+    ".docx": (b"PK\x03\x04",),
+    ".xlsx": (b"PK\x03\x04",),
+    ".pptx": (b"PK\x03\x04",),
+    ".hwpx": (b"PK\x03\x04",),
+    ".hwp": (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",),
 }
 
 GIT_FETCH_TIMEOUT = 600
+
+
+def is_safe_static_asset(suffix: str, payload: bytes) -> bool:
+    """Return true only for a recognized non-executable asset signature."""
+    signatures = SAFE_STATIC_ASSET_SIGNATURES.get(suffix.casefold())
+    return bool(signatures and any(payload.startswith(signature) for signature in signatures))
 
 
 class AcquisitionError(RuntimeError):
@@ -304,8 +330,12 @@ def scan_payload(root: Path, *, allow_binaries: bool = False) -> list[dict[str, 
             continue
         payload = path.read_bytes()
         suffix = path.suffix.lower()
-        if not allow_binaries and (suffix in BINARY_SUFFIXES or b"\x00" in payload):
+        safe_asset = is_safe_static_asset(suffix, payload)
+        if not allow_binaries and not safe_asset and (suffix in BINARY_SUFFIXES or b"\x00" in payload):
             findings.append({"code": "binary", "path": rel, "detail": "binary payload is not allowed by policy"})
+            continue
+
+        if safe_asset:
             continue
         try:
             text = payload.decode("utf-8")
@@ -427,6 +457,14 @@ def fetch_item(
         expected = item.get("verification", {}).get("checksum")
         if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
             raise AcquisitionError("no-expected-identity", f"{catalog_id}: catalog record has no expected checksum")
+        security_policy = item.get("security_policy")
+        if isinstance(security_policy, dict):
+            try:
+                policy.validate_policy(security_policy, expected_checksum=expected)
+            except policy.PolicyError as exc:
+                raise AcquisitionError("policy-invalid", f"{catalog_id}: security policy binding is invalid: {exc}") from exc
+            if security_policy.get("malware_verdict") == "blocked" or security_policy.get("execution_policy") == "denied":
+                raise AcquisitionError("policy-denied", f"{catalog_id}: security policy denies acquisition")
         staging_root = state_dir / "staging"
         if staging_root.exists() and is_reparse_point(staging_root):
             raise AcquisitionError("staging-root-linked", f"staging root is a symlink or reparse point: {staging_root}")
@@ -478,6 +516,9 @@ def fetch_item(
             "update_policy": item.get("update_policy", "pinned"),
             "status": "verified",
         }
+        if isinstance(security_policy, dict):
+            record["security_policy"] = security_policy
+            record["security_policy_sha256"] = policy.policy_digest(security_policy)
         return record
     except AcquisitionError as exc:
         record_quarantine(state_dir, {
@@ -487,6 +528,8 @@ def fetch_item(
             "method": method,
             "repository": mirror_repo or str(plan.get("repository", "")),
             "revision": str(plan.get("revision", "")),
+            "artifact_checksum": item.get("verification", {}).get("checksum"),
+            "security_policy": item.get("security_policy"),
         })
         raise
     finally:
@@ -500,6 +543,14 @@ def verify_cached(item: dict[str, Any], state_dir: Path, state: dict[str, Any] |
     expected = item.get("verification", {}).get("checksum")
     if state is None:
         state = read_json(state_dir / "state.json") if (state_dir / "state.json").is_file() else {}
+    security_policy = item.get("security_policy")
+    if isinstance(security_policy, dict):
+        try:
+            policy.validate_policy(security_policy, expected_checksum=expected)
+        except policy.PolicyError as exc:
+            return {"status": "policy-invalid", "catalog_id": catalog_id, "expected": expected, "actual": None, "detail": str(exc)}
+        if security_policy.get("malware_verdict") == "blocked" or security_policy.get("execution_policy") == "denied":
+            return {"status": "policy-denied", "catalog_id": catalog_id, "expected": expected, "actual": None}
     acquisition = state.get("acquisitions", {}).get(catalog_id)
     if not acquisition:
         return {"status": "not-fetched", "catalog_id": catalog_id, "expected": expected, "actual": None}

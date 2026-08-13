@@ -11,6 +11,7 @@ raise RemoteError. Imports are transactional (stage-all, promote on success).
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -22,7 +23,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .acquire import MAX_FILE_BYTES, MAX_FILES, MAX_TOTAL_BYTES, BINARY_SUFFIXES, unsafe_rel_path
+from . import policy
+from .acquire import (
+    MAX_FILE_BYTES,
+    MAX_FILES,
+    MAX_TOTAL_BYTES,
+    BINARY_SUFFIXES,
+    is_safe_static_asset,
+    unsafe_rel_path,
+)
 from .library import (
     SECRET_PATTERNS,
     WINDOWS_DEVICE_NAMES,
@@ -39,7 +48,8 @@ from .library import (
 
 REMOTE_REPO_NAME = "paseo_skill_save"
 REMOTE_MARKER = "paseo_skill_save_v1"
-REMOTE_SCHEMA_VERSION = 1
+REMOTE_SCHEMA_VERSION = 2
+SUPPORTED_REMOTE_SCHEMA_VERSIONS = {1, 2}
 
 _REQUIRED_ITEM_FIELDS = {
     "catalog_id", "name", "description", "source_id", "risk", "activation_policy",
@@ -49,8 +59,30 @@ _VALID_RISKS = {"instructions-only", "local-management", "scripts", "external-wr
 _VALID_ACTIVATION_POLICIES = {"on-demand", "manual", "blocked"}
 _VALID_SOURCE_IDS = {"personal-overlay"}
 _VALID_ORIGIN_CATEGORIES = {"user-owned-private"}
-_VALID_COMPATIBILITY = {"codex", "claude-code", "opencode", "paseo", "generic-agent"}
+_VALID_COMPATIBILITY = {"codex", "claude-code", "opencode", "paseo", "hermes-agent", "generic-agent"}
 _VALID_OSES = {"any", "windows", "macos", "linux"}
+
+
+def _archive_fields(item: dict[str, Any]) -> tuple[dict[str, Any], str, str]:
+    archive = item.get("archive") if isinstance(item.get("archive"), dict) else {}
+    status = str(archive.get("status") or "archived")
+    storage = str(archive.get("storage") or "payload")
+    return archive, status, storage
+
+
+def _normalize_portable_defaults(item: dict[str, Any]) -> dict[str, Any]:
+    """Normalize fields introduced by the archive-vs-activation schema.
+
+    Version-1 private catalogs omitted ``archive.storage`` for ordinary
+    payloads.  Treat that omission as the safe payload default when comparing
+    an existing catalog entry during a schema migration; meaningful metadata
+    changes still fail closed.
+    """
+    result = copy.deepcopy(item)
+    archive = result.get("archive")
+    if isinstance(archive, dict):
+        archive.setdefault("storage", "payload")
+    return result
 
 
 class RemoteError(RuntimeError):
@@ -65,6 +97,14 @@ def _git_env() -> dict[str, str]:
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     env["GIT_CONFIG_GLOBAL"] = os.devnull
+    # Keep Git configuration isolated while authenticating private GitHub
+    # HTTPS operations through the already-authenticated gh CLI.  The helper
+    # is supplied per process and stores no token in the URL or repository.
+    env["GIT_CONFIG_COUNT"] = "2"
+    env["GIT_CONFIG_KEY_0"] = "credential.https://github.com.helper"
+    env["GIT_CONFIG_VALUE_0"] = ""
+    env["GIT_CONFIG_KEY_1"] = "credential.https://github.com.helper"
+    env["GIT_CONFIG_VALUE_1"] = "!gh auth git-credential"
     env.pop("GIT_ASKPASS", None)
     env.pop("SSH_ASKPASS", None)
     return env
@@ -178,8 +218,62 @@ def validate_portable_item(item: dict[str, Any]) -> list[str]:
     else:
         issues.append("invalid-verification")
 
+    security_policy = item.get("security_policy")
+    if security_policy is not None:
+        if not isinstance(security_policy, dict):
+            issues.append("invalid-security-policy")
+        else:
+            source = item.get("source", {}) if isinstance(item.get("source"), dict) else {}
+            repository = str(source.get("repository") or "")
+            expected_source = {
+                "kind": "github" if repository.startswith("https://github.com/") and source.get("commit") else "local",
+                "repository": repository,
+                "commit": source.get("commit"),
+                "tree": source.get("tree"),
+                "path": source.get("path", ""),
+            }
+            try:
+                policy.validate_policy(
+                    security_policy,
+                    expected_source=expected_source,
+                    expected_checksum=verification.get("checksum") if isinstance(verification, dict) else None,
+                )
+                expected_policy_digest = verification.get("security_policy_sha256") if isinstance(verification, dict) else None
+                if expected_policy_digest and expected_policy_digest != policy.policy_digest(security_policy):
+                    issues.append("security-policy-digest-mismatch")
+            except policy.PolicyError as exc:
+                issues.append(f"invalid-security-policy:{exc}")
+
     if not isinstance(item.get("routing"), dict):
         issues.append("invalid-routing")
+
+    archive, archive_status, archive_storage = _archive_fields(item)
+    if not isinstance(item.get("archive", {}), dict):
+        issues.append("invalid-archive")
+    if archive_status not in {"archived", "blocked", "metadata-only", "deprecated", "quarantined"}:
+        issues.append(f"invalid-archive-status:{archive_status}")
+    if archive_storage not in {"payload", "metadata-only"}:
+        issues.append(f"invalid-archive-storage:{archive_storage}")
+    if archive_storage == "metadata-only":
+        if archive_status != "metadata-only":
+            issues.append("metadata-only-status-required")
+        if item.get("activation_policy") != "blocked":
+            issues.append("metadata-only-activation-must-be-blocked")
+        acquisition = item.get("acquisition") if isinstance(item.get("acquisition"), dict) else {}
+        if acquisition.get("status") != "metadata-only":
+            issues.append("metadata-only-acquisition-required")
+        quarantine = archive.get("quarantine")
+        if not isinstance(quarantine, dict) or quarantine.get("redacted") is not True or quarantine.get("payload_retained") is not False or quarantine.get("remote_payload") != "not-stored":
+            issues.append("invalid-quarantine-redaction")
+        elif "path" in quarantine or "source" in quarantine or not isinstance(quarantine.get("reason_codes"), list) or not isinstance(quarantine.get("findings"), list):
+            issues.append("quarantine-contains-unapproved-fields")
+        else:
+            for finding in quarantine.get("findings", []):
+                if not isinstance(finding, dict) or not isinstance(finding.get("code"), str) or not isinstance(finding.get("path"), str) or not isinstance(finding.get("detail"), str):
+                    issues.append("invalid-quarantine-finding")
+                    break
+    elif archive_status == "blocked" and item.get("activation_policy") != "blocked":
+        issues.append("blocked-archive-activation-must-be-blocked")
 
     origin = item.get("origin_category", "")
     if origin not in _VALID_ORIGIN_CATEGORIES:
@@ -293,9 +387,14 @@ def scan_portable_payload(root: Path) -> list[dict[str, str]]:
 
         payload = path.read_bytes()
         suffix = path.suffix.lower()
-        if suffix in BINARY_SUFFIXES or b"\x00" in payload:
+        safe_asset = is_safe_static_asset(suffix, payload)
+        if not safe_asset and (suffix in BINARY_SUFFIXES or b"\x00" in payload):
             findings.append({"code": "binary", "path": rel,
                              "detail": "binary payload is not allowed by policy"})
+            continue
+
+
+        if safe_asset:
             continue
 
         try:
@@ -337,12 +436,14 @@ def make_portable_item(item: dict[str, Any]) -> dict[str, Any]:
         "source": {
             "repository": source.get("repository", ""),
             "commit": source.get("commit", ""),
+            "tree": source.get("tree", ""),
             "path": source.get("path", ""),
             "status": source.get("status", ""),
             "publisher": source.get("publisher", ""),
         },
         "archive": {
             "status": archive.get("status", "archived"),
+            "storage": archive.get("storage", "payload"),
             "license": {
                 "declared": archive.get("license", {}).get("declared", "user-supplied"),
                 "redistribution": archive.get("license", {}).get("redistribution", "personal-local-use-only"),
@@ -361,10 +462,12 @@ def make_portable_item(item: dict[str, Any]) -> dict[str, Any]:
         "verification": {
             "status": verification.get("status", ""),
             "checksum": verification.get("checksum", ""),
+            "security_policy_sha256": verification.get("security_policy_sha256", ""),
         },
+        "security_policy": copy.deepcopy(item.get("security_policy")) if isinstance(item.get("security_policy"), dict) else None,
         "version": item.get("version", "personal"),
         "revision": item.get("revision", ""),
-        "compatibility": item.get("compatibility", ["codex", "claude-code", "opencode", "paseo", "generic-agent"]),
+        "compatibility": item.get("compatibility", ["codex", "claude-code", "opencode", "paseo", "hermes-agent", "generic-agent"]),
         "oses": item.get("oses", ["any"]),
         "dependencies": item.get("dependencies", []),
         "risk": item.get("risk", "instructions-only"),
@@ -386,6 +489,26 @@ def make_portable_item(item: dict[str, Any]) -> dict[str, Any]:
         "adapters": item.get("adapters", {}),
         "origin_category": "user-owned-private",
     }
+    if archive.get("blocker"):
+        portable["archive"]["blocker"] = str(archive["blocker"])[:400]
+    if archive.get("storage", "payload") == "metadata-only":
+        quarantine = archive.get("quarantine")
+        if isinstance(quarantine, dict):
+            # Preserve only the redacted, structured quarantine contract.
+            portable["archive"]["quarantine"] = {
+                "redacted": True,
+                "payload_retained": False,
+                "remote_payload": "not-stored",
+                "reason_codes": [str(code) for code in quarantine.get("reason_codes", []) if isinstance(code, str)],
+                "findings": [
+                    {
+                        "code": str(row.get("code", "unsafe-storage")),
+                        "path": str(row.get("path", "")),
+                        "detail": str(row.get("detail", "quarantine finding"))[:240],
+                    }
+                    for row in quarantine.get("findings", []) if isinstance(row, dict)
+                ],
+            }
     return portable
 
 
@@ -448,12 +571,25 @@ def write_portable_repo(repo_dir: Path, items: list[dict[str, Any]], payload_roo
                 raise RemoteError("review-required", f"catalog id {item.get('catalog_id')} has a different checksum",
                                   {"catalog_id": item.get("catalog_id"), "local_checksum": checksum,
                                    "remote_checksum": existing_checksum})
-            if existing != item:
+            if _normalize_portable_defaults(existing) != _normalize_portable_defaults(item):
                 raise RemoteError("metadata-mismatch", f"catalog id {item.get('catalog_id')} has different metadata")
+            if existing != item:
+                # Version-1 ordinary payloads may omit the explicit storage
+                # default.  Rewrite only after proving semantic equivalence.
+                write_json(catalog_path, item)
         else:
             write_json(catalog_path, item)
 
         source_root = payload_roots.get(item.get("catalog_id", ""))
+
+        _, _archive_status, archive_storage = _archive_fields(item)
+        if archive_storage == "metadata-only":
+            # Metadata-only quarantine records intentionally have no object.
+            # An existing object would leak the raw payload and is rejected.
+            obj_dir = objects_dir / checksum
+            if obj_dir.exists():
+                raise RemoteError("quarantine-object-present", f"metadata-only item {item.get('catalog_id')} has a raw object")
+            continue
 
         obj_dir = objects_dir / checksum
         if obj_dir.exists():
@@ -513,7 +649,7 @@ def verify_portable_repo(repo_dir: Path) -> dict[str, Any]:
             "invalid-remote",
             f"marker mismatch: expected {REMOTE_MARKER!r}, got {library.get('marker')!r}",
         )
-    if library.get("schema_version") != REMOTE_SCHEMA_VERSION:
+    if library.get("schema_version") not in SUPPORTED_REMOTE_SCHEMA_VERSIONS:
         issues.append({
             "severity": "error",
             "code": "schema-version",
@@ -565,9 +701,12 @@ def verify_portable_repo(repo_dir: Path) -> dict[str, Any]:
             seen_catalog_ids.add(item["catalog_id"])
             catalog_items.append(item)
 
+    payload_items = [item for item in catalog_items if _archive_fields(item)[2] != "metadata-only"]
+    requires_objects = bool(payload_items)
+
     object_checks: list[dict[str, Any]] = []
     if not objects_dir.is_dir():
-        if not empty_library:
+        if requires_objects and not empty_library:
             issues.append({"severity": "error", "code": "missing-objects", "detail": "no objects directory"})
     elif is_reparse_point(objects_dir):
         issues.append({"severity": "error", "code": "missing-objects", "detail": "no objects directory"})
@@ -601,7 +740,7 @@ def verify_portable_repo(repo_dir: Path) -> dict[str, Any]:
                                "detail": f"objects/{checksum_dir}: expected {checksum_dir}, got {actual}"})
 
     referenced_checksums: set[str] = set()
-    for item in catalog_items:
+    for item in payload_items:
         cs = item.get("verification", {}).get("checksum")
         if cs and re.fullmatch(r"[0-9a-f]{64}", cs):
             referenced_checksums.add(cs)
@@ -663,8 +802,17 @@ def import_from_portable(
     if not overlay_root.is_dir() or is_reparse_point(overlay_root):
         raise RemoteError("bad-overlay-root", "overlay root must be a real directory")
 
-    staged: list[tuple[dict[str, Any], Path, Path]] = []
+    staged: list[tuple[dict[str, Any], Path | None, Path | None]] = []
     new_ids: set[str] = set()
+
+    existing_quarantine = state.get("quarantine", [])
+    if not isinstance(existing_quarantine, list):
+        raise RemoteError("invalid-state", "local quarantine state is not a list")
+    quarantine_by_id = {
+        str(row.get("catalog_id")): row
+        for row in existing_quarantine
+        if isinstance(row, dict) and row.get("kind") == "skill-archive" and row.get("catalog_id")
+    }
 
     for catalog_file in sorted(items_dir.glob("*.json")):
         item = read_json(catalog_file)
@@ -683,6 +831,19 @@ def import_from_portable(
                 )
             continue
 
+        if catalog_id in quarantine_by_id:
+            existing = quarantine_by_id[catalog_id]
+            existing_item = existing.get("item") if isinstance(existing, dict) else {}
+            existing_cs = existing.get("checksum") or (existing_item.get("verification", {}).get("checksum") if isinstance(existing_item, dict) else "")
+            new_cs = item.get("verification", {}).get("checksum", "")
+            if existing_cs != new_cs:
+                raise RemoteError(
+                    "review-required",
+                    f"local quarantine {catalog_id} has checksum {existing_cs}; remote has {new_cs}",
+                    {"catalog_id": catalog_id, "local_checksum": existing_cs, "remote_checksum": new_cs},
+                )
+            continue
+
         if catalog_id in new_ids:
             continue
 
@@ -690,6 +851,13 @@ def import_from_portable(
         if not checksum or not re.fullmatch(r"[0-9a-f]{64}", checksum):
             raise RemoteError("missing-checksum",
                               f"catalog item {catalog_id} has no valid verification checksum")
+        _archive, _archive_status, archive_storage = _archive_fields(item)
+        if archive_storage == "metadata-only":
+            # verify_portable_repo already proved there is no raw object.
+            staged.append((item, None, None))
+            new_ids.add(catalog_id)
+            continue
+
         obj_dir = objects_dir / checksum
         if not obj_dir.is_dir():
             raise RemoteError("missing-object",
@@ -715,6 +883,30 @@ def import_from_portable(
 
     try:
         for item, obj_dir, dest_dir in staged:
+            if obj_dir is None or dest_dir is None:
+                record = {
+                    "kind": "skill-archive",
+                    "catalog_id": item["catalog_id"],
+                    "name": item.get("name", item["catalog_id"]),
+                    "checksum": item.get("verification", {}).get("checksum"),
+                    "added": utc_now_iso(),
+                    "payload": "redacted",
+                    "item": copy.deepcopy(item),
+                }
+                state.setdefault("quarantine", []).append(record)
+                if isinstance(item.get("security_policy"), dict):
+                    state.setdefault("policy_records", {})[item["catalog_id"]] = copy.deepcopy(item["security_policy"])
+                imported.append({
+                    "catalog_id": item["catalog_id"],
+                    "name": item.get("name", ""),
+                    "path": None,
+                    "checksum": item.get("verification", {}).get("checksum"),
+                    "risk": item.get("risk", ""),
+                    "archive_status": "metadata-only",
+                    "storage": "metadata-only",
+                    "activation_policy": item.get("activation_policy"),
+                })
+                continue
             shutil.copytree(obj_dir, dest_dir, symlinks=False)
             created_dirs.append(dest_dir)
 
@@ -732,14 +924,20 @@ def import_from_portable(
                 "checksum": dest_checksum,
                 "added": utc_now_iso(),
                 "activation": item.get("activation_policy", "on-demand"),
+                "security_policy": copy.deepcopy(item.get("security_policy")) if isinstance(item.get("security_policy"), dict) else None,
                 "item": item,
             }
+            if isinstance(item.get("security_policy"), dict):
+                state.setdefault("policy_records", {})[item["catalog_id"]] = copy.deepcopy(item["security_policy"])
             imported.append({
                 "catalog_id": item["catalog_id"],
                 "name": item.get("name", ""),
                 "path": str(dest_dir),
                 "checksum": dest_checksum,
                 "risk": item.get("risk", ""),
+                "archive_status": item.get("archive", {}).get("status") if isinstance(item.get("archive"), dict) else None,
+                "storage": "payload",
+                "activation_policy": item.get("activation_policy"),
             })
     except Exception:
         for d in reversed(created_dirs):
@@ -748,6 +946,17 @@ def import_from_portable(
             for cid, record in list(state.get("overlays", {}).items()):
                 if record.get("path") == str(d):
                     del state["overlays"][cid]
+        imported_ids = {row.get("catalog_id") for row in imported if isinstance(row, dict)}
+        state["quarantine"] = [
+            row for row in state.get("quarantine", [])
+            if not (isinstance(row, dict) and row.get("catalog_id") in imported_ids and row.get("kind") == "skill-archive")
+        ]
+        if isinstance(state.get("policy_records"), dict):
+            for catalog_id in imported_ids:
+                # Preserve a pre-existing policy record; remove only records
+                # that were introduced with a failed metadata-only import.
+                if catalog_id in {item.get("catalog_id") for item, obj, dest in staged if obj is None and dest is None}:
+                    state["policy_records"].pop(catalog_id, None)
         raise
 
     return imported

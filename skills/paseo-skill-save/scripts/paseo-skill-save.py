@@ -19,9 +19,9 @@ import tempfile
 from typing import Any, Sequence
 
 
-MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload.git"
-MANAGER_REVISION = "6e50a0b292d29767d25f9cef986b57860ff5bd21"
-MANAGER_TREE = "8d1585839cc78f46fd534fa1c47103c4b6fd9008"
+MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload_private.git"
+MANAGER_REVISION = "4c290e82422fd35d8501c28c7f5b4ca45ee47bbb"
+MANAGER_TREE = "19c654fa9efc302d1679b7ba111a68f33efa4006"
 MANAGER_COPY_DIRECTORIES = (
     "skillhub",
     "scripts",
@@ -46,7 +46,6 @@ ROUTER_ENV_MARKERS = {
     "CLAUDECODE": "claude",
     "CLAUDE_CODE_ENTRYPOINT": "claude",
     "OPENCODE": "opencode",
-    "PASEO_HOME": "paseo",
     "HERMES_HOME": "hermes",
 }
 ROUTER_EXECUTABLE_TARGETS = {
@@ -55,12 +54,15 @@ ROUTER_EXECUTABLE_TARGETS = {
     "opencode": "opencode",
     "hermes": "hermes",
 }
-PASEO_PROVIDER_TARGETS = {
+PASEO_PROVIDER_NATIVE_TARGETS = {
     "codex": "codex",
     "claude": "claude",
     "opencode": "opencode",
     "hermes": "hermes",
 }
+# The manager's historical "codex" target is the cross-provider
+# ~/.agents/skills channel, not a Codex-only directory.
+PASEO_SHARED_AGENT_TARGET = "codex"
 PASEO_AVAILABLE_STATUSES = {"available", "connected", "ready"}
 PASEO_ENABLED_VALUES = {"1", "enabled", "on", "true", "yes"}
 PASEO_DISABLED_VALUES = {"0", "disabled", "off", "false", "no"}
@@ -253,9 +255,13 @@ def _installed_private_manager(args: argparse.Namespace) -> ManagerRuntime | Non
             "Managed routing engine content changed",
             f"expected={expected_digest}; actual={actual_digest}",
         )
+    # A manager-only runtime intentionally has no bundled personal catalog.
+    # It still owns the overlay-aware registry loader and must be preferred so
+    # that save/load uses paseo_skill_save rather than falling back to the
+    # historical public bundle.  Returning None for zero preloaded items made
+    # the wrapper silently select the legacy manager and could produce a
+    # successful local mutation followed by a false receipt/reporting error.
     private_items = _private_catalog_count(root)
-    if private_items == 0:
-        return None
     launcher = root / "scripts" / "skillhub.py"
     return ManagerRuntime(
         command=(args.python, str(launcher), "--repo", str(root)),
@@ -266,6 +272,7 @@ def _installed_private_manager(args: argparse.Namespace) -> ManagerRuntime | Non
             "content_digest": actual_digest,
             "revision": record.get("revision"),
             "private_catalog_items": private_items,
+            "personal_library": "paseo_skill_save",
         },
     )
 
@@ -601,6 +608,19 @@ def _load_spyware_scanner() -> Any:
     return module
 
 
+def _load_policy_contract() -> Any:
+    contract = Path(__file__).resolve().parents[2] / "paseo-spyware-check" / "scripts" / "security_policy.py"
+    spec = importlib.util.spec_from_file_location("paseo_skill_save_policy", contract)
+    if spec is None or spec.loader is None:
+        raise SaveError("spyware-check-unavailable", "The bundled security policy contract is missing")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise SaveError("spyware-check-unavailable", "The bundled security policy contract could not be loaded", str(exc)) from exc
+    return module
+
+
 def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
     if not isinstance(receipt, dict):
         raise SaveError("spyware-check-invalid", "Spyware scan returned no valid receipt")
@@ -613,7 +633,7 @@ def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
         receipt.get("status") != "scan-complete"
         or not isinstance(scanner, dict)
         or scanner.get("name") != "paseo-spyware-check"
-        or scanner.get("schema_version") != 1
+        or scanner.get("schema_version") != 2
         or not isinstance(counts, dict)
         or not isinstance(findings, list)
         or not isinstance(source, dict)
@@ -631,12 +651,22 @@ def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
                 "spyware-check-invalid", "Spyware scan receipt has invalid finding counts"
             )
     calculated = {severity: 0 for severity in ("critical", "high", "medium", "info")}
+    contract = _load_policy_contract()
+    finding_ids: list[str] = []
     for finding in findings:
         if not isinstance(finding, dict):
             raise SaveError("spyware-check-invalid", "Spyware scan finding is invalid")
         severity = str(finding.get("severity", "")).casefold()
         if severity not in calculated:
             raise SaveError("spyware-check-invalid", "Spyware scan severity is invalid")
+        for field in ("finding_id", "rule_id", "confidence", "evidence", "mitigation", "path", "source_role"):
+            if not isinstance(finding.get(field), (str, int)) or finding.get(field) in {"", None}:
+                raise SaveError("spyware-check-invalid", f"Spyware scan finding is missing {field}")
+        if not isinstance(finding.get("capabilities"), list) or not isinstance(finding.get("blocks"), bool) or not isinstance(finding.get("review"), bool):
+            raise SaveError("spyware-check-invalid", "Spyware scan finding has invalid policy metadata")
+        if finding.get("finding_id") != contract.finding_id(finding):
+            raise SaveError("spyware-check-invalid", "Spyware finding ID is not stable for its rule/evidence")
+        finding_ids.append(str(finding["finding_id"]))
         calculated[severity] += 1
     if counts != calculated:
         raise SaveError(
@@ -649,6 +679,27 @@ def _validate_scan_receipt(receipt: Any) -> dict[str, Any]:
     )
     if receipt.get("verdict") != expected_verdict:
         raise SaveError("spyware-check-invalid", "Spyware scan verdict is inconsistent")
+    scan = receipt.get("scan")
+    if (
+        not isinstance(scan, dict)
+        or scan.get("schema_version") != 2
+        or not all(isinstance(scan.get(field), int) and not isinstance(scan.get(field), bool) and scan.get(field) >= 0 for field in ("files_considered", "files_scanned", "max_findings", "max_scan_bytes_per_file"))
+        or scan.get("files_scanned") > scan.get("files_considered")
+        or not isinstance(scan.get("truncated"), bool)
+        or not isinstance(scan.get("truncation_reasons"), list)
+        or not all(isinstance(reason, str) and reason for reason in scan.get("truncation_reasons", []))
+        or scan.get("target_code_executed") is not False
+    ):
+        raise SaveError("spyware-check-invalid", "Spyware scan truncation metadata is invalid")
+    try:
+        contract.validate_policy(
+            receipt.get("policy"),
+            expected_source=source,
+            expected_checksum=receipt["content_checksum"],
+            expected_finding_ids=finding_ids,
+        )
+    except Exception as exc:
+        raise SaveError("spyware-check-invalid", "Spyware scan policy binding is invalid", str(exc)) from exc
     unsigned = dict(receipt)
     unsigned.pop("receipt_sha256", None)
     canonical = json.dumps(
@@ -675,33 +726,46 @@ def _run_spyware_gate(
             getattr(exc, "detail", "") or str(exc),
         ) from exc
     receipt = _validate_scan_receipt(raw_receipt)
-    counts = receipt["counts"]
-    detail = json.dumps(receipt, ensure_ascii=True, sort_keys=True)
-    if counts["critical"] or counts["high"]:
-        raise SaveError(
-            "spyware-check-blocked",
-            "Registration was blocked by Critical or High spyware findings",
-            detail,
-        )
-    if counts["medium"] and not args.approve_medium:
-        raise SaveError(
-            "spyware-check-approval-required",
-            "Medium findings require explicit approval before registration",
-            detail,
-        )
+    # The wrapper's first scan is an immutable archive receipt.  It is not an
+    # activation approval: High/Critical records may be preserved as blocked
+    # or redacted quarantine metadata, while the manager remains strict when
+    # fetch/enable/use/install is requested.  Medium/capability approval is
+    # artifact-scoped and belongs to activation, not registration.
     if not isinstance(add_source, str) or not add_source:
         raise SaveError("spyware-check-invalid", "Spyware scan returned no immutable source")
     return receipt, add_source
 
 
 def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> None:
-    scanned = receipt.get("source")
+    # A bulk add has one outer receipt and one manager-scoped receipt per
+    # selected SKILL.md.  Bind to the latter when available; requiring the
+    # outer repository checksum to equal every child was a false error that
+    # occurred after the manager had already atomically saved the item.
+    scoped = record.get("security_receipt")
+    candidate = scoped if isinstance(scoped, dict) else receipt
+    scanned = candidate.get("source")
     if not isinstance(scanned, dict):
-        return
+        raise SaveError("scan-receipt-mismatch", "Saved skill has no security receipt source")
+    contract = _load_policy_contract()
+    security_policy = record.get("security_policy")
+    if not isinstance(security_policy, dict):
+        raise SaveError("scan-receipt-mismatch", "Saved skill has no versioned security policy")
+    try:
+        contract.validate_policy(
+            security_policy,
+            expected_source=scanned,
+            expected_checksum=candidate.get("content_checksum"),
+            expected_finding_ids=[str(row["finding_id"]) for row in candidate.get("findings", [])],
+        )
+    except Exception as exc:
+        raise SaveError("scan-receipt-mismatch", "Saved security policy does not match the scan receipt", str(exc)) from exc
+    expected_policy_digest = record.get("security_policy_sha256")
+    if not isinstance(expected_policy_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_policy_digest):
+        raise SaveError("scan-receipt-mismatch", "Saved skill has no valid security policy digest")
+    if expected_policy_digest != contract.policy_digest(security_policy):
+        raise SaveError("scan-receipt-mismatch", "Saved security policy digest does not match its policy")
     if scanned.get("kind") == "local":
-        if scanned.get("skill_manifest") and record.get("checksum") != receipt.get(
-            "content_checksum"
-        ):
+        if record.get("checksum") != candidate.get("content_checksum"):
             raise SaveError(
                 "scan-receipt-mismatch",
                 "Saved local skill checksum does not match the spyware scan receipt",
@@ -728,9 +792,7 @@ def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> Non
             "Saved skill path is outside the spyware-scanned subtree",
             json.dumps({"scanned": scanned_path, "saved": actual_path}, sort_keys=True),
         )
-    if actual_path == scanned_path and record.get("checksum") != receipt.get(
-        "content_checksum"
-    ):
+    if actual_path == scanned_path and record.get("checksum") != candidate.get("content_checksum"):
         raise SaveError(
             "scan-receipt-mismatch",
             "Saved skill checksum does not match the spyware scan receipt",
@@ -782,7 +844,21 @@ def _paseo_provider_rows(value: Any) -> list[dict[str, Any]]:
     raise ValueError("unexpected provider response")
 
 
-def _discover_paseo_provider_targets(executable: str) -> tuple[list[str], dict[str, Any]]:
+def _paseo_provider_router_target(
+    provider: str, supported_targets: Sequence[str]
+) -> tuple[str | None, str]:
+    supported = set(supported_targets)
+    native = PASEO_PROVIDER_NATIVE_TARGETS.get(provider)
+    if native in supported:
+        return native, "native"
+    if PASEO_SHARED_AGENT_TARGET in supported:
+        return PASEO_SHARED_AGENT_TARGET, "shared-agent-skills"
+    return None, "unavailable"
+
+
+def _discover_paseo_provider_targets(
+    executable: str, supported_targets: Sequence[str] = ROUTER_TARGETS
+) -> tuple[list[str], dict[str, Any]]:
     detail: dict[str, Any] = {
         "executable": executable,
         "status": "unavailable",
@@ -819,21 +895,40 @@ def _discover_paseo_provider_targets(executable: str) -> tuple[list[str], dict[s
         enabled = enabled_text in PASEO_ENABLED_VALUES
         if enabled_text in PASEO_DISABLED_VALUES:
             enabled = False
-        target = PASEO_PROVIDER_TARGETS.get(provider)
+        target, route = _paseo_provider_router_target(provider, supported_targets)
+        eligible = status in PASEO_AVAILABLE_STATUSES and enabled
         provider_detail: dict[str, Any] = {
             "provider": provider,
             "status": status or "unknown",
             "enabled": enabled,
             "supported": target is not None,
+            "eligible": eligible,
+            "route": route,
         }
         if target:
             provider_detail["target"] = target
         providers.append(provider_detail)
-        if status in PASEO_AVAILABLE_STATUSES and enabled and target and target not in targets:
+        if eligible and target and target not in targets:
             targets.append(target)
 
     mapped = _ordered_router_targets(targets)
-    detail.update({"status": "ok", "providers": providers, "mapped_targets": mapped})
+    eligible_providers = [
+        row["provider"] for row in providers if row["eligible"]
+    ]
+    unroutable_providers = [
+        row["provider"]
+        for row in providers
+        if row["eligible"] and not row["supported"]
+    ]
+    detail.update(
+        {
+            "status": "ok",
+            "providers": providers,
+            "eligible_providers": eligible_providers,
+            "unroutable_providers": unroutable_providers,
+            "mapped_targets": mapped,
+        }
+    )
     return mapped, detail
 
 
@@ -865,40 +960,60 @@ def _resolve_router_targets(
             "targets": targets,
         }
 
-    detected: list[str] = []
+    local_detected: list[str] = []
     environment: list[dict[str, str]] = []
     executables: list[dict[str, str]] = []
     for marker, target in ROUTER_ENV_MARKERS.items():
         if os.environ.get(marker):
             environment.append({"marker": marker, "target": target})
-            if target not in detected:
-                detected.append(target)
+            if target not in local_detected:
+                local_detected.append(target)
     for executable, target in ROUTER_EXECUTABLE_TARGETS.items():
         resolved = shutil.which(executable)
         if not resolved:
             continue
         executables.append({"name": executable, "path": resolved, "target": target})
-        if target not in detected:
-            detected.append(target)
+        if target not in local_detected:
+            local_detected.append(target)
 
     paseo_detail: dict[str, Any] = {"status": "not-found", "providers": [], "mapped_targets": []}
+    provider_targets: list[str] = []
     paseo_executable = shutil.which("paseo")
     if paseo_executable:
-        provider_targets, paseo_detail = _discover_paseo_provider_targets(paseo_executable)
-        for target in provider_targets:
-            if target not in detected:
-                detected.append(target)
+        provider_targets, paseo_detail = _discover_paseo_provider_targets(
+            paseo_executable, supported
+        )
+
+    if paseo_detail.get("status") == "ok":
+        unroutable = paseo_detail.get("unroutable_providers", [])
+        if unroutable:
+            raise SaveError(
+                "unroutable-paseo-providers",
+                "Some available Paseo providers cannot receive the skill router",
+                ",".join(str(provider) for provider in unroutable),
+            )
+        detected = provider_targets
+        detection_source = "paseo-provider-registry"
+    else:
+        detected = local_detected
+        detection_source = "local-cli-fallback"
 
     detected_targets = _ordered_router_targets(detected)
     targets = [target for target in detected_targets if target in supported]
     mode = "auto-detected"
     if not targets:
+        if detection_source == "paseo-provider-registry":
+            raise SaveError(
+                "no-available-paseo-providers",
+                "Paseo reports no available, enabled workload providers",
+            )
         targets = [target for target in ("codex", "claude") if target in supported]
         if not targets:
             targets = [supported[0]]
         mode = "auto-fallback"
     return ",".join(targets), {
         "mode": mode,
+        "detection_source": detection_source,
         "environment": environment,
         "executables": executables,
         "paseo": paseo_detail,
@@ -1001,7 +1116,7 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         verification = _run_json(
             prefix + ["verify", catalog_id, "--json"], args.timeout
         )
-        if verification.get("status") != "verified":
+        if verification.get("status") not in {"verified", "metadata-only"}:
             raise SaveError(
                 "verification-failed",
                 f"saved item did not verify: {catalog_id}",
@@ -1022,7 +1137,14 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
             "risk": inspection.get("risk"),
             "activation_policy": inspection.get("activation_policy"),
             "license": inspection.get("archive", {}).get("license"),
+            "archive_status": inspection.get("archive", {}).get("status"),
+            "archive_storage": inspection.get("archive", {}).get("storage", "payload"),
+            "archive_blocker": inspection.get("archive", {}).get("blocker"),
+            "quarantine": inspection.get("archive", {}).get("quarantine"),
             "trust_verdict": inspection.get("trust_verdict", {}).get("verdict"),
+            "security_policy": inspection.get("security_policy"),
+            "security_policy_sha256": inspection.get("verification", {}).get("security_policy_sha256"),
+            "security_receipt": inspection.get("security_receipt"),
         }
         records.append(record)
         _bind_record_to_scan(scan_receipt, record)
@@ -1033,17 +1155,20 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         portable_name = catalog_id.removeprefix("overlay.")
         description = str(routing_record.get("description_ko") or "")
         query = " ".join(part for part in (action, portable_name, description) if part)
-        search = _run_json(
-            prefix + ["search", query, "--available-only", "--json"],
-            args.timeout,
-        )
-        result_ids = [
-            str(row.get("catalog_id"))
-            for row in search.get("results", [])
-            if isinstance(row, dict)
-        ]
+        search = _run_json(prefix + ["search", query, "--json"], args.timeout)
+        search_rows = [row for row in search.get("results", []) if isinstance(row, dict)]
+        result_row = next((row for row in search_rows if str(row.get("catalog_id")) == catalog_id), None)
         discovered.append(
-            {"catalog_id": catalog_id, "found": catalog_id in result_ids, "query": query}
+            {
+                "catalog_id": catalog_id,
+                "found": result_row is not None,
+                "query": query,
+                "archive_status": (result_row or {}).get("archive_status"),
+                "storage": (result_row or {}).get("archive_storage"),
+                "activation_policy": (result_row or {}).get("activation_policy"),
+                "available": bool((result_row or {}).get("acquirable")),
+                "activation_blocked": (result_row or {}).get("activation_policy") == "blocked",
+            }
         )
         matches.append(
             _match_record(prefix, match_target, query, catalog_id, args.timeout)
@@ -1059,16 +1184,25 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         )
         for record, match in zip(records, matches)
     )
+    archive_only = [
+        record["catalog_id"]
+        for record in records
+        if record.get("archive_status") in {"blocked", "metadata-only"}
+        or record.get("activation_policy") == "blocked"
+    ]
+    automatic_use_ready = automatic_use_ready and not archive_only
     natural_language_ready = all(
         match["selected"] and match["status"] in {"select", "confirm"}
         for match in matches
-    )
+    ) and not archive_only
     return {
         "status": "saved-and-verified",
         "source": args.source,
         "spyware_check": {
             "receipt": scan_receipt,
             "medium_approved": bool(args.approve_medium),
+            "policy": scan_receipt.get("policy"),
+            "approval_scope": (scan_receipt.get("policy") or {}).get("approval", {}).get("scope"),
         },
         "manager": runtime.details,
         "library_sync": {
@@ -1088,6 +1222,8 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         "automatic_discovery_ready": all(row["found"] for row in discovered),
         "natural_language_ready": natural_language_ready,
         "automatic_use_ready": automatic_use_ready,
+        "archive_only": archive_only,
+        "partial_archive": bool(archive_only) and len(archive_only) < len(records),
         "activation": "not-installed; available for router-selected ephemeral use",
     }
 
@@ -1145,9 +1281,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="save only to this computer and skip paseo_skill_save onboarding/sync",
     )
     parser.add_argument(
-        "--approve-medium",
+        "--approve-medium", "--approve-policy", dest="approve_medium",
         action="store_true",
-        help="register despite displayed Medium findings after explicit user approval",
+        help="register after explicit approval of a review-required local policy",
     )
     parser.add_argument(
         "--router-target",
@@ -1186,13 +1322,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
     _json_output(result)
-    ready = (
-        result["automatic_discovery_ready"]
-        and result["natural_language_ready"]
-        and result["automatic_use_ready"]
-        and result["library_sync"]["status"] != "manager-sync-api-unavailable"
-    )
-    return 0 if ready else 1
+    # Archive success is a successful save even when activation is deliberately
+    # unavailable.  The structured flags above tell callers whether a later
+    # activation confirmation is possible; they are not registration failure.
+    saved = result.get("status") == "saved-and-verified"
+    sync_available = result.get("library_sync", {}).get("status") != "manager-sync-api-unavailable"
+    return 0 if saved and sync_available else 1
 
 
 if __name__ == "__main__":

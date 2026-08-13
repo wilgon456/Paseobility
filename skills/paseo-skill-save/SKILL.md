@@ -35,9 +35,13 @@ targets.
    `paseo-spyware-check` gate before manager bootstrap or registration. Do not
    bypass this gate by calling the routing engine directly. The gate snapshots
    local sources and pins GitHub sources to the exact scanned commit. It never
-   installs dependencies, builds, imports, or executes target code. It blocks
-   High or Critical findings. For Medium findings, show the receipt and obtain
-   explicit user approval before rerunning with `--approve-medium`.
+   installs dependencies, builds, imports, or executes target code. Archive
+   registration is separate from activation: High findings are retained as
+   checksum/provenance-bound `blocked` archive records, while Critical,
+   live-secret, or obvious exfiltration/malware-chain findings are retained
+   only as redacted `metadata-only` quarantine records. Medium findings and
+   declared risky capabilities may be archived without approval; their
+   artifact/finding-scoped confirmation is required at activation.
 3. Derive a concise Korean description and tags from the verified source. Do
    not invent capabilities that are absent from `SKILL.md`. Description and
    Korean tags are sufficient for registration. Omit `--domain` and
@@ -61,9 +65,10 @@ targets.
      --action <verified-action-id>
    ```
 
-   Add `--approve-medium` only after the user has seen the Medium findings and
-   explicitly approved registration. Never infer approval from the original
-   save request.
+   `--approve-medium`/`--approve-policy` is optional registration metadata for
+   a reviewed Medium artifact. It never approves activation, creates global
+   trust, or overrides a High/Critical block. Activation still requires the
+   manager's `--confirm-policy` and independent risk/`--yes` gates.
 
    By default, let the manager onboard or reuse the authenticated user's
    private `paseo_skill_save` repository and sync the verified overlay. Add
@@ -80,8 +85,9 @@ targets.
    ask the user to prepare skillNload.
 5. Require the wrapper to report all of the following:
 
-   - spyware receipt digest, severity counts, findings, scanned checksum, and
-     immutable source
+   - spyware receipt digest, severity counts, findings, scanned checksum,
+     immutable source, and archive decision (`archived`, `blocked`, or
+     redacted `metadata-only` quarantine)
    - internal manager mode, provenance, digest, and revision/tree when applicable
    - router target discovery evidence and initialization status
    - pinned source repository, commit, and skill path

@@ -30,12 +30,12 @@
       "verification": {
         "status": "repository-checksummed",
         "source_commit": "1d1167259a1cb132db8679dce3fef13fb6373015",
-        "checksum": "8b132899c1ad8a9f588d8609c98bf0c9b86fcf4102d4c7e1641e0287cb678805"
+        "checksum": "1aba5766ae26698271b63800655f678a0182f6458776343662a09796c521db6a"
       },
       "version": "0.7.0",
       "revision": "0.7.0",
       "runtime_name": "skill-hub-router",
-      "compatibility": ["codex", "claude-code", "opencode", "paseo", "generic-agent"],
+      "compatibility": ["codex", "claude-code", "opencode", "paseo", "hermes-agent", "generic-agent"],
       "oses": ["any"],
       "dependencies": [],
       "risk": "local-management",
