@@ -25,9 +25,10 @@ installed locally. Paseobility does not vendor or redistribute those scanner
 binaries or rule sets.
 
 `scripts/spyware-check.py` is the dependency-free, cross-platform enforcement
-scanner used internally by `paseo-skill-save`. It produces an
-integrity-digested JSON receipt, an immutable GitHub commit URL or local
-snapshot, and severity counts.
+scanner used internally by `paseo-skill-save`. Scanner schema v2 produces an
+integrity-digested JSON receipt, a versioned local security-policy decision, an
+immutable GitHub commit/tree/path or local snapshot, severity counts, stable
+finding IDs, and explicit scan/truncation metadata.
 The save wrapper fails closed if this scanner is missing, fails, returns an
 invalid receipt, reports High/Critical findings, or cannot bind the saved
 commit/checksum to the receipt. The shell and PowerShell helpers remain the
@@ -48,6 +49,13 @@ broader human-review workflow and may use optional third-party scanners.
   and redacted snippets.
 - Distinguish `confirmed secret`, `high-risk behavior`, `suspicious pattern`,
   and `needs manual review`.
+- Treat Markdown/README/docs/examples as documentation: dangerous examples are
+  informational, while actual configuration/executable content is evaluated for
+  capabilities and blocking canaries. Only actual lifecycle fields in
+  `package.json` are lifecycle findings.
+- API-key variable names declare credential capability; they are not automatically
+  High. Actual token/private-key material, executable remote shell pipes, and
+  persistence canaries are blocking.
 
 ## Quick workflow
 

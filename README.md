@@ -46,6 +46,12 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 v2.5.2는 `/paseo-agent-cleanup`이 정상적인 idle Codex 세션을 상태만 보고
 archive하던 안전 문제를 수정합니다.
 
+`/paseo-skill-save`는 `paseo --json provider ls`에서 available/enabled로
+확인된 모든 workload provider를 자동 탐지합니다. Claude와 OpenCode는 전용
+스킬 경로를 사용하고, Grok 및 custom ACP provider를 포함한 나머지는 공용
+Agent Skills 경로로 연결합니다. Paseo provider 목록을 읽을 수 없을 때만 로컬
+AI CLI 탐지로 대체합니다.
+
 - 인자 없는 실행은 이제 dry-run이며 기본 `.*` 전체 선택을 사용하지 않습니다.
 - 무필터 `--auto`는 명확한 disposable/test/validation 표식이 있는 inactive
   agent만 대상으로 삼습니다. 일반 idle 세션은 이어서 사용할 수 있는 정상
@@ -449,6 +455,7 @@ GitHub 저장소나 정확한 스킬 경로를 받아 `/paseo-spyware-check`로 
 
 - wrapper를 직접 실행해도 bundled Python spyware gate가 manager보다 먼저 실행되며, 유효한 검사 receipt가 없으면 저장하지 않습니다.
 - High/Critical은 차단하고 Medium은 findings를 확인한 사용자가 명시적으로 승인한 뒤에만 `--approve-medium`으로 진행합니다.
+- Scanner v2 receipt에는 `security-policy-v1` 결정이 함께 들어갑니다. 정책은 exact source commit/tree/path와 normalized checksum에 묶이고, capability/Medium approval은 policy version·artifact checksum·finding ID 집합에만 적용되는 local approval입니다. `published`는 private catalog/router visibility를 뜻하며 public release나 global trust가 아닙니다.
 - GitHub 소스는 검사한 exact commit URL로 저장하고, 저장 결과의 commit·path·checksum을 receipt와 대조합니다.
 - 대상 스킬의 dependency 설치, build, import, script 실행을 저장 과정에서 금지합니다.
 - private runtime은 manager-owned 경로와 기록된 content digest가 일치할 때만 사용하고, bundled fallback은 manifest digest와 upstream commit/tree가 일치할 때만 실행합니다.

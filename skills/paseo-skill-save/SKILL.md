@@ -17,15 +17,17 @@ selected skill for a task without permanently installing every saved skill.
 The wrapper selects and verifies its routing manager automatically; never require the
 user to install or invoke skillNload separately.
 
-The wrapper defaults to provider-aware router setup. It detects supported local
-AI CLIs and, when Paseo is installed, reads `paseo --json provider ls` without
-starting or restarting the daemon. It connects the router to each available,
-enabled Codex, Claude, or OpenCode provider path, plus Hermes when the selected
-routing manager advertises Hermes support. The bundled public manager may omit
-Hermes, while an installed private manager can enable it. Paseo is the
-supervisor, so its CLI alone is not treated as the workload provider. Use
-`--router-target` only when the user explicitly wants to restrict or add
-targets.
+The wrapper defaults to provider-aware router setup. When Paseo is installed,
+it reads `paseo --json provider ls` without starting or restarting the daemon
+and treats every available, enabled Paseo workload provider as authoritative.
+Claude and OpenCode use their native skill paths. Codex and every other
+provider, including Grok and custom ACP providers, use the shared Agent Skills
+path unless the selected routing manager advertises a more specific target
+such as Hermes. Disabled or unavailable providers remain visible in discovery
+evidence but are not activated. Local AI CLI discovery is only a fallback when
+the Paseo provider registry is unavailable. Paseo itself is the supervisor and
+is not treated as a workload provider. Use `--router-target` only when the user
+explicitly wants to restrict or add targets.
 
 ## Required workflow
 
@@ -86,8 +88,10 @@ targets.
 5. Require the wrapper to report all of the following:
 
    - spyware receipt digest, severity counts, findings, scanned checksum,
-     immutable source, and archive decision (`archived`, `blocked`, or
-     redacted `metadata-only` quarantine)
+     immutable source, archive decision (`archived`, `blocked`, or redacted
+     `metadata-only` quarantine), and the versioned security policy decision
+   - policy visibility/publication/execution state and artifact/finding-scoped
+     local approval status; approval must never be presented as global trust
    - internal manager mode, provenance, digest, and revision/tree when applicable
    - router target discovery evidence and initialization status
    - pinned source repository, commit, and skill path
@@ -102,7 +106,13 @@ targets.
    A saved `instructions-only` skill is ready only when its activation policy
    is `on-demand`, the match decision is `select`, and confirmation is false.
    Executable or externally mutating skills may return `confirm`; keep that
-   gate. Never claim that static checks prove absolute safety.
+   gate. `published` in the policy means visible in the user's private router
+   catalog, not publicly released. There is no enforced sandbox in this
+   increment, so the manager never upgrades a script to `sandbox-only` merely
+   because scripts exist. After local registration approval, a capability-bearing
+   artifact still needs activation-time `--confirm-policy` in addition to the
+   existing risk/`--yes` gates. Never claim that static checks prove absolute
+   safety.
 6. Do not run `enable`, `install`, or target skill code merely because the
    skill was saved. The installed `skill-hub-router` will select the minimum
    useful saved skill for later natural-language requests. A session that was
