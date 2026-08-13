@@ -143,8 +143,20 @@ def load_registry(repo: Path, state_dir: Path | None = None) -> dict[str, Any]:
             overlay_item["_local_payload_path"] = str(record.get("path", ""))
             overlays.append(overlay_item)
             known.add(catalog_id)
-        data["skills"] = [*data.get("skills", []), *overlays]
-        if overlays:
+        quarantined = []
+        for record in state.get("quarantine", []):
+            if not isinstance(record, dict):
+                continue
+            item = record.get("item")
+            catalog_id = record.get("catalog_id")
+            if not isinstance(item, dict) or item.get("catalog_id") != catalog_id or catalog_id in known:
+                continue
+            item_copy = dict(item)
+            item_copy["_quarantine_record"] = record
+            quarantined.append(item_copy)
+            known.add(str(catalog_id))
+        data["skills"] = [*data.get("skills", []), *overlays, *quarantined]
+        if overlays or quarantined:
             data["routing_tree"] = compile_routing_tree(data["skills"], data.get("routing_taxonomy", {}))
     return data
 
@@ -251,21 +263,43 @@ def cmd_search(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
         score, reasons = routing.score_item(item, args.query, query_tokens, signals)
         if not score:
             continue
-        if args.client and args.client not in item.get("compatibility", []):
+        compatibility = item.get("compatibility", [])
+        if args.client and args.client not in compatibility and not (
+            args.client == "hermes-agent" and "generic-agent" in compatibility
+        ):
             filtered.append({"catalog_id": item["catalog_id"], "reason": f"client unsupported: {args.client}"})
             continue
         if args.os and args.os not in item.get("oses", []) and "any" not in item.get("oses", []):
             filtered.append({"catalog_id": item["catalog_id"], "reason": f"OS unsupported: {args.os}"})
             continue
-        if args.available_only and item.get("acquisition", {}).get("status") != "available":
-            filtered.append({"catalog_id": item["catalog_id"], "reason": "not acquirable"})
+        archive = item.get("archive", {}) if isinstance(item.get("archive"), dict) else {}
+        security_policy = item.get("security_policy") if isinstance(item.get("security_policy"), dict) else {}
+        activation_blocked = item.get("activation_policy") == "blocked" or archive.get("status") in {"blocked", "metadata-only"}
+        acquirable = (
+            item.get("acquisition", {}).get("status") == "available"
+            and archive.get("status") == "archived"
+            and not activation_blocked
+            and security_policy.get("malware_verdict") != "blocked"
+            and security_policy.get("execution_policy") != "denied"
+        )
+        if args.available_only and not acquirable:
+            filtered.append({"catalog_id": item["catalog_id"], "reason": "not acquirable", "archive_status": archive.get("status"), "activation_policy": item.get("activation_policy")})
             continue
         row = {
             "catalog_id": item["catalog_id"],
             "name": item["name"],
             "description": item.get("description", ""),
-            "availability": item.get("archive", {}).get("status"),
-            "acquirable": item.get("acquisition", {}).get("status") == "available",
+            "availability": archive.get("status"),
+            "acquirable": acquirable,
+            "archive_status": archive.get("status"),
+            "archive_storage": archive.get("storage", "payload"),
+            "archive_blocker": archive.get("blocker"),
+            "activation_policy": item.get("activation_policy"),
+            "security_policy": {
+                "malware_verdict": security_policy.get("malware_verdict"),
+                "publication_status": security_policy.get("publication_status"),
+                "execution_policy": security_policy.get("execution_policy"),
+            } if security_policy else None,
             "risk": item.get("risk"),
             "score": score,
             "routing": {
@@ -656,6 +690,33 @@ def gate_policy_confirmation(item: dict[str, Any], confirmed: bool = False) -> N
         )
 
 
+def missing_dependencies(item: dict[str, Any]) -> list[str]:
+    """Return required local command/file dependencies that are not present."""
+    missing: list[str] = []
+    for dependency in item.get("dependencies", []):
+        if not isinstance(dependency, dict) or dependency.get("optional"):
+            continue
+        kind = dependency.get("kind", "command")
+        name = dependency.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        if kind in {"command", "python"} and shutil.which(name) is None:
+            missing.append(name)
+        elif kind == "file" and not Path(name).expanduser().exists():
+            missing.append(name)
+    return missing
+
+
+def gate_policy_confirmation(item: dict[str, Any], confirmed: bool = False) -> None:
+    """Require an activation-time acknowledgement for policy capabilities."""
+    if policy.policy_requires_confirmation(item.get("security_policy")) and not confirmed:
+        raise UserError(
+            f"policy gate: {item['catalog_id']} declares a capability or review finding; "
+            "--confirm-policy is required after reviewing the policy",
+            code="policy-confirmation-required",
+        )
+
+
 def confirm_action(args: argparse.Namespace, summary: dict[str, Any]) -> None:
     """Require a machine-readable approval or a reliable interactive prompt."""
     machine_output = bool(getattr(args, "json", False))
@@ -704,23 +765,15 @@ def run_spyware_receipt_gate(
         )
     except (policy.PolicyError, KeyError, TypeError) as exc:
         raise UserError("spyware receipt policy binding is invalid", code="spyware-check-invalid", details={"detail": str(exc)}) from exc
-    if security_policy.get("malware_verdict") == "blocked" or counts["critical"] or counts["high"]:
-        if not getattr(args, "json", False):
-            print(detail, file=sys.stderr, end="")
-        raise UserError(
-            "registration blocked by Critical or High spyware findings",
-            code="spyware-check-blocked",
-            details={"receipt": receipt},
-        )
-    approval_requested = bool(getattr(args, "approve_medium", False) or getattr(args, "approve_policy", False))
-    if policy.policy_requires_approval(security_policy) and not approval_requested:
-        if not getattr(args, "json", False):
-            print(detail, file=sys.stderr, end="")
-        raise UserError(
-            "review-required policy needs explicit --approve-policy/--approve-medium after reviewing the receipt",
-            code="spyware-check-approval-required",
-            details={"receipt": receipt},
-        )
+    # Registration is an archive operation, not an activation operation.  A
+    # high/critical receipt is retained on the exact item as a blocked policy
+    # record; the activation gates below still refuse execution.  Medium and
+    # capability findings likewise remain artifact-scoped approval records and
+    # are acknowledged only when the user later activates the item.
+    #
+    # Keep the receipt in the error details only for malformed/transport
+    # failures.  Do not turn a static finding into a transaction-wide rollback:
+    # ``cmd_add`` derives one scoped receipt per discovered SKILL.md.
     if not isinstance(add_source, str) or not add_source:
         raise UserError(
             "spyware scanner returned no immutable source", code="spyware-check-invalid",
@@ -1297,6 +1350,11 @@ def enable_targets(
     one_shot: bool = False,
     ttl_minutes: int = DEFAULT_ONE_SHOT_TTL_MINUTES,
 ) -> dict[str, Any]:
+    if "hermes" in targets and item["catalog_id"] != "core.skill-hub-router":
+        raise UserError(
+            "Hermes exposes only the router permanently; resolve workload skills into the verified cache instead",
+            code="hermes-router-only",
+        )
     roots = target_roots(home)
     existing = state.get("activations", {}).get(item["catalog_id"], {})
     old_targets = dict(existing.get("targets", {})) if isinstance(existing, dict) else {}
@@ -1563,6 +1621,21 @@ def cmd_verify(args: argparse.Namespace, repo: Path, mode: str, home: Path, stat
     item = find_item(registry, args.item)
     state = load_state(state_dir)
     results: dict[str, Any] = {"catalog_id": item["catalog_id"]}
+    quarantine_record = item.get("_quarantine_record")
+    if isinstance(quarantine_record, dict) or item.get("archive", {}).get("storage") == "metadata-only":
+        archive = item.get("archive", {}) if isinstance(item.get("archive"), dict) else {}
+        results.update({
+            "status": "metadata-only",
+            "quarantine": {
+                "status": "metadata-only",
+                "payload": "redacted",
+                "storage": archive.get("storage", "metadata-only"),
+                "blocker": archive.get("blocker"),
+                "checksum": item.get("verification", {}).get("checksum"),
+            },
+        })
+        emit(results, args.json)
+        return 0
     checked = False
     overlay = state.get("overlays", {}).get(item["catalog_id"])
     if isinstance(overlay, dict):
@@ -1606,6 +1679,78 @@ def cmd_verify(args: argparse.Namespace, repo: Path, mode: str, home: Path, stat
     results["status"] = "verified" if statuses and all(value == "verified" for value in statuses) else "review-required"
     emit(results, args.json)
     return 0 if results["status"] == "verified" else 1
+
+
+def cmd_resolve(args: argparse.Namespace, repo: Path, mode: str, home: Path, state_dir: Path) -> int:
+    """Return a verified SKILL.md path without exposing a workload in an agent root."""
+    targets = parse_target_list(args.target, allow_all=False)
+    if targets != ["hermes"]:
+        raise UserError("resolve is the Hermes on-demand path; use --target hermes", code="hermes-target-required")
+    item = find_item(load_registry(repo, state_dir), args.item)
+    reason = routing.compatibility_reason(item, "hermes-agent", routing.default_os_name())
+    if reason:
+        raise UserError(reason, code="incompatible-item")
+    gate_item_for_acquisition(item)
+    gate_policy_confirmation(item, getattr(args, "confirm_policy", False))
+    gate_risk(item, args.allow_risk, confirm_destructive=getattr(args, "confirm_destructive", False))
+    state = load_state(state_dir)
+    cleanup_one_shot(state, home)
+    lock = state.get("locks", {}).get(item["catalog_id"])
+    if lock and lock != lock_identity(item):
+        raise UserError("lock mismatch; review the catalog update before resolving", code="lock-mismatch")
+    missing = missing_dependencies(item)
+    if missing:
+        raise UserError(
+            f"missing required dependencies for {item['catalog_id']}: {', '.join(missing)}",
+            code="missing-dependencies",
+            details={"dependencies": missing},
+        )
+    confirm_action(args, {
+        "action": "resolve",
+        "catalog_id": item["catalog_id"],
+        "source": item.get("source", {}).get("repository"),
+        "revision": item.get("source", {}).get("commit"),
+        "license": item.get("archive", {}).get("license"),
+        "risk": item.get("risk"),
+        "target": "hermes",
+        "persistent": False,
+        "exposure": "none",
+    })
+    if item.get("source_id") == "personal-overlay":
+        source = resolve_content(repo, mode, item, state, state_dir)
+        network = "not-used"
+        cache_key = None
+    else:
+        record = ensure_fetched(repo, mode, item, state, state_dir, mirror_repo=args.from_repo, refresh=args.refresh)
+        source = acquire.cache_path(state_dir, record["cache_key"])
+        verification = acquire.verify_cached(item, state_dir, state)
+        if verification.get("status") != "verified":
+            raise UserError(f"verification failed: {verification}")
+        cache_key = record["cache_key"]
+        network = "not-used" if record["method"] == "packaged" else ("mirror" if record.get("mirror") else "used")
+    skill_path = source / "SKILL.md"
+    if not skill_path.is_file() or is_reparse_point(skill_path) or not path_within(skill_path, source):
+        raise UserError(f"{item['catalog_id']}: verified payload has no safe SKILL.md", code="missing-skill-file")
+    save_state(state_dir, state)
+    emit({
+        "status": "resolved",
+        "catalog_id": item["catalog_id"],
+        "target": "hermes",
+        "client": "hermes-agent",
+        "skill_path": str(skill_path),
+        "skill_dir": str(source),
+        "checksum": item.get("verification", {}).get("checksum"),
+        "cache_key": cache_key,
+        "persistent": False,
+        "exposure": None,
+        "network": network,
+        "dependencies": {"status": "satisfied", "required": [
+            dependency for dependency in item.get("dependencies", [])
+            if isinstance(dependency, dict) and not dependency.get("optional")
+        ]},
+        "note": "Read skill_path for this task only; no workload skill was linked into ~/.hermes/skills.",
+    }, args.json)
+    return 0
 
 
 def cmd_install(args: argparse.Namespace, repo: Path, mode: str, home: Path, state_dir: Path) -> int:
@@ -1831,6 +1976,18 @@ def cmd_uninstall(args: argparse.Namespace, repo: Path, home: Path, state_dir: P
         state["activations"].pop(catalog_id, None)
     acquisition = state.get("acquisitions", {}).pop(catalog_id, None)
     state.get("locks", {}).pop(catalog_id, None)
+    quarantine_rows = state.get("quarantine", [])
+    removed_quarantine = 0
+    if isinstance(quarantine_rows, list):
+        kept = []
+        for row in quarantine_rows:
+            if isinstance(row, dict) and row.get("catalog_id") == catalog_id:
+                removed_quarantine += 1
+            else:
+                kept.append(row)
+        state["quarantine"] = kept
+    if isinstance(state.get("policy_records"), dict):
+        state["policy_records"].pop(catalog_id, None)
     gc: dict[str, Any] = {"cache_key": None, "removed": False, "reason": None}
     if acquisition:
         cache_key = str(acquisition.get("cache_key", ""))
@@ -1848,7 +2005,7 @@ def cmd_uninstall(args: argparse.Namespace, repo: Path, home: Path, state_dir: P
             else:
                 gc["reason"] = "cache object is missing or linked; left untouched"
     save_state(state_dir, state)
-    emit({"status": "uninstalled", "catalog_id": catalog_id, "targets_removed": removed_targets, "cache": gc}, args.json)
+    emit({"status": "uninstalled", "catalog_id": catalog_id, "targets_removed": removed_targets, "quarantine_removed": removed_quarantine, "cache": gc}, args.json)
     return 0
 
 
@@ -2307,6 +2464,17 @@ def cmd_sync(args: argparse.Namespace, repo: Path, mode: str, state_dir: Path) -
             if overlay_path.is_dir():
                 payload_roots[catalog_id] = overlay_path
 
+        quarantine_rows = state.get("quarantine", [])
+        if isinstance(quarantine_rows, list):
+            for record in quarantine_rows:
+                if not isinstance(record, dict) or record.get("kind") != "skill-archive":
+                    continue
+                item_data = record.get("item")
+                if not isinstance(item_data, dict):
+                    continue
+                portable = remote.make_portable_item(item_data)
+                local_items.append(portable)
+
         if pull_ok and pull_ok.get("status") == "pulled":
             remote_items: list[dict[str, Any]] = []
             items_dir = work_dir / "catalog" / "items"
@@ -2383,6 +2551,10 @@ def cmd_sync(args: argparse.Namespace, repo: Path, mode: str, state_dir: Path) -
                 if cid in overlays and isinstance(overlays[cid], dict):
                     overlays[cid]["sync_pending"] = True
                     overlays[cid]["sync_pending_reason"] = str(exc)[:200]
+                for record in quarantine_rows if isinstance(quarantine_rows, list) else []:
+                    if isinstance(record, dict) and record.get("catalog_id") == cid:
+                        record["sync_pending"] = True
+                        record["sync_pending_reason"] = str(exc)[:200]
             state.setdefault("sync", {})["last_push_error"] = str(exc)[:200]
             save_state(state_dir, state)
             result = {"status": "saved-locally-sync-pending", "error": str(exc),
@@ -2396,6 +2568,11 @@ def cmd_sync(args: argparse.Namespace, repo: Path, mode: str, state_dir: Path) -
                 overlays[cid]["synced"] = utc_now()
                 overlays[cid].pop("sync_pending", None)
                 overlays[cid].pop("sync_pending_reason", None)
+            for record in quarantine_rows if isinstance(quarantine_rows, list) else []:
+                if isinstance(record, dict) and record.get("catalog_id") == cid:
+                    record["synced"] = utc_now()
+                    record.pop("sync_pending", None)
+                    record.pop("sync_pending_reason", None)
         state.setdefault("sync", {})["last_push"] = utc_now()
         state.setdefault("sync", {}).pop("last_push_error", None)
         save_state(state_dir, state)
@@ -2738,9 +2915,12 @@ def _personal_item(
     description = str(frontmatter.get("description") or f"Personal skill {name}").strip()
     if contains_privacy_token(name) or contains_privacy_token(description):
         raise UserError("source metadata rejected by the public privacy policy")
-    findings = acquire.scan_payload(source)
-    if findings:
-        raise UserError(f"source rejected by safety policy: {findings[0]}", code="unsafe-payload")
+    # ``remote.scan_portable_payload`` is the storage boundary.  It rejects
+    # links, embedded secrets, privacy markers, and unsupported binary data;
+    # it intentionally does not reject a static High spyware receipt.  High
+    # findings are archived with activation blocked.  If the storage scan
+    # itself finds unsafe bytes, only redacted metadata is retained remotely.
+    storage_findings = remote.scan_portable_payload(source)
     executable_suffixes = {".py", ".js", ".cjs", ".mjs", ".ts", ".tsx", ".sh", ".bash", ".bat", ".cmd", ".ps1", ".exe", ".dll", ".jar"}
     inferred_risk = "scripts" if any(path.is_file() and path.suffix.casefold() in executable_suffixes for path in source.rglob("*")) else "instructions-only"
     effective_risk = args.risk or inferred_risk
@@ -2759,7 +2939,86 @@ def _personal_item(
     checksum = directory_checksum(source)
     catalog_id = f"overlay.{name}"
     source_path = provenance.get("path", "")
-    activation_policy = "on-demand" if effective_risk == "instructions-only" else "manual"
+    policy_source = {
+        "kind": "github" if str(provenance.get("repository", "")).startswith("https://github.com/") else "local",
+        "repository": provenance.get("repository", ""),
+        "commit": provenance.get("commit"),
+        "tree": provenance.get("tree"),
+        "path": source_path,
+    }
+    try:
+        scoped_receipt = spyware.scope_receipt(
+            receipt,
+            source,
+            policy_source,
+            scope_label=source_path or name,
+        )
+    except spyware.ScanError as exc:
+        raise UserError(
+            "could not create a per-skill security receipt",
+            code="spyware-check-invalid",
+            details={"detail": getattr(exc, "detail", "") or str(exc)},
+        ) from exc
+    scoped_policy = scoped_receipt["policy"]
+    blocked_by_policy = scoped_policy.get("malware_verdict") == "blocked" or scoped_policy.get("execution_policy") == "denied"
+    quarantine_rule_ids = {
+        "exfiltration.external-upload",
+        "execution.obfuscated-downloader",
+        "execution.remote-pipe",
+        "execution.destructive-command",
+        "persistence.autostart",
+    }
+    severe_findings = [
+        row for row in scoped_receipt.get("findings", [])
+        if isinstance(row, dict) and (
+            str(row.get("severity", "")).casefold() == "critical"
+            or str(row.get("rule_id", "")) in quarantine_rule_ids
+        )
+    ]
+    metadata_only = bool(storage_findings) or bool(severe_findings)
+    archive_status = "metadata-only" if metadata_only else ("blocked" if blocked_by_policy else "archived")
+    activation_policy = "blocked" if metadata_only or blocked_by_policy else ("on-demand" if effective_risk == "instructions-only" else "manual")
+    archive_blocker = None
+    if metadata_only:
+        redacted_findings = [
+            {
+                "code": str(row.get("code", "unsafe-storage")),
+                "path": str(row.get("path", "")),
+                "detail": str(row.get("detail", "storage policy finding"))[:240],
+            }
+            for row in storage_findings
+        ]
+        redacted_findings.extend(
+            {
+                "code": f"spyware:{str(row.get('rule_id', 'severe-static-finding'))}",
+                "path": str(row.get("path", "")),
+                "detail": "severe static finding retained as redacted quarantine metadata",
+            }
+            for row in severe_findings
+        )
+        archive_blocker = "storage policy rejected the raw payload; redacted quarantine metadata only"
+        if severe_findings and not storage_findings:
+            archive_blocker = "severe static finding; redacted quarantine metadata only"
+    elif blocked_by_policy:
+        archive_blocker = "static security policy finding; payload archived but activation is denied"
+    archive: dict[str, Any] = {
+        "status": archive_status,
+        "path": None,
+        "blocker": archive_blocker,
+        "storage": "metadata-only" if metadata_only else "payload",
+        "license": {
+            "declared": frontmatter.get("license", "user-supplied"),
+            "redistribution": "personal-local-use-only",
+        },
+    }
+    if metadata_only:
+        archive["quarantine"] = {
+            "redacted": True,
+            "payload_retained": False,
+            "remote_payload": "not-stored",
+            "reason_codes": sorted({row["code"] for row in redacted_findings}),
+            "findings": redacted_findings,
+        }
     item = {
         "catalog_id": catalog_id,
         "kind": "skill",
@@ -2769,10 +3028,10 @@ def _personal_item(
         "description_ko": _personal_routing(registry, name, description, routing_args)["description_ko"],
         "source_id": "personal-overlay",
         "source": {**provenance, "path": source_path, "status": "user-registered", "publisher": "user-selected"},
-        "archive": {"status": "archived", "path": None, "blocker": None, "license": {"declared": frontmatter.get("license", "user-supplied"), "redistribution": "personal-local-use-only"}},
-        "acquisition": {"status": "available", "method": "personal-overlay", "expected_checksum": checksum, "reason": "already copied into the user-owned local overlay"},
+        "archive": archive,
+        "acquisition": {"status": "metadata-only" if metadata_only else "available", "method": "personal-overlay", "expected_checksum": checksum, "reason": "redacted quarantine metadata" if metadata_only else "already copied into the user-owned local overlay"},
         "trust": {"tier": "user-selected", "publisher_identity": "not-verified", "security_review": "static-scan-only", "compatibility_verification": "not-verified"},
-        "verification": {"status": "user-registered-and-checksummed", "source_commit": provenance.get("commit"), "checksum": checksum},
+        "verification": {"status": "metadata-only" if metadata_only else "user-registered-and-checksummed", "source_commit": provenance.get("commit"), "checksum": checksum},
         "version": "personal",
         "revision": provenance.get("commit") or checksum,
         "compatibility": ["codex", "claude-code", "opencode", "paseo", "generic-agent"],
@@ -2788,14 +3047,16 @@ def _personal_item(
         "adapters": {},
     }
     bind_item_to_spyware_receipt(
-        receipt,
+        scoped_receipt,
         item,
         approved=bool(getattr(args, "approve_medium", False) or getattr(args, "approve_policy", False)),
     )
-    if policy.policy_requires_confirmation(item.get("security_policy")):
+    if policy.policy_requires_confirmation(item.get("security_policy")) and not blocked_by_policy and not metadata_only:
+        # A capability-bearing instructions document is still not executable,
+        # but it must not be auto-selected as if it were risk-free.
         item["activation_policy"] = "manual"
         item["verification"]["security_policy_sha256"] = policy.policy_digest(item["security_policy"])
-    item["security_receipt"] = receipt
+    item["security_receipt"] = scoped_receipt
     return name, item
 
 
@@ -2805,6 +3066,35 @@ def _personal_provenance(provenance: dict[str, str], source: Path, root: Path) -
     item_provenance = dict(provenance)
     item_provenance["path"] = "/".join(part for part in (provenance.get("path", ""), relative) if part)
     return item_provenance
+
+
+def _store_quarantine_item(state: dict[str, Any], item: dict[str, Any]) -> None:
+    """Persist metadata-only archive records without retaining raw payloads."""
+    rows = state.setdefault("quarantine", [])
+    if not isinstance(rows, list):
+        rows = []
+        state["quarantine"] = rows
+    rows[:] = [
+        row for row in rows
+        if not (isinstance(row, dict) and row.get("kind") == "skill-archive" and row.get("catalog_id") == item.get("catalog_id"))
+    ]
+    rows.append({
+        "kind": "skill-archive",
+        "catalog_id": item.get("catalog_id"),
+        "name": item.get("name"),
+        "checksum": item.get("verification", {}).get("checksum"),
+        "added": utc_now(),
+        "payload": "redacted",
+        "item": copy.deepcopy(item),
+    })
+
+
+def _quarantine_items(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        row["item"]
+        for row in state.get("quarantine", [])
+        if isinstance(row, dict) and row.get("kind") == "skill-archive" and isinstance(row.get("item"), dict)
+    ]
 
 
 def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
@@ -2846,16 +3136,23 @@ def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
             )
             if item["catalog_id"] in known_ids:
                 raise UserError(f"personal skill already exists: {item['catalog_id']}")
-            destination = overlay_root / safe_name(name)
-            if path_within(destination, source) or path_within(source, destination):
-                raise UserError("overlay destination must be separate from the source", code="overlay-boundary")
-            if destination.exists() or destination.is_symlink():
-                raise UserError(f"overlay destination exists: {destination}")
+            destination: Path | None = None
+            if item.get("archive", {}).get("storage", "payload") != "metadata-only":
+                destination = overlay_root / safe_name(name)
+                if path_within(destination, source) or path_within(source, destination):
+                    raise UserError("overlay destination must be separate from the source", code="overlay-boundary")
+                if destination.exists() or destination.is_symlink():
+                    raise UserError(f"overlay destination exists: {destination}")
             prepared.append((source, destination, item))
             known_ids.add(item["catalog_id"])
         created: list[Path] = []
         try:
             for source, destination, item in prepared:
+                if destination is None:
+                    _store_quarantine_item(state, item)
+                    if isinstance(item.get("security_policy"), dict):
+                        state.setdefault("policy_records", {})[item["catalog_id"]] = copy.deepcopy(item["security_policy"])
+                    continue
                 checksum = copy_tree_checked(source, destination)
                 if checksum != item["verification"]["checksum"]:
                     raise UserError("copied overlay checksum changed unexpectedly")
@@ -2875,9 +3172,14 @@ def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
             raise
     rows = [{
         "catalog_id": item["catalog_id"],
-        "path": str(destination),
+        "path": str(destination) if destination is not None else None,
         "checksum": item["verification"]["checksum"],
         "risk": item["risk"],
+        "archive_status": item.get("archive", {}).get("status"),
+        "storage": item.get("archive", {}).get("storage", "payload"),
+        "activation_policy": item.get("activation_policy"),
+        "stored": destination is not None,
+        "blocked": item.get("activation_policy") == "blocked",
         "routing": item["routing"],
         "security_policy": item.get("security_policy"),
         "security_policy_sha256": item.get("verification", {}).get("security_policy_sha256"),
@@ -2955,6 +3257,8 @@ def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
         overlay_path = Path(str(record.get("path", "")))
         if overlay_path.is_dir():
             payload_roots[catalog_id] = overlay_path
+    for item_data in _quarantine_items(state):
+        portable_items.append(remote.make_portable_item(item_data))
 
     remote_items: list[dict[str, Any]] = []
     items_dir = work_dir / "catalog" / "items"
@@ -2992,6 +3296,9 @@ def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
             cid = row["catalog_id"]
             if cid in state["overlays"] and isinstance(state["overlays"][cid], dict):
                 state["overlays"][cid]["synced"] = utc_now()
+            for quarantine in state.get("quarantine", []):
+                if isinstance(quarantine, dict) and quarantine.get("catalog_id") == cid:
+                    quarantine["synced"] = utc_now()
         state.setdefault("sync", {})["last_push"] = utc_now()
         save_state(state_dir, state)
         result["sync"] = "up-to-date"
@@ -3013,6 +3320,9 @@ def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
                 state["overlays"][cid]["synced"] = utc_now()
                 state["overlays"][cid].pop("sync_pending", None)
                 state["overlays"][cid].pop("sync_pending_reason", None)
+            for quarantine in state.get("quarantine", []):
+                if isinstance(quarantine, dict) and quarantine.get("catalog_id") == cid:
+                    quarantine["synced"] = utc_now()
         state.setdefault("sync", {})["last_push"] = utc_now()
         state.setdefault("sync", {}).pop("last_push_error", None)
         save_state(state_dir, state)
@@ -3024,6 +3334,10 @@ def cmd_add(args: argparse.Namespace, repo: Path, state_dir: Path) -> int:
             if cid in state["overlays"] and isinstance(state["overlays"][cid], dict):
                 state["overlays"][cid]["sync_pending"] = True
                 state["overlays"][cid]["sync_pending_reason"] = str(exc)[:200]
+            for quarantine in state.get("quarantine", []):
+                if isinstance(quarantine, dict) and quarantine.get("catalog_id") == cid:
+                    quarantine["sync_pending"] = True
+                    quarantine["sync_pending_reason"] = str(exc)[:200]
         state.setdefault("sync", {})["last_push_error"] = str(exc)[:200]
         save_state(state_dir, state)
         result["sync"] = "saved-locally-sync-pending"
@@ -3110,7 +3424,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     search = common("search")
     search.add_argument("query")
-    search.add_argument("--client", choices=("codex", "claude-code", "opencode", "paseo", "generic-agent"))
+    client_choices = ("codex", "claude-code", "opencode", "paseo", "hermes-agent", "generic-agent")
+    search.add_argument("--client", choices=client_choices)
     search.add_argument("--os", choices=("windows", "macos", "linux"))
     search.add_argument("--available-only", action="store_true")
     search.add_argument("--explain", action="store_true")
@@ -3122,16 +3437,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     route = common("route")
     route.add_argument("task", help="natural-language task description")
-    route.add_argument("--target", required=True, help="one canonical target: codex,claude,opencode,paseo,generic")
-    route.add_argument("--client", choices=("codex", "claude-code", "opencode", "paseo", "generic-agent"), default=None)
+    route.add_argument("--target", required=True, help="one canonical target: codex,claude,opencode,paseo,hermes,generic")
+    route.add_argument("--client", choices=client_choices, default=None)
     route.add_argument("--os", choices=("windows", "macos", "linux"), default=None)
     route.add_argument("--allow-risk", choices=tuple(RISK_ORDER), default=None, help="risk allowance used to separate candidates from risk-gated rows")
     route.add_argument("--limit", type=int, default=routing.DEFAULT_LIMIT)
 
     match = common("match")
     match.add_argument("request", help="unstructured natural-language request")
-    match.add_argument("--target", required=True, help="one canonical target: codex,claude,opencode,paseo,generic")
-    match.add_argument("--client", choices=("codex", "claude-code", "opencode", "paseo", "generic-agent"), default=None)
+    match.add_argument("--target", required=True, help="one canonical target: codex,claude,opencode,paseo,hermes,generic")
+    match.add_argument("--client", choices=client_choices, default=None)
     match.add_argument("--os", choices=("windows", "macos", "linux"), default=None)
     match.add_argument("--max-risk", choices=tuple(RISK_ORDER), default=None)
     match.add_argument("--trust-tier", choices=tuple(sorted(matching.ALLOWED_TRUST_TIERS)), default=None)
@@ -3148,7 +3463,7 @@ def build_parser() -> argparse.ArgumentParser:
         child.add_argument("item")
 
     init = common("init")
-    init.add_argument("--target", default=None, help="comma-separated targets: codex,claude,opencode,paseo,generic (default: all)")
+    init.add_argument("--target", default=None, help="comma-separated targets: codex,claude,opencode,paseo,hermes,generic (default: all)")
     init.add_argument("--profile", choices=("default", "windows", "macos", "linux"), default="default")
 
     fetch = common("fetch")
@@ -3163,9 +3478,19 @@ def build_parser() -> argparse.ArgumentParser:
     verify = common("verify")
     verify.add_argument("item")
 
+    resolve = common("resolve")
+    resolve.add_argument("item")
+    resolve.add_argument("--target", required=True, help="must be hermes")
+    resolve.add_argument("--allow-risk", choices=tuple(RISK_ORDER), default=None)
+    resolve.add_argument("--confirm-destructive", action="store_true")
+    resolve.add_argument("--confirm-policy", action="store_true", help="acknowledge the saved artifact security policy before activation")
+    resolve.add_argument("--yes", "--approve", dest="approved", action="store_true", help="approve after reviewing inspect output")
+    resolve.add_argument("--from-repo", default=None)
+    resolve.add_argument("--refresh", action="store_true")
+
     install = common("install")
     install.add_argument("item")
-    install.add_argument("--target", required=True, help="comma-separated targets: codex,claude,opencode,paseo,generic")
+    install.add_argument("--target", required=True, help="comma-separated targets: codex,claude,opencode,paseo,hermes,generic")
     install.add_argument("--allow-risk", choices=tuple(RISK_ORDER), default=None)
     install.add_argument("--confirm-destructive", action="store_true")
     install.add_argument("--confirm-policy", action="store_true", help="acknowledge the saved artifact security policy before activation")
@@ -3328,6 +3653,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_fetch(args, repo, mode, state_dir)
         if args.command == "verify":
             return cmd_verify(args, repo, mode, home, state_dir)
+        if args.command == "resolve":
+            return cmd_resolve(args, repo, mode, home, state_dir)
         if args.command == "install":
             return cmd_install(args, repo, mode, home, state_dir)
         if args.command == "use":

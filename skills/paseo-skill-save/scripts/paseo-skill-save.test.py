@@ -733,7 +733,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
         self.assertEqual(runtime.details["private_catalog_items"], 3)
         self.assertEqual(Path(runtime.details["path"]).resolve(), root.resolve())
 
-    def test_public_managed_runtime_uses_bundled_fallback(self) -> None:
+    def test_manager_only_runtime_is_preferred_over_bundled_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary) / "state"
             self._write_managed_runtime(state, private_items=0)
@@ -743,31 +743,28 @@ class PaseoSkillSaveTests(unittest.TestCase):
 
             runtime = MODULE._bootstrap_manager(args)
 
-        self.assertEqual(runtime.details["mode"], "bundled-public-fallback")
-        self.assertEqual(runtime.details["revision"], MODULE.MANAGER_REVISION)
-        self.assertEqual(runtime.details["tree"], MODULE.MANAGER_TREE)
+        self.assertEqual(runtime.details["mode"], "installed-private-runtime")
+        self.assertEqual(runtime.details["private_catalog_items"], 0)
 
-    def test_high_findings_block_registration(self) -> None:
+    def test_high_findings_are_archived_for_blocked_activation(self) -> None:
         self.gate.stop()
         module = mock.Mock()
         module.scan_target.return_value = (signed_receipt(high=1), "fixture")
         args = MODULE.build_parser().parse_args(["fixture"])
         with mock.patch.object(MODULE, "_load_spyware_scanner", return_value=module):
-            with self.assertRaises(MODULE.SaveError) as raised:
-                MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
-        self.assertEqual(raised.exception.code, "spyware-check-blocked")
+            receipt, source = MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
+        self.assertEqual(receipt["counts"]["high"], 1)
+        self.assertEqual(source, "fixture")
 
-    def test_medium_findings_require_and_accept_explicit_approval(self) -> None:
+    def test_medium_findings_are_archived_before_activation_approval(self) -> None:
         self.gate.stop()
         module = mock.Mock()
         module.scan_target.return_value = (signed_receipt(medium=1), "fixture")
         with mock.patch.object(MODULE, "_load_spyware_scanner", return_value=module):
             args = MODULE.build_parser().parse_args(["fixture"])
-            with self.assertRaises(MODULE.SaveError) as raised:
-                MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
-            self.assertEqual(
-                raised.exception.code, "spyware-check-approval-required"
-            )
+            receipt, source = MODULE._run_spyware_gate(args, Path(tempfile.mkdtemp()))
+            self.assertEqual(receipt["counts"]["medium"], 1)
+            self.assertEqual(source, "fixture")
 
             approved = MODULE.build_parser().parse_args(
                 ["fixture", "--approve-medium"]

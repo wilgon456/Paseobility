@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "repository": "https://github.com/wilgon456/skillNload",
-  "revision": "6e50a0b292d29767d25f9cef986b57860ff5bd21",
-  "tree": "8d1585839cc78f46fd534fa1c47103c4b6fd9008",
-  "content_digest": "08b527bcc7c9e40400552ccf858cd542fd65fc6c1e89ae857e6ea08b02faef29",
+  "repository": "https://github.com/wilgon456/skillNload_private",
+  "revision": "4c290e82422fd35d8501c28c7f5b4ca45ee47bbb",
+  "tree": "19c654fa9efc302d1679b7ba111a68f33efa4006",
+  "content_digest": "7cc548242a0b802ef91270bc9b2e2571c53d22b116d395dcb6ffff24f88319ab",
   "license": "Apache-2.0",
-  "role": "bundled-public-fallback"
+  "role": "bundled-manager-code-only"
 }

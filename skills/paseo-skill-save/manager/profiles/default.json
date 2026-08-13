@@ -5,7 +5,7 @@
   "extends": null,
   "enabled": ["core.skill-hub-router"],
   "disabled": [],
-  "targets": ["codex", "claude", "opencode", "paseo", "generic"],
+  "targets": ["codex", "claude", "opencode", "paseo", "hermes", "generic"],
   "max_risk": "local-management",
   "locks": {}
 }

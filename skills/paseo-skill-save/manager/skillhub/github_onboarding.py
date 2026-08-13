@@ -22,20 +22,39 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .remote import REMOTE_MARKER, REMOTE_REPO_NAME, REMOTE_SCHEMA_VERSION, RemoteError, validate_remote_url, verify_portable_repo
+from .remote import REMOTE_MARKER, REMOTE_REPO_NAME, REMOTE_SCHEMA_VERSION, SUPPORTED_REMOTE_SCHEMA_VERSIONS, RemoteError, validate_remote_url, verify_portable_repo
 
 
-def _git_env() -> dict[str, str]:
+def _git_env(*, use_user_global: bool = False) -> dict[str, str]:
     env = dict(os.environ)
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_CONFIG_NOSYSTEM"] = "1"
-    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    if use_user_global:
+        # ``gh auth setup-git`` must be able to update the user's normal Git
+        # configuration.  Pointing GIT_CONFIG_GLOBAL at os.devnull works on
+        # POSIX but fails on Windows because Git cannot lock the ``nul``
+        # device.  setup-git stores only the gh credential-helper command, not
+        # a token; all other operations remain isolated below.
+        env.pop("GIT_CONFIG_GLOBAL", None)
+    else:
+        env["GIT_CONFIG_GLOBAL"] = os.devnull
+        # Preserve config isolation while allowing authenticated HTTPS access
+        # to private GitHub repositories.  The helper asks the already
+        # authenticated gh CLI for credentials at runtime; no secret is put in
+        # the remote URL or written into the portable repository.
+        env["GIT_CONFIG_COUNT"] = "2"
+        env["GIT_CONFIG_KEY_0"] = "credential.https://github.com.helper"
+        env["GIT_CONFIG_VALUE_0"] = ""
+        env["GIT_CONFIG_KEY_1"] = "credential.https://github.com.helper"
+        env["GIT_CONFIG_VALUE_1"] = "!gh auth git-credential"
     env.pop("GIT_ASKPASS", None)
     env.pop("SSH_ASKPASS", None)
     return env
 
 
-def _gh(args: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+def _gh(
+    args: list[str], *, timeout: int = 30, use_user_git_config: bool = False
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["gh"] + args,
         text=True,
@@ -43,7 +62,7 @@ def _gh(args: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[st
         errors="replace",
         capture_output=True,
         timeout=timeout,
-        env=_git_env(),
+        env=_git_env(use_user_global=use_user_git_config),
     )
 
 
@@ -207,7 +226,7 @@ def clone_and_validate_marker(remote_url: str, temp_dir: Path) -> dict[str, Any]
         }
 
     schema_version = library.get("schema_version")
-    if schema_version != REMOTE_SCHEMA_VERSION:
+    if schema_version not in SUPPORTED_REMOTE_SCHEMA_VERSIONS:
         return {
             "valid_marker": False,
             "reason": f"unsupported schema version: {schema_version}",
@@ -379,7 +398,10 @@ def onboard_github(work_dir: Path) -> dict[str, Any]:
     if not auth["authenticated"]:
         return {"status": "error", **auth}
 
-    setup_proc = _gh(["auth", "setup-git", "--hostname", "github.com"])
+    setup_proc = _gh(
+        ["auth", "setup-git", "--hostname", "github.com"],
+        use_user_git_config=True,
+    )
     if setup_proc.returncode != 0:
         return {
             "status": "error",

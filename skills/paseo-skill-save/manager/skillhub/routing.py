@@ -27,6 +27,7 @@ TARGET_COMPATIBILITY = {
     "claude": "claude-code",
     "opencode": "opencode",
     "paseo": "paseo",
+    "hermes": "hermes-agent",
     "generic": "generic-agent",
 }
 KNOWN_OSES = ("windows", "macos", "linux")
@@ -215,7 +216,7 @@ def recommendation_assessment(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def compatibility_reason(item: dict[str, Any], client: str, os_name: str) -> str | None:
     compatibility = [str(value) for value in item.get("compatibility", [])]
-    if client not in compatibility:
+    if client not in compatibility and not (client == "hermes-agent" and "generic-agent" in compatibility):
         return f"client unsupported: needs {client}, item lists {', '.join(sorted(compatibility)) or 'none'}"
     oses = [str(value) for value in item.get("oses", [])]
     if os_name not in oses and "any" not in oses:
@@ -396,6 +397,10 @@ def acquire_commands(catalog_id: str, target: str, risk: str) -> dict[str, str]:
         risk_flags = f" --allow-risk {risk}"
     if risk == "destructive":
         risk_flags += " --confirm-destructive"
+    if target == "hermes":
+        return {
+            "resolve": f"skillhub resolve {catalog_id} --target hermes{risk_flags} --yes --json",
+        }
     return {
         "one_shot": f"skillhub use {catalog_id} --once --target {target}{risk_flags} --yes --json",
         "install": f"skillhub install {catalog_id} --target {target}{risk_flags} --yes --json",
@@ -408,10 +413,11 @@ def next_steps(candidates: list[dict[str, Any]], risk_gated: list[dict[str, Any]
         top = candidates[0]["catalog_id"]
         steps.append(f"skillhub inspect {top} --json")
         steps.append("present provenance, license, integrity, risk, and trust limitations; ask the user for explicit approval")
-        steps.extend([
-            candidates[0]["acquire_commands"]["one_shot"],
-            candidates[0]["acquire_commands"]["install"],
-        ])
+        commands = candidates[0]["acquire_commands"]
+        if target == "hermes":
+            steps.append(commands["resolve"])
+        else:
+            steps.extend([commands["one_shot"], commands["install"]])
         steps.append("read SKILL.md from the returned verified skill_path immediately; do not rely on same-session rediscovery")
     elif risk_gated:
         top = risk_gated[0]

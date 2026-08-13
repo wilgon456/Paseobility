@@ -66,36 +66,26 @@
           "skills": [
             {
               "actions": [
-                "search",
-                "analyze",
-                "read"
+                "analyze"
               ],
               "behavior_classes": [
-                "information-retrieval",
                 "analysis",
-                "orchestration",
-                "local-management"
+                "local-management",
+                "orchestration"
               ],
               "catalog_id": "core.skill-hub-router",
               "cross_paths_ko": [
-                "업무·비즈니스 > 업무 생산성"
+                "기술·개발·인프라 > 소프트웨어 개발"
               ],
-              "description_ko": "사용자의 평범한 자연어 요청을 분석해 지금 필요한 스킬만 찾고, 안전한 지침형 스킬은 현재 작업에 자동 적용하며 위험한 동작은 구체적인 승인 뒤에 연결합니다.",
+              "description_ko": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
               "name": "skill-hub-router",
               "risk": "local-management",
               "status": "archived",
               "tags_ko": [
-                "자연어 스킬 추천",
-                "자동 스킬 라우팅",
-                "스킬 검색",
-                "안전한 자동 적용",
-                "에이전트 오케스트레이션",
                 "기술·개발·인프라",
                 "스킬·에이전트 관리",
-                "업무 생산성",
-                "검색·발견",
-                "분석",
-                "읽기·조회"
+                "소프트웨어 개발",
+                "분석"
               ]
             }
           ]

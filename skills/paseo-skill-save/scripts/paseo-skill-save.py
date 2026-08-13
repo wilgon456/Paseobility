@@ -19,9 +19,9 @@ import tempfile
 from typing import Any, Sequence
 
 
-MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload.git"
-MANAGER_REVISION = "6e50a0b292d29767d25f9cef986b57860ff5bd21"
-MANAGER_TREE = "8d1585839cc78f46fd534fa1c47103c4b6fd9008"
+MANAGER_REPOSITORY = "https://github.com/wilgon456/skillNload_private.git"
+MANAGER_REVISION = "4c290e82422fd35d8501c28c7f5b4ca45ee47bbb"
+MANAGER_TREE = "19c654fa9efc302d1679b7ba111a68f33efa4006"
 MANAGER_COPY_DIRECTORIES = (
     "skillhub",
     "scripts",
@@ -255,9 +255,13 @@ def _installed_private_manager(args: argparse.Namespace) -> ManagerRuntime | Non
             "Managed routing engine content changed",
             f"expected={expected_digest}; actual={actual_digest}",
         )
+    # A manager-only runtime intentionally has no bundled personal catalog.
+    # It still owns the overlay-aware registry loader and must be preferred so
+    # that save/load uses paseo_skill_save rather than falling back to the
+    # historical public bundle.  Returning None for zero preloaded items made
+    # the wrapper silently select the legacy manager and could produce a
+    # successful local mutation followed by a false receipt/reporting error.
     private_items = _private_catalog_count(root)
-    if private_items == 0:
-        return None
     launcher = root / "scripts" / "skillhub.py"
     return ManagerRuntime(
         command=(args.python, str(launcher), "--repo", str(root)),
@@ -268,6 +272,7 @@ def _installed_private_manager(args: argparse.Namespace) -> ManagerRuntime | Non
             "content_digest": actual_digest,
             "revision": record.get("revision"),
             "private_catalog_items": private_items,
+            "personal_library": "paseo_skill_save",
         },
     )
 
@@ -721,30 +726,26 @@ def _run_spyware_gate(
             getattr(exc, "detail", "") or str(exc),
         ) from exc
     receipt = _validate_scan_receipt(raw_receipt)
-    counts = receipt["counts"]
-    detail = json.dumps(receipt, ensure_ascii=True, sort_keys=True)
-    security_policy = receipt.get("policy", {})
-    if security_policy.get("malware_verdict") == "blocked" or counts["critical"] or counts["high"]:
-        raise SaveError(
-            "spyware-check-blocked",
-            "Registration was blocked by Critical or High spyware findings",
-            detail,
-        )
-    if security_policy.get("approval", {}).get("status") == "required" and not getattr(args, "approve_medium", False):
-        raise SaveError(
-            "spyware-check-approval-required",
-            "Medium findings require explicit approval before registration",
-            detail,
-        )
+    # The wrapper's first scan is an immutable archive receipt.  It is not an
+    # activation approval: High/Critical records may be preserved as blocked
+    # or redacted quarantine metadata, while the manager remains strict when
+    # fetch/enable/use/install is requested.  Medium/capability approval is
+    # artifact-scoped and belongs to activation, not registration.
     if not isinstance(add_source, str) or not add_source:
         raise SaveError("spyware-check-invalid", "Spyware scan returned no immutable source")
     return receipt, add_source
 
 
 def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> None:
-    scanned = receipt.get("source")
+    # A bulk add has one outer receipt and one manager-scoped receipt per
+    # selected SKILL.md.  Bind to the latter when available; requiring the
+    # outer repository checksum to equal every child was a false error that
+    # occurred after the manager had already atomically saved the item.
+    scoped = record.get("security_receipt")
+    candidate = scoped if isinstance(scoped, dict) else receipt
+    scanned = candidate.get("source")
     if not isinstance(scanned, dict):
-        return
+        raise SaveError("scan-receipt-mismatch", "Saved skill has no security receipt source")
     contract = _load_policy_contract()
     security_policy = record.get("security_policy")
     if not isinstance(security_policy, dict):
@@ -753,8 +754,8 @@ def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> Non
         contract.validate_policy(
             security_policy,
             expected_source=scanned,
-            expected_checksum=receipt.get("content_checksum"),
-            expected_finding_ids=[str(row["finding_id"]) for row in receipt.get("findings", [])],
+            expected_checksum=candidate.get("content_checksum"),
+            expected_finding_ids=[str(row["finding_id"]) for row in candidate.get("findings", [])],
         )
     except Exception as exc:
         raise SaveError("scan-receipt-mismatch", "Saved security policy does not match the scan receipt", str(exc)) from exc
@@ -764,9 +765,7 @@ def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> Non
     if expected_policy_digest != contract.policy_digest(security_policy):
         raise SaveError("scan-receipt-mismatch", "Saved security policy digest does not match its policy")
     if scanned.get("kind") == "local":
-        if scanned.get("skill_manifest") and record.get("checksum") != receipt.get(
-            "content_checksum"
-        ):
+        if record.get("checksum") != candidate.get("content_checksum"):
             raise SaveError(
                 "scan-receipt-mismatch",
                 "Saved local skill checksum does not match the spyware scan receipt",
@@ -793,9 +792,7 @@ def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> Non
             "Saved skill path is outside the spyware-scanned subtree",
             json.dumps({"scanned": scanned_path, "saved": actual_path}, sort_keys=True),
         )
-    if actual_path == scanned_path and record.get("checksum") != receipt.get(
-        "content_checksum"
-    ):
+    if actual_path == scanned_path and record.get("checksum") != candidate.get("content_checksum"):
         raise SaveError(
             "scan-receipt-mismatch",
             "Saved skill checksum does not match the spyware scan receipt",
@@ -1119,7 +1116,7 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         verification = _run_json(
             prefix + ["verify", catalog_id, "--json"], args.timeout
         )
-        if verification.get("status") != "verified":
+        if verification.get("status") not in {"verified", "metadata-only"}:
             raise SaveError(
                 "verification-failed",
                 f"saved item did not verify: {catalog_id}",
@@ -1140,9 +1137,14 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
             "risk": inspection.get("risk"),
             "activation_policy": inspection.get("activation_policy"),
             "license": inspection.get("archive", {}).get("license"),
+            "archive_status": inspection.get("archive", {}).get("status"),
+            "archive_storage": inspection.get("archive", {}).get("storage", "payload"),
+            "archive_blocker": inspection.get("archive", {}).get("blocker"),
+            "quarantine": inspection.get("archive", {}).get("quarantine"),
             "trust_verdict": inspection.get("trust_verdict", {}).get("verdict"),
             "security_policy": inspection.get("security_policy"),
             "security_policy_sha256": inspection.get("verification", {}).get("security_policy_sha256"),
+            "security_receipt": inspection.get("security_receipt"),
         }
         records.append(record)
         _bind_record_to_scan(scan_receipt, record)
@@ -1153,17 +1155,20 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         portable_name = catalog_id.removeprefix("overlay.")
         description = str(routing_record.get("description_ko") or "")
         query = " ".join(part for part in (action, portable_name, description) if part)
-        search = _run_json(
-            prefix + ["search", query, "--available-only", "--json"],
-            args.timeout,
-        )
-        result_ids = [
-            str(row.get("catalog_id"))
-            for row in search.get("results", [])
-            if isinstance(row, dict)
-        ]
+        search = _run_json(prefix + ["search", query, "--json"], args.timeout)
+        search_rows = [row for row in search.get("results", []) if isinstance(row, dict)]
+        result_row = next((row for row in search_rows if str(row.get("catalog_id")) == catalog_id), None)
         discovered.append(
-            {"catalog_id": catalog_id, "found": catalog_id in result_ids, "query": query}
+            {
+                "catalog_id": catalog_id,
+                "found": result_row is not None,
+                "query": query,
+                "archive_status": (result_row or {}).get("archive_status"),
+                "storage": (result_row or {}).get("archive_storage"),
+                "activation_policy": (result_row or {}).get("activation_policy"),
+                "available": bool((result_row or {}).get("acquirable")),
+                "activation_blocked": (result_row or {}).get("activation_policy") == "blocked",
+            }
         )
         matches.append(
             _match_record(prefix, match_target, query, catalog_id, args.timeout)
@@ -1179,10 +1184,17 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         )
         for record, match in zip(records, matches)
     )
+    archive_only = [
+        record["catalog_id"]
+        for record in records
+        if record.get("archive_status") in {"blocked", "metadata-only"}
+        or record.get("activation_policy") == "blocked"
+    ]
+    automatic_use_ready = automatic_use_ready and not archive_only
     natural_language_ready = all(
         match["selected"] and match["status"] in {"select", "confirm"}
         for match in matches
-    )
+    ) and not archive_only
     return {
         "status": "saved-and-verified",
         "source": args.source,
@@ -1210,6 +1222,8 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
         "automatic_discovery_ready": all(row["found"] for row in discovered),
         "natural_language_ready": natural_language_ready,
         "automatic_use_ready": automatic_use_ready,
+        "archive_only": archive_only,
+        "partial_archive": bool(archive_only) and len(archive_only) < len(records),
         "activation": "not-installed; available for router-selected ephemeral use",
     }
 
@@ -1308,13 +1322,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
     _json_output(result)
-    ready = (
-        result["automatic_discovery_ready"]
-        and result["natural_language_ready"]
-        and result["automatic_use_ready"]
-        and result["library_sync"]["status"] != "manager-sync-api-unavailable"
-    )
-    return 0 if ready else 1
+    # Archive success is a successful save even when activation is deliberately
+    # unavailable.  The structured flags above tell callers whether a later
+    # activation confirmation is possible; they are not registration failure.
+    saved = result.get("status") == "saved-and-verified"
+    sync_available = result.get("library_sync", {}).get("status") != "manager-sync-api-unavailable"
+    return 0 if saved and sync_available else 1
 
 
 if __name__ == "__main__":

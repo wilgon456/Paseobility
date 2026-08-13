@@ -35,11 +35,22 @@
       "required": ["status"],
       "properties": {
         "status": {"enum": ["archived", "metadata-only", "blocked", "deprecated"]},
+        "storage": {"enum": ["payload", "metadata-only"]},
         "path": {"type": ["string", "null"]},
         "license": {"type": "object"},
-        "blocker": {"type": ["string", "null"]}
+        "blocker": {"type": ["string", "null"]},
+        "quarantine": {
+          "type": "object",
+          "required": ["redacted", "payload_retained", "remote_payload", "reason_codes", "findings"],
+          "properties": {
+            "redacted": {"const": true},
+            "payload_retained": {"const": false},
+            "remote_payload": {"const": "not-stored"},
+            "reason_codes": {"type": "array", "items": {"type": "string"}},
+            "findings": {"type": "array", "items": {"type": "object", "required": ["code", "path", "detail"], "properties": {"code": {"type": "string"}, "path": {"type": "string"}, "detail": {"type": "string"}}, "additionalProperties": false}}
+          }
+        }
       }
     }
   }
 }
-

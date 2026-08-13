@@ -548,7 +548,12 @@ def _search_filter_reasons(
     reasons: list[str] = []
     compatibility = record.get("compatibility", [])
     oses = record.get("oses", [])
-    if client and client not in compatibility and "unknown" not in compatibility:
+    if (
+        client
+        and client not in compatibility
+        and "unknown" not in compatibility
+        and not (client == "hermes-agent" and "generic-agent" in compatibility)
+    ):
         reasons.append(f"incompatible client: {client}")
     if operating_system and operating_system not in oses and "any" not in oses and "unknown" not in oses:
         reasons.append(f"incompatible OS: {operating_system}")

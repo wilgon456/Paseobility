@@ -930,36 +930,26 @@
             "skills": [
               {
                 "actions": [
-                  "search",
-                  "analyze",
-                  "read"
+                  "analyze"
                 ],
                 "behavior_classes": [
-                  "information-retrieval",
                   "analysis",
-                  "orchestration",
-                  "local-management"
+                  "local-management",
+                  "orchestration"
                 ],
                 "catalog_id": "core.skill-hub-router",
                 "cross_paths_ko": [
-                  "업무·비즈니스 > 업무 생산성"
+                  "기술·개발·인프라 > 소프트웨어 개발"
                 ],
-                "description_ko": "사용자의 평범한 자연어 요청을 분석해 지금 필요한 스킬만 찾고, 안전한 지침형 스킬은 현재 작업에 자동 적용하며 위험한 동작은 구체적인 승인 뒤에 연결합니다.",
+                "description_ko": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
                 "name": "skill-hub-router",
                 "risk": "local-management",
                 "status": "archived",
                 "tags_ko": [
-                  "자연어 스킬 추천",
-                  "자동 스킬 라우팅",
-                  "스킬 검색",
-                  "안전한 자동 적용",
-                  "에이전트 오케스트레이션",
                   "기술·개발·인프라",
                   "스킬·에이전트 관리",
-                  "업무 생산성",
-                  "검색·발견",
-                  "분석",
-                  "읽기·조회"
+                  "소프트웨어 개발",
+                  "분석"
                 ]
               }
             ]
@@ -1216,7 +1206,7 @@
   "skills": [
     {
       "acquisition": {
-        "expected_checksum": "8b132899c1ad8a9f588d8609c98bf0c9b86fcf4102d4c7e1641e0287cb678805",
+        "expected_checksum": "1aba5766ae26698271b63800655f678a0182f6458776343662a09796c521db6a",
         "license_gate": {
           "declared": "Apache-2.0",
           "redistribution": "permitted-by-root-license"
@@ -1254,11 +1244,12 @@
         "claude-code",
         "opencode",
         "paseo",
+        "hermes-agent",
         "generic-agent"
       ],
       "dependencies": [],
       "description": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
-      "description_ko": "사용자의 평범한 자연어 요청을 분석해 지금 필요한 스킬만 찾고, 안전한 지침형 스킬은 현재 작업에 자동 적용하며 위험한 동작은 구체적인 승인 뒤에 연결합니다.",
+      "description_ko": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
       "kind": "skill",
       "name": "skill-hub-router",
       "oses": [
@@ -1268,21 +1259,18 @@
       "risk": "local-management",
       "routing": {
         "actions": [
-          "search",
-          "analyze",
-          "read"
+          "analyze"
         ],
         "behavior_classes": [
-          "information-retrieval",
           "analysis",
-          "orchestration",
-          "local-management"
+          "local-management",
+          "orchestration"
         ],
-        "description_ko": "사용자의 평범한 자연어 요청을 분석해 지금 필요한 스킬만 찾고, 안전한 지침형 스킬은 현재 작업에 자동 적용하며 위험한 동작은 구체적인 승인 뒤에 연결합니다.",
-        "description_source": "manual-override",
+        "description_ko": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
+        "description_source": "source-korean-summary-v1",
         "domains": [
           "skill-management",
-          "productivity"
+          "software-development"
         ],
         "input_formats": [],
         "library_paths": [
@@ -1300,16 +1288,16 @@
             "primary": true
           },
           {
-            "domain": "productivity",
-            "domain_label_ko": "업무 생산성",
-            "group": "business-operations",
+            "domain": "software-development",
+            "domain_label_ko": "소프트웨어 개발",
+            "group": "technology-engineering",
             "group_aliases_ko": [
-              "업무",
-              "비즈니스",
-              "조직 운영"
+              "기술",
+              "개발 기술",
+              "엔지니어링"
             ],
-            "group_label_ko": "업무·비즈니스",
-            "path_ko": "업무·비즈니스 > 업무 생산성",
+            "group_label_ko": "기술·개발·인프라",
+            "path_ko": "기술·개발·인프라 > 소프트웨어 개발",
             "primary": false
           }
         ],
@@ -1319,17 +1307,10 @@
         ],
         "schema_version": 1,
         "tags_ko": [
-          "자연어 스킬 추천",
-          "자동 스킬 라우팅",
-          "스킬 검색",
-          "안전한 자동 적용",
-          "에이전트 오케스트레이션",
           "기술·개발·인프라",
           "스킬·에이전트 관리",
-          "업무 생산성",
-          "검색·발견",
-          "분석",
-          "읽기·조회"
+          "소프트웨어 개발",
+          "분석"
         ],
         "taxonomy": "catalog/routing-taxonomy.json"
       },
@@ -1358,7 +1339,7 @@
       },
       "update_policy": "pinned",
       "verification": {
-        "checksum": "8b132899c1ad8a9f588d8609c98bf0c9b86fcf4102d4c7e1641e0287cb678805",
+        "checksum": "1aba5766ae26698271b63800655f678a0182f6458776343662a09796c521db6a",
         "source_commit": "1d1167259a1cb132db8679dce3fef13fb6373015",
         "status": "repository-checksummed"
       },

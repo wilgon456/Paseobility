@@ -28,7 +28,7 @@ RISK_ORDER = {
     "external-write": 3,
     "destructive": 4,
 }
-KNOWN_TARGETS = ("codex", "claude", "opencode", "paseo", "generic")
+KNOWN_TARGETS = ("codex", "claude", "opencode", "paseo", "hermes", "generic")
 TARGET_ALIASES = {
     "codex": "codex",
     "agents": "codex",
@@ -36,6 +36,8 @@ TARGET_ALIASES = {
     "claude-code": "claude",
     "opencode": "opencode",
     "paseo": "paseo",
+    "hermes": "hermes",
+    "hermes-agent": "hermes",
     "generic": "generic",
     "generic-agent": "generic",
 }
@@ -44,12 +46,14 @@ TARGET_DISPLAY = {
     "claude": "claude",
     "opencode": "opencode",
     "paseo": "paseo",
+    "hermes": "hermes",
     "generic": "generic",
 }
 COMPATIBILITY_ALIASES = {
     "codex": "codex",
     "claude-code": "claude",
     "generic-agent": "generic",
+    "hermes-agent": "hermes",
 }
 TEXT_SUFFIXES = {
     ".md", ".txt", ".json", ".jsonl", ".yaml", ".yml", ".toml", ".ini",
@@ -258,6 +262,7 @@ def target_roots(home: Path) -> dict[str, Path]:
         "claude": home / ".claude" / "skills",
         "opencode": home / ".config" / "opencode" / "skills",
         "paseo": home / ".paseo" / "skills",
+        "hermes": home / ".hermes" / "skills",
         "generic": home / ".ai-skill-library" / "skills",
     }
 
