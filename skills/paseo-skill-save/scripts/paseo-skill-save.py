@@ -32,40 +32,6 @@ MANAGER_COPY_DIRECTORIES = (
 )
 MANAGER_COPY_FILES = ("registry.json", "LICENSE", "NOTICE")
 MANAGER_SKIP_NAMES = {".git", "__pycache__", ".pytest_cache", "build", "dist"}
-ROUTER_TARGETS = ("codex", "claude", "opencode", "paseo", "hermes", "generic")
-LEGACY_ROUTER_TARGETS = ("codex", "claude", "opencode", "paseo", "generic")
-ROUTER_TARGET_ALIASES = {
-    "agents": "codex",
-    "claude-code": "claude",
-    "hermes-agent": "hermes",
-    "generic-agent": "generic",
-}
-ROUTER_ENV_MARKERS = {
-    "CODEX_HOME": "codex",
-    "CODEX_THREAD_ID": "codex",
-    "CLAUDECODE": "claude",
-    "CLAUDE_CODE_ENTRYPOINT": "claude",
-    "OPENCODE": "opencode",
-    "HERMES_HOME": "hermes",
-}
-ROUTER_EXECUTABLE_TARGETS = {
-    "codex": "codex",
-    "claude": "claude",
-    "opencode": "opencode",
-    "hermes": "hermes",
-}
-PASEO_PROVIDER_NATIVE_TARGETS = {
-    "codex": "codex",
-    "claude": "claude",
-    "opencode": "opencode",
-    "hermes": "hermes",
-}
-# The manager's historical "codex" target is the cross-provider
-# ~/.agents/skills channel, not a Codex-only directory.
-PASEO_SHARED_AGENT_TARGET = "codex"
-PASEO_AVAILABLE_STATUSES = {"available", "connected", "ready"}
-PASEO_ENABLED_VALUES = {"1", "enabled", "on", "true", "yes"}
-PASEO_DISABLED_VALUES = {"0", "disabled", "off", "false", "no"}
 
 
 class SaveError(RuntimeError):
@@ -799,294 +765,11 @@ def _bind_record_to_scan(receipt: dict[str, Any], record: dict[str, Any]) -> Non
         )
 
 
-def _primary_target(router_target: str) -> str:
-    target = router_target.split(",", maxsplit=1)[0].strip()
-    if not target:
-        raise SaveError("missing-router-target", "router target cannot be empty")
-    return target
-
-
-def _ordered_router_targets(values: Sequence[str]) -> list[str]:
-    selected = set(values)
-    return [target for target in ROUTER_TARGETS if target in selected]
-
-
-def _manager_router_targets(runtime: ManagerRuntime) -> tuple[str, ...]:
-    raw_root = runtime.details.get("path")
-    if not isinstance(raw_root, str) or not raw_root:
-        return LEGACY_ROUTER_TARGETS
-    profile = Path(raw_root) / "profiles" / "default.json"
-    try:
-        value = json.loads(profile.read_text(encoding="utf-8"))
-        raw_targets = value.get("targets")
-    except (OSError, json.JSONDecodeError):
-        return LEGACY_ROUTER_TARGETS
-    if not isinstance(raw_targets, list):
-        return LEGACY_ROUTER_TARGETS
-    normalized = []
-    for target in raw_targets:
-        normalized_target = str(target).strip().casefold()
-        normalized.append(
-            ROUTER_TARGET_ALIASES.get(normalized_target, normalized_target)
-        )
-    targets = tuple(_ordered_router_targets(normalized))
-    return targets or LEGACY_ROUTER_TARGETS
-
-
-def _paseo_provider_rows(value: Any) -> list[dict[str, Any]]:
-    if isinstance(value, list):
-        return [row for row in value if isinstance(row, dict)]
-    if isinstance(value, dict):
-        for key in ("providers", "items", "data"):
-            rows = value.get(key)
-            if isinstance(rows, list):
-                return [row for row in rows if isinstance(row, dict)]
-    raise ValueError("unexpected provider response")
-
-
-def _paseo_provider_router_target(
-    provider: str, supported_targets: Sequence[str]
-) -> tuple[str | None, str]:
-    supported = set(supported_targets)
-    native = PASEO_PROVIDER_NATIVE_TARGETS.get(provider)
-    if native in supported:
-        return native, "native"
-    if PASEO_SHARED_AGENT_TARGET in supported:
-        return PASEO_SHARED_AGENT_TARGET, "shared-agent-skills"
-    return None, "unavailable"
-
-
-def _discover_paseo_provider_targets(
-    executable: str, supported_targets: Sequence[str] = ROUTER_TARGETS
-) -> tuple[list[str], dict[str, Any]]:
-    detail: dict[str, Any] = {
-        "executable": executable,
-        "status": "unavailable",
-        "providers": [],
-        "mapped_targets": [],
-    }
-    try:
-        process = _run_process(
-            [executable, "--json", "provider", "ls"],
-            timeout=10,
-        )
-    except SaveError as exc:
-        detail["reason"] = exc.code
-        return [], detail
-    if process.returncode:
-        detail["reason"] = f"exit-{process.returncode}"
-        return [], detail
-    try:
-        rows = _paseo_provider_rows(json.loads(process.stdout))
-    except (json.JSONDecodeError, ValueError) as exc:
-        detail["reason"] = str(exc)
-        return [], detail
-
-    targets: list[str] = []
-    providers: list[dict[str, Any]] = []
-    for row in rows:
-        raw_provider = row.get("provider") or row.get("id") or row.get("name")
-        provider = str(raw_provider or "").strip().casefold().split("/", 1)[0]
-        if not provider:
-            continue
-        status = str(row.get("status", "")).strip().casefold()
-        raw_enabled = row.get("enabled")
-        enabled_text = str(raw_enabled).strip().casefold() if raw_enabled is not None else "enabled"
-        enabled = enabled_text in PASEO_ENABLED_VALUES
-        if enabled_text in PASEO_DISABLED_VALUES:
-            enabled = False
-        target, route = _paseo_provider_router_target(provider, supported_targets)
-        eligible = status in PASEO_AVAILABLE_STATUSES and enabled
-        provider_detail: dict[str, Any] = {
-            "provider": provider,
-            "status": status or "unknown",
-            "enabled": enabled,
-            "supported": target is not None,
-            "eligible": eligible,
-            "route": route,
-        }
-        if target:
-            provider_detail["target"] = target
-        providers.append(provider_detail)
-        if eligible and target and target not in targets:
-            targets.append(target)
-
-    mapped = _ordered_router_targets(targets)
-    eligible_providers = [
-        row["provider"] for row in providers if row["eligible"]
-    ]
-    unroutable_providers = [
-        row["provider"]
-        for row in providers
-        if row["eligible"] and not row["supported"]
-    ]
-    detail.update(
-        {
-            "status": "ok",
-            "providers": providers,
-            "eligible_providers": eligible_providers,
-            "unroutable_providers": unroutable_providers,
-            "mapped_targets": mapped,
-        }
-    )
-    return mapped, detail
-
-
-def _resolve_router_targets(
-    value: str, supported_targets: Sequence[str] = ROUTER_TARGETS
-) -> tuple[str, dict[str, Any]]:
-    supported = tuple(_ordered_router_targets(supported_targets))
-    if not supported:
-        raise SaveError("missing-router-target", "routing manager supports no targets")
-    raw = [part.strip().casefold() for part in value.split(",") if part.strip()]
-    if not raw:
-        raise SaveError("missing-router-target", "router target cannot be empty")
-    if raw != ["auto"]:
-        targets: list[str] = []
-        for part in raw:
-            target = ROUTER_TARGET_ALIASES.get(part, part)
-            if target not in ROUTER_TARGETS:
-                raise SaveError("unknown-router-target", f"unknown router target: {part}")
-            if target not in supported:
-                raise SaveError(
-                    "unsupported-router-target",
-                    f"routing manager does not support target: {target}",
-                )
-            if target not in targets:
-                targets.append(target)
-        return ",".join(targets), {
-            "mode": "explicit",
-            "manager_supported_targets": list(supported),
-            "targets": targets,
-        }
-
-    local_detected: list[str] = []
-    environment: list[dict[str, str]] = []
-    executables: list[dict[str, str]] = []
-    for marker, target in ROUTER_ENV_MARKERS.items():
-        if os.environ.get(marker):
-            environment.append({"marker": marker, "target": target})
-            if target not in local_detected:
-                local_detected.append(target)
-    for executable, target in ROUTER_EXECUTABLE_TARGETS.items():
-        resolved = shutil.which(executable)
-        if not resolved:
-            continue
-        executables.append({"name": executable, "path": resolved, "target": target})
-        if target not in local_detected:
-            local_detected.append(target)
-
-    paseo_detail: dict[str, Any] = {"status": "not-found", "providers": [], "mapped_targets": []}
-    provider_targets: list[str] = []
-    paseo_executable = shutil.which("paseo")
-    if paseo_executable:
-        provider_targets, paseo_detail = _discover_paseo_provider_targets(
-            paseo_executable, supported
-        )
-
-    if paseo_detail.get("status") == "ok":
-        unroutable = paseo_detail.get("unroutable_providers", [])
-        if unroutable:
-            raise SaveError(
-                "unroutable-paseo-providers",
-                "Some available Paseo providers cannot receive the skill router",
-                ",".join(str(provider) for provider in unroutable),
-            )
-        detected = provider_targets
-        detection_source = "paseo-provider-registry"
-    else:
-        detected = local_detected
-        detection_source = "local-cli-fallback"
-
-    detected_targets = _ordered_router_targets(detected)
-    targets = [target for target in detected_targets if target in supported]
-    mode = "auto-detected"
-    if not targets:
-        if detection_source == "paseo-provider-registry":
-            raise SaveError(
-                "no-available-paseo-providers",
-                "Paseo reports no available, enabled workload providers",
-            )
-        targets = [target for target in ("codex", "claude") if target in supported]
-        if not targets:
-            targets = [supported[0]]
-        mode = "auto-fallback"
-    return ",".join(targets), {
-        "mode": mode,
-        "detection_source": detection_source,
-        "environment": environment,
-        "executables": executables,
-        "paseo": paseo_detail,
-        "manager_supported_targets": list(supported),
-        "ignored_unsupported_targets": [
-            target for target in detected_targets if target not in supported
-        ],
-        "targets": targets,
-    }
-
-
-def _match_record(
-    prefix: list[str],
-    target: str,
-    query: str,
-    catalog_id: str,
-    timeout: int,
-) -> dict[str, Any]:
-    matched = _run_json(
-        prefix
-        + ["match", query, "--target", target, "--agent-packet", "--json"],
-        timeout,
-    )
-    decision = matched.get("decision") if isinstance(matched.get("decision"), dict) else {}
-    selected_ids = [str(value) for value in decision.get("selected_ids", [])]
-    packet_candidates = matched.get("agent_packet", {}).get("candidates", [])
-    adjudication_candidates = matched.get("agent_adjudication", {}).get(
-        "candidate_contracts", []
-    )
-    candidates = (
-        adjudication_candidates
-        if isinstance(adjudication_candidates, list) and adjudication_candidates
-        else packet_candidates
-    )
-    body_available = False
-    for candidate in candidates if isinstance(candidates, list) else []:
-        if not isinstance(candidate, dict) or str(candidate.get("id")) != catalog_id:
-            continue
-        contract = candidate.get("application_contract", {})
-        evidence = candidate.get("skill_body_evidence", {})
-        if not evidence and isinstance(contract, dict):
-            evidence = contract.get("skill_body_evidence", {})
-        body_available = bool(evidence.get("available")) if isinstance(evidence, dict) else False
-        break
-    return {
-        "catalog_id": catalog_id,
-        "query": query,
-        "status": decision.get("status"),
-        "selected": catalog_id in selected_ids,
-        "selected_ids": selected_ids,
-        "requires_user_confirmation": bool(decision.get("requires_user_confirmation")),
-        "skill_body_evidence_available": body_available,
-    }
-
-
 def save_skill(args: argparse.Namespace) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="paseo-skill-save-scan-") as temporary:
         scan_receipt, scanned_source = _run_spyware_gate(args, Path(temporary))
         runtime = _bootstrap_manager(args)
         prefix = _manager_prefix(args, runtime)
-        router_targets, router_target_discovery = _resolve_router_targets(
-            args.router_target, _manager_router_targets(runtime)
-        )
-        router = _run_json(
-            prefix + ["init", "--target", router_targets, "--json"],
-            args.timeout,
-        )
-        if router.get("status") != "initialized":
-            raise SaveError(
-                "router-init-failed",
-                "The routing engine did not initialize the natural-language router",
-            )
-
         added = _run_json(
             _build_add_command(args, prefix, scanned_source), args.timeout
         )
@@ -1107,8 +790,6 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
     verified: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
     discovered: list[dict[str, Any]] = []
-    matches: list[dict[str, Any]] = []
-    match_target = _primary_target(router_targets)
     for item in items:
         catalog_id = str(item.get("catalog_id", ""))
         if not catalog_id:
@@ -1170,31 +851,12 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
                 "activation_blocked": (result_row or {}).get("activation_policy") == "blocked",
             }
         )
-        matches.append(
-            _match_record(prefix, match_target, query, catalog_id, args.timeout)
-        )
-
-    automatic_use_ready = all(
-        record["risk"] != "instructions-only"
-        or (
-            record["activation_policy"] == "on-demand"
-            and match["status"] == "select"
-            and not match["requires_user_confirmation"]
-            and match["skill_body_evidence_available"]
-        )
-        for record, match in zip(records, matches)
-    )
     archive_only = [
         record["catalog_id"]
         for record in records
         if record.get("archive_status") in {"blocked", "metadata-only"}
         or record.get("activation_policy") == "blocked"
     ]
-    automatic_use_ready = automatic_use_ready and not archive_only
-    natural_language_ready = all(
-        match["selected"] and match["status"] in {"select", "confirm"}
-        for match in matches
-    ) and not archive_only
     return {
         "status": "saved-and-verified",
         "source": args.source,
@@ -1212,19 +874,22 @@ def save_skill(args: argparse.Namespace) -> dict[str, Any]:
             "onboarding_error": added.get("onboarding_error"),
             "local_only": bool(args.local_only),
         },
-        "router": router,
-        "router_target_discovery": router_target_discovery,
+        "router": {
+            "status": "not-installed",
+            "mode": "explicit-only",
+            "reason": "automatic routing was removed from Paseobility",
+        },
         "items": items,
         "records": records,
         "verification": verified,
         "discovery": discovered,
-        "matches": matches,
-        "automatic_discovery_ready": all(row["found"] for row in discovered),
-        "natural_language_ready": natural_language_ready,
-        "automatic_use_ready": automatic_use_ready,
+        "search_discovery_ready": all(row["found"] for row in discovered),
+        "automatic_discovery_ready": False,
+        "natural_language_ready": False,
+        "automatic_use_ready": False,
         "archive_only": archive_only,
         "partial_archive": bool(archive_only) and len(archive_only) < len(records),
-        "activation": "not-installed; available for router-selected ephemeral use",
+        "activation": "not-installed; explicit skillNload setup is required for lookup or use",
     }
 
 
@@ -1287,8 +952,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--router-target",
-        default="auto",
-        help="auto-detect local AI CLIs and available Paseo providers, or use comma-separated targets",
+        dest="_deprecated_router_target",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--repo", help="advanced: use an explicit routing manager checkout instead of auto-selection"

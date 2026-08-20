@@ -14,7 +14,11 @@ DESTINATIONS = (
     ROOT / ".agents" / "plugins" / "skill-hub-router" / "skills" / "skill-hub-router",
     ROOT / ".claude-plugin" / "plugins" / "skill-hub-router" / "skills" / "skill-hub-router",
 )
-FILES = (Path("SKILL.md"), Path("scripts") / "skillhub.py")
+FILES = (
+    Path("SKILL.md"),
+    Path("agents") / "openai.yaml",
+    Path("scripts") / "skillhub.py",
+)
 
 
 def synchronized(destination: Path) -> bool:

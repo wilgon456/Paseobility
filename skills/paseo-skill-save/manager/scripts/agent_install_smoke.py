@@ -96,19 +96,26 @@ def main(argv: list[str] | None = None) -> int:
             home / ".agents" / "skills" / "skill-hub-router",
             home / ".claude" / "skills" / "skill-hub-router",
         ):
-            if not (path / "SKILL.md").is_file() or not (path / "scripts" / "skillhub.py").is_file():
+            if (
+                not (path / "SKILL.md").is_file()
+                or not (path / "agents" / "openai.yaml").is_file()
+                or not (path / "scripts" / "skillhub.py").is_file()
+            ):
                 raise RuntimeError(f"router payload is incomplete: {path}")
             router_contract = (path / "SKILL.md").read_text(encoding="utf-8")
-            required_discovery_contract = (
-                "스킬을 언급하지 않고",
-                "작업을 시작하기 전에 먼저 사용",
-                "## 자동 참여 게이트",
-                "라우팅 실패를 알리지 말고",
+            required_explicit_contract = (
+                "명시적으로 검색",
+                "일반 자연어 작업에는 자동으로 참여하지 않는다",
+                "## 명시적 호출 게이트",
+                "사용자가 요청하지 않은",
                 "`apply_ephemerally`",
             )
-            missing = [value for value in required_discovery_contract if value not in router_contract]
+            missing = [value for value in required_explicit_contract if value not in router_contract]
             if missing:
-                raise RuntimeError(f"installed router lost its automatic discovery contract: {path}: {missing}")
+                raise RuntimeError(f"installed router lost its explicit-only contract: {path}: {missing}")
+            openai_contract = (path / "agents" / "openai.yaml").read_text(encoding="utf-8")
+            if "allow_implicit_invocation: false" not in openai_contract:
+                raise RuntimeError(f"installed router permits implicit invocation: {path}")
 
         # Prove that an activated router still works from an unrelated working
         # directory through the persisted manager runtime.

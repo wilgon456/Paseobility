@@ -1,0 +1,6 @@
+interface:
+  display_name: "Skill Hub Router"
+  short_description: "명시적으로 개인 스킬을 검색하고 일회성으로 적용"
+  default_prompt: "Use $skill-hub-router to search my private skill library and apply the best verified skill once."
+policy:
+  allow_implicit_invocation: false

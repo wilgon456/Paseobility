@@ -27,13 +27,11 @@ receipt and explicit user approval before `--approve-medium` may be used.
 Default saves use the manager's private `paseo_skill_save` synchronization.
 Use a temporary home and skillNload state directory for tests; pass
 `--local-only`, mock GitHub onboarding, or use a local bare Git remote, and
-never create or modify a real GitHub repository. A successful test must
-prove that the exact scanned commit and checksum were registered,
-checksum-verified, found by search, and selected by a natural-language match
-while no permanent target-skill installation was made.
-For an `instructions-only` fixture, require a `select` decision with no
-confirmation and available bounded skill body evidence. Executable skills must
-retain their confirmation gate.
+never create or modify a real GitHub repository. A successful test must prove
+that the exact scanned commit and checksum were registered, checksum-verified,
+and found by explicit search while no router initialization, natural-language
+match, or permanent target-skill installation was performed. Saved executable
+skills must retain their activation-time confirmation gate.
 
 The private-runtime preference must fail closed. The recorded manager path
 must remain inside manager-owned state, its content digest must match the

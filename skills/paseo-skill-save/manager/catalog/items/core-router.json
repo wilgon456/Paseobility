@@ -5,7 +5,7 @@
       "catalog_id": "core.skill-hub-router",
       "kind": "skill",
       "name": "skill-hub-router",
-      "description": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
+      "description": "명시적인 요청이 있을 때만 개인 스킬 라이브러리를 검색하고 검증된 스킬을 일회성으로 연결합니다.",
       "source_id": "core-router",
       "source": {
         "repository": "https://github.com/wilgon456/skillNload",
@@ -30,10 +30,10 @@
       "verification": {
         "status": "repository-checksummed",
         "source_commit": "1d1167259a1cb132db8679dce3fef13fb6373015",
-        "checksum": "1aba5766ae26698271b63800655f678a0182f6458776343662a09796c521db6a"
+        "checksum": "6f9926780ac6cfba9ede3eb4f51c52ec016fb2d5e1f68fb6f00190f88fd7678d"
       },
-      "version": "0.7.0",
-      "revision": "0.7.0",
+      "version": "0.7.1",
+      "revision": "0.7.1",
       "runtime_name": "skill-hub-router",
       "compatibility": ["codex", "claude-code", "opencode", "paseo", "hermes-agent", "generic-agent"],
       "oses": ["any"],

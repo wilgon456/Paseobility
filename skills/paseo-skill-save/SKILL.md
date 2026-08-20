@@ -4,30 +4,18 @@ description: >-
   Inspect and save one or more reusable AI skills from a GitHub URL or local
   skill directory into the user's private local skill library. Use when the
   user invokes /paseo-skill-save, supplies a GitHub skill link and asks to
-  save, archive, register, remember, or add it, or wants the saved skill to
-  become usable later from ordinary natural-language requests.
+  save, archive, register, remember, or add it for later explicit lookup.
 ---
 
 # Paseo Skill Save
 
 Save user-selected skills to a private local overlay and synchronize the
 portable library through the user's private `paseo_skill_save` Git repository.
-Registration is persistent; activation is not. The router may attach one
-selected skill for a task without permanently installing every saved skill.
-The wrapper selects and verifies its routing manager automatically; never require the
-user to install or invoke skillNload separately.
-
-The wrapper defaults to provider-aware router setup. When Paseo is installed,
-it reads `paseo --json provider ls` without starting or restarting the daemon
-and treats every available, enabled Paseo workload provider as authoritative.
-Claude and OpenCode use their native skill paths. Codex and every other
-provider, including Grok and custom ACP providers, use the shared Agent Skills
-path unless the selected routing manager advertises a more specific target
-such as Hermes. Disabled or unavailable providers remain visible in discovery
-evidence but are not activated. Local AI CLI discovery is only a fallback when
-the Paseo provider registry is unavailable. Paseo itself is the supervisor and
-is not treated as a workload provider. Use `--router-target` only when the user
-explicitly wants to restrict or add targets.
+Registration is persistent; activation is separate and explicit. Saving never
+initializes or installs a global router, never runs a natural-language match,
+and never makes ordinary requests search the personal library automatically.
+The wrapper selects and verifies its manager automatically; never require the
+user to install or invoke skillNload separately for saving.
 
 ## Required workflow
 
@@ -80,7 +68,7 @@ explicitly wants to restrict or add targets.
 
    The wrapper first looks for a checksum-verified manager-owned skillNload
    runtime in the normal local state directory. If that runtime contains the
-   user's private catalog, it is used for saving and natural-language routing.
+   user's private catalog, it is used for saving and explicit lookup.
    Otherwise the wrapper verifies and uses the public manager boundary bundled
    with this skill. A pinned network bootstrap remains only for compatibility
    with older incomplete installations. It uses no pip installation. Do not
@@ -93,20 +81,18 @@ explicitly wants to restrict or add targets.
    - policy visibility/publication/execution state and artifact/finding-scoped
      local approval status; approval must never be presented as global trust
    - internal manager mode, provenance, digest, and revision/tree when applicable
-   - router target discovery evidence and initialization status
+   - explicit-only router status (`not-installed`)
    - pinned source repository, commit, and skill path
    - checksum, inferred risk, activation policy, and catalog ID
    - checksum verification result
    - search discovery result
-   - natural-language match decision and selected catalog ID
-   - bounded skill body evidence for an instructions-only selection
    - library sync status (`pushed`, `up-to-date`, `saved-locally-sync-pending`,
      `review-required`, or `skipped-local-only`) and safe retry guidance
 
-   A saved `instructions-only` skill is ready only when its activation policy
-   is `on-demand`, the match decision is `select`, and confirmation is false.
-   Executable or externally mutating skills may return `confirm`; keep that
-   gate. `published` in the policy means visible in the user's private router
+   A saved skill is ready for explicit lookup when `search_discovery_ready` is
+   true. Saving does not claim natural-language or automatic-use readiness.
+   Executable or externally mutating skills retain their activation-time
+   confirmation gate. `published` in the policy means visible in the user's private
    catalog, not publicly released. There is no enforced sandbox in this
    increment, so the manager never upgrades a script to `sandbox-only` merely
    because scripts exist. After local registration approval, a capability-bearing
@@ -114,10 +100,9 @@ explicitly wants to restrict or add targets.
    existing risk/`--yes` gates. Never claim that static checks prove absolute
    safety.
 6. Do not run `enable`, `install`, or target skill code merely because the
-   skill was saved. The installed `skill-hub-router` will select the minimum
-   useful saved skill for later natural-language requests. A session that was
-   already running before router initialization may require integration reload
-   or a new agent session.
+   skill was saved. Paseobility does not install a retrieval router. Retrieval
+   requires the user to set up skillNload separately and explicitly invoke its
+   router or search command.
 
 ## Multiple skills
 
@@ -137,8 +122,8 @@ snapshot or backup.
 
 Use the fixed, user-owned private repository `<github-login>/paseo_skill_save`.
 Each computer pulls and verifies the complete portable library into its local
-overlay; the router searches locally and never contacts GitHub for every
-natural-language request. Never upload saved skills to the public Paseobility
+overlay. If the user separately configures skillNload, explicit lookup searches
+locally and does not contact GitHub for each query. Never upload saved skills to the public Paseobility
 or skillNload repositories. A sync failure must not disable an already verified
 local overlay.
 
@@ -156,5 +141,5 @@ local overlay.
   do not silently drop the supplied values. Retry without optional
   `--domain`/`--action`, or retry only with verified taxonomy IDs from the
   active manager. Description and Korean tags alone are enough.
-- Search or match smoke failure: keep the archive registered, report that its
-  routing metadata needs correction, and do not claim automatic use works.
+- Search smoke failure: keep the archive registered and report that its
+  discovery metadata needs correction.

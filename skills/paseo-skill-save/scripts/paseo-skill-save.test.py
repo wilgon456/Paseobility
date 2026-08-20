@@ -18,37 +18,12 @@ MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
-RESOLVE_ROUTER_TARGETS = MODULE._resolve_router_targets
 
 
 def response(
     payload: dict, returncode: int = 0, stderr: str = ""
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess([], returncode, json.dumps(payload), stderr)
-
-
-def selected_match(
-    catalog_id: str = "overlay.demo",
-    *,
-    status: str = "select",
-    confirmation: bool = False,
-    body_available: bool = True,
-) -> dict:
-    return {
-        "decision": {
-            "status": status,
-            "selected_ids": [catalog_id],
-            "requires_user_confirmation": confirmation,
-        },
-        "agent_adjudication": {
-            "candidate_contracts": [
-                {
-                    "id": catalog_id,
-                    "skill_body_evidence": {"available": body_available},
-                }
-            ]
-        },
-    }
 
 
 def fake_runtime() -> object:
@@ -152,228 +127,9 @@ class PaseoSkillSaveTests(unittest.TestCase):
         )
         self.gate.start()
         self.addCleanup(self.gate.stop)
-        self.router_targets = mock.patch.object(
-            MODULE,
-            "_resolve_router_targets",
-            return_value=("codex", {"mode": "test", "targets": ["codex"]}),
-        )
-        self.router_targets.start()
-        self.addCleanup(self.router_targets.stop)
 
-    def test_router_target_default_is_provider_aware_auto(self) -> None:
-        args = MODULE.build_parser().parse_args(["fixture"])
-        self.assertEqual(args.router_target, "auto")
-
-    def test_router_target_auto_prefers_paseo_registry_over_local_cli(self) -> None:
-        def which(name: str) -> str | None:
-            return {
-                "codex": "/tools/codex",
-                "paseo": "/tools/paseo",
-            }.get(name)
-
-        paseo_detail = {
-            "status": "ok",
-            "providers": [
-                {
-                    "provider": "claude",
-                    "status": "available",
-                    "enabled": True,
-                    "supported": True,
-                    "target": "claude",
-                }
-            ],
-            "mapped_targets": ["claude"],
-        }
-        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
-            MODULE.shutil, "which", side_effect=which
-        ), mock.patch.object(
-            MODULE,
-            "_discover_paseo_provider_targets",
-            return_value=(["claude"], paseo_detail),
-        ):
-            targets, detail = RESOLVE_ROUTER_TARGETS("auto")
-
-        self.assertEqual(targets, "claude")
-        self.assertEqual(detail["mode"], "auto-detected")
-        self.assertEqual(detail["detection_source"], "paseo-provider-registry")
-        self.assertEqual(detail["targets"], ["claude"])
-        self.assertEqual(detail["paseo"]["mapped_targets"], ["claude"])
-
-    def test_paseo_registry_routes_grok_and_custom_acp_to_shared_agent_skills(self) -> None:
-        payload = [
-            {
-                "provider": "codex",
-                "status": "unavailable",
-                "enabled": "Enabled",
-            },
-            {
-                "provider": "grok",
-                "status": "available",
-                "enabled": "Enabled",
-            },
-            {
-                "provider": "custom-acp",
-                "status": "ready",
-                "enabled": True,
-            },
-            {
-                "provider": "copilot",
-                "status": "available",
-                "enabled": "Disabled",
-            },
-        ]
-        with mock.patch.object(
-            MODULE, "_run_process", return_value=response(payload)
-        ):
-            targets, detail = MODULE._discover_paseo_provider_targets(
-                "/tools/paseo", MODULE.LEGACY_ROUTER_TARGETS
-            )
-
-        self.assertEqual(targets, ["codex"])
-        providers = {row["provider"]: row for row in detail["providers"]}
-        self.assertEqual(providers["grok"]["target"], "codex")
-        self.assertEqual(providers["grok"]["route"], "shared-agent-skills")
-        self.assertTrue(providers["grok"]["eligible"])
-        self.assertEqual(providers["custom-acp"]["target"], "codex")
-        self.assertEqual(
-            providers["custom-acp"]["route"], "shared-agent-skills"
-        )
-        self.assertFalse(providers["codex"]["eligible"])
-        self.assertFalse(providers["copilot"]["eligible"])
-        self.assertEqual(detail["eligible_providers"], ["grok", "custom-acp"])
-        self.assertEqual(detail["unroutable_providers"], [])
-
-    def test_paseo_registry_fails_closed_when_no_provider_is_available(self) -> None:
-        paseo_detail = {
-            "status": "ok",
-            "providers": [],
-            "eligible_providers": [],
-            "unroutable_providers": [],
-            "mapped_targets": [],
-        }
-        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
-            MODULE.shutil, "which", return_value="/tools/paseo"
-        ), mock.patch.object(
-            MODULE,
-            "_discover_paseo_provider_targets",
-            return_value=([], paseo_detail),
-        ):
-            with self.assertRaises(MODULE.SaveError) as raised:
-                RESOLVE_ROUTER_TARGETS("auto")
-
-        self.assertEqual(raised.exception.code, "no-available-paseo-providers")
-
-    def test_paseo_registry_fails_closed_when_manager_cannot_cover_provider(self) -> None:
-        paseo_detail = {
-            "status": "ok",
-            "providers": [],
-            "eligible_providers": ["grok"],
-            "unroutable_providers": ["grok"],
-            "mapped_targets": [],
-        }
-        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
-            MODULE.shutil, "which", return_value="/tools/paseo"
-        ), mock.patch.object(
-            MODULE,
-            "_discover_paseo_provider_targets",
-            return_value=([], paseo_detail),
-        ):
-            with self.assertRaises(MODULE.SaveError) as raised:
-                RESOLVE_ROUTER_TARGETS("auto", ("claude",))
-
-        self.assertEqual(raised.exception.code, "unroutable-paseo-providers")
-
-    def test_paseo_registry_uses_native_hermes_target_when_supported(self) -> None:
-        payload = [
-            {
-                "provider": "hermes",
-                "status": "available",
-                "enabled": "Enabled",
-            }
-        ]
-        with mock.patch.object(
-            MODULE, "_run_process", return_value=response(payload)
-        ):
-            targets, detail = MODULE._discover_paseo_provider_targets(
-                "/tools/paseo", MODULE.ROUTER_TARGETS
-            )
-
-        self.assertEqual(targets, ["hermes"])
-        self.assertEqual(detail["providers"][0]["route"], "native")
-
-    def test_router_target_explicit_skips_discovery(self) -> None:
-        with mock.patch.object(MODULE.shutil, "which") as which:
-            targets, detail = RESOLVE_ROUTER_TARGETS("claude-code,opencode")
-
-        self.assertEqual(targets, "claude,opencode")
-        self.assertEqual(
-            detail,
-            {
-                "mode": "explicit",
-                "manager_supported_targets": list(MODULE.ROUTER_TARGETS),
-                "targets": ["claude", "opencode"],
-            },
-        )
-        which.assert_not_called()
-
-    def test_router_target_auto_includes_hermes_when_manager_supports_it(self) -> None:
-        def which(name: str) -> str | None:
-            return "/tools/hermes" if name == "hermes" else None
-
-        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
-            MODULE.shutil, "which", side_effect=which
-        ), mock.patch.object(
-            MODULE,
-            "_discover_paseo_provider_targets",
-            return_value=([], {"status": "not-installed", "mapped_targets": []}),
-        ):
-            targets, detail = RESOLVE_ROUTER_TARGETS("auto", MODULE.ROUTER_TARGETS)
-
-        self.assertEqual(targets, "hermes")
-        self.assertEqual(detail["mode"], "auto-detected")
-        self.assertEqual(detail["targets"], ["hermes"])
-        self.assertEqual(detail["ignored_unsupported_targets"], [])
-
-    def test_router_target_auto_ignores_hermes_for_legacy_manager(self) -> None:
-        def which(name: str) -> str | None:
-            return "/tools/hermes" if name == "hermes" else None
-
-        with mock.patch.dict(MODULE.os.environ, {}, clear=True), mock.patch.object(
-            MODULE.shutil, "which", side_effect=which
-        ), mock.patch.object(
-            MODULE,
-            "_discover_paseo_provider_targets",
-            return_value=([], {"status": "not-installed", "mapped_targets": []}),
-        ):
-            targets, detail = RESOLVE_ROUTER_TARGETS(
-                "auto", MODULE.LEGACY_ROUTER_TARGETS
-            )
-
-        self.assertEqual(targets, "codex,claude")
-        self.assertEqual(detail["mode"], "auto-fallback")
-        self.assertEqual(detail["ignored_unsupported_targets"], ["hermes"])
-
-    def test_manager_router_targets_reads_advertised_hermes_support(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            manager = Path(temporary)
-            profile = manager / "profiles" / "default.json"
-            profile.parent.mkdir(parents=True)
-            profile.write_text(
-                json.dumps({"targets": ["codex", "hermes", "generic"]}),
-                encoding="utf-8",
-            )
-            runtime = MODULE.ManagerRuntime(
-                command=(MODULE.sys.executable, "-m", "skillhub"),
-                details={"mode": "test", "path": str(manager)},
-            )
-
-            targets = MODULE._manager_router_targets(runtime)
-
-        self.assertEqual(targets, ("codex", "hermes", "generic"))
-
-    def test_add_verify_search_and_match_use_argv_without_shell(self) -> None:
+    def test_add_verify_and_search_use_argv_without_shell(self) -> None:
         replies = [
-            response({"status": "initialized", "router": "core.skill-hub-router"}),
             response(
                 {
                     "status": "added-to-personal-library",
@@ -391,7 +147,6 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 inspection_record()
             ),
             response({"results": [{"catalog_id": "overlay.demo"}]}),
-            response(selected_match()),
         ]
         with mock.patch.object(
             MODULE, "_bootstrap_manager", return_value=fake_runtime()
@@ -403,35 +158,37 @@ class PaseoSkillSaveTests(unittest.TestCase):
                     "회의 내용을 정리합니다",
                     "--tag-ko",
                     "회의",
+                    "--router-target",
+                    "claude",
                 ]
             )
             result = MODULE.save_skill(args)
 
-        self.assertTrue(result["automatic_discovery_ready"])
-        self.assertTrue(result["natural_language_ready"])
-        self.assertTrue(result["automatic_use_ready"])
-        self.assertEqual(result["router"]["status"], "initialized")
+        self.assertTrue(result["search_discovery_ready"])
+        self.assertFalse(result["automatic_discovery_ready"])
+        self.assertFalse(result["natural_language_ready"])
+        self.assertFalse(result["automatic_use_ready"])
+        self.assertEqual(result["router"]["status"], "not-installed")
+        self.assertEqual(result["router"]["mode"], "explicit-only")
         self.assertEqual(result["records"][0]["source"]["commit"], "a" * 40)
         self.assertEqual(result["records"][0]["checksum"], "b" * 64)
         self.assertEqual(result["records"][0]["security_policy"]["visibility"], "private")
         self.assertEqual(result["records"][0]["security_policy"]["approval"]["global_trust_effect"], "none")
-        self.assertTrue(result["matches"][0]["skill_body_evidence_available"])
         self.assertEqual(result["library_sync"]["status"], "pushed")
 
         for call in run.call_args_list:
             self.assertNotIn("shell", call.kwargs)
             self.assertEqual(call.kwargs["env"]["PYTHONIOENCODING"], "utf-8")
             self.assertEqual(call.kwargs["env"]["PYTHONUTF8"], "1")
-        add_call = run.call_args_list[1]
+        add_call = run.call_args_list[0]
         self.assertEqual(add_call.args[0][-1], "--json")
         self.assertIn(
             "https://github.com/example/repo/tree/main/skills/demo",
             add_call.args[0],
         )
-        match_call = run.call_args_list[5]
-        self.assertIn("match", match_call.args[0])
-        self.assertIn("--agent-packet", match_call.args[0])
-        self.assertIn("codex", match_call.args[0])
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertFalse(any("init" in command for command in commands))
+        self.assertFalse(any("match" in command for command in commands))
 
     def test_local_only_is_forwarded_explicitly(self) -> None:
         args = MODULE.build_parser().parse_args(["fixture", "--local-only"])
@@ -490,10 +247,7 @@ class PaseoSkillSaveTests(unittest.TestCase):
         ), mock.patch.object(
             MODULE.subprocess,
             "run",
-            side_effect=[
-                response({"status": "initialized", "router": "core.skill-hub-router"}),
-                failed,
-            ],
+            side_effect=[failed],
         ):
             args = MODULE.build_parser().parse_args(
                 [
@@ -538,12 +292,12 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 MODULE.save_skill(args)
         self.assertEqual(raised.exception.code, "manager-runtime-unavailable")
 
-    def test_main_reports_match_failure(self) -> None:
+    def test_main_succeeds_without_automatic_match(self) -> None:
         replies = [
-            response({"status": "initialized", "router": "core.skill-hub-router"}),
             response(
                 {
                     "status": "added-to-personal-library",
+                    "sync": "pushed",
                     "items": [
                         {
                             "catalog_id": "overlay.demo",
@@ -557,16 +311,6 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 inspection_record()
             ),
             response({"results": [{"catalog_id": "overlay.demo"}]}),
-            response(
-                {
-                    "decision": {
-                        "status": "abstain",
-                        "selected_ids": [],
-                        "requires_user_confirmation": False,
-                    },
-                    "agent_packet": {"candidates": []},
-                }
-            ),
         ]
         output = io.StringIO()
         with mock.patch.object(
@@ -576,13 +320,13 @@ class PaseoSkillSaveTests(unittest.TestCase):
         ):
             code = MODULE.main(["https://github.com/example/repo"])
         payload = json.loads(output.getvalue())
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["search_discovery_ready"])
         self.assertFalse(payload["natural_language_ready"])
         self.assertFalse(payload["automatic_use_ready"])
 
-    def test_script_skill_keeps_confirmation_gate(self) -> None:
+    def test_script_skill_is_archived_without_automatic_activation(self) -> None:
         replies = [
-            response({"status": "initialized", "router": "core.skill-hub-router"}),
             response(
                 {
                     "status": "added-to-personal-library",
@@ -599,14 +343,6 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 inspection_record("overlay.scripted", risk="scripts", activation_policy="manual")
             ),
             response({"results": [{"catalog_id": "overlay.scripted"}]}),
-            response(
-                selected_match(
-                    "overlay.scripted",
-                    status="confirm",
-                    confirmation=True,
-                    body_available=False,
-                )
-            ),
         ]
         with mock.patch.object(
             MODULE, "_bootstrap_manager", return_value=fake_runtime()
@@ -615,9 +351,10 @@ class PaseoSkillSaveTests(unittest.TestCase):
                 ["https://github.com/example/repo/tree/main/skills/scripted"]
             )
             result = MODULE.save_skill(args)
-        self.assertTrue(result["natural_language_ready"])
-        self.assertTrue(result["automatic_use_ready"])
-        self.assertTrue(result["matches"][0]["requires_user_confirmation"])
+        self.assertTrue(result["search_discovery_ready"])
+        self.assertFalse(result["natural_language_ready"])
+        self.assertFalse(result["automatic_use_ready"])
+        self.assertEqual(result["records"][0]["activation_policy"], "manual")
 
     def test_auto_bootstrap_fetches_reuses_and_detects_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

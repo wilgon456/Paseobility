@@ -930,10 +930,10 @@
             "skills": [
               {
                 "actions": [
-                  "analyze"
+                  "search"
                 ],
                 "behavior_classes": [
-                  "analysis",
+                  "information-retrieval",
                   "local-management",
                   "orchestration"
                 ],
@@ -941,7 +941,7 @@
                 "cross_paths_ko": [
                   "기술·개발·인프라 > 소프트웨어 개발"
                 ],
-                "description_ko": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
+                "description_ko": "명시적인 요청이 있을 때만 개인 스킬 라이브러리를 검색하고 검증된 스킬을 일회성으로 연결합니다.",
                 "name": "skill-hub-router",
                 "risk": "local-management",
                 "status": "archived",
@@ -949,7 +949,7 @@
                   "기술·개발·인프라",
                   "스킬·에이전트 관리",
                   "소프트웨어 개발",
-                  "분석"
+                  "검색·발견"
                 ]
               }
             ]
@@ -1206,7 +1206,7 @@
   "skills": [
     {
       "acquisition": {
-        "expected_checksum": "1aba5766ae26698271b63800655f678a0182f6458776343662a09796c521db6a",
+        "expected_checksum": "6f9926780ac6cfba9ede3eb4f51c52ec016fb2d5e1f68fb6f00190f88fd7678d",
         "license_gate": {
           "declared": "Apache-2.0",
           "redistribution": "permitted-by-root-license"
@@ -1248,25 +1248,25 @@
         "generic-agent"
       ],
       "dependencies": [],
-      "description": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
-      "description_ko": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
+      "description": "명시적인 요청이 있을 때만 개인 스킬 라이브러리를 검색하고 검증된 스킬을 일회성으로 연결합니다.",
+      "description_ko": "명시적인 요청이 있을 때만 개인 스킬 라이브러리를 검색하고 검증된 스킬을 일회성으로 연결합니다.",
       "kind": "skill",
       "name": "skill-hub-router",
       "oses": [
         "any"
       ],
-      "revision": "0.7.0",
+      "revision": "0.7.1",
       "risk": "local-management",
       "routing": {
         "actions": [
-          "analyze"
+          "search"
         ],
         "behavior_classes": [
-          "analysis",
+          "information-retrieval",
           "local-management",
           "orchestration"
         ],
-        "description_ko": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
+        "description_ko": "명시적인 요청이 있을 때만 개인 스킬 라이브러리를 검색하고 검증된 스킬을 일회성으로 연결합니다.",
         "description_source": "source-korean-summary-v1",
         "domains": [
           "skill-management",
@@ -1310,7 +1310,7 @@
           "기술·개발·인프라",
           "스킬·에이전트 관리",
           "소프트웨어 개발",
-          "분석"
+          "검색·발견"
         ],
         "taxonomy": "catalog/routing-taxonomy.json"
       },
@@ -1339,11 +1339,11 @@
       },
       "update_policy": "pinned",
       "verification": {
-        "checksum": "1aba5766ae26698271b63800655f678a0182f6458776343662a09796c521db6a",
+        "checksum": "6f9926780ac6cfba9ede3eb4f51c52ec016fb2d5e1f68fb6f00190f88fd7678d",
         "source_commit": "1d1167259a1cb132db8679dce3fef13fb6373015",
         "status": "repository-checksummed"
       },
-      "version": "0.7.0"
+      "version": "0.7.1"
     }
   ],
   "sources": [
