@@ -7,40 +7,6 @@ This repository is designed for an AI-agent install flow: the user gives Codex,
 Claude, or a Paseo agent the GitHub URL, and the agent reads this file before
 copying the bundled skills into the local skill directory.
 
-## Paseo Skill Save fast path
-
-When the user asks to install or test `/paseo-skill-save`, install both the
-`paseo-skill-save` and `paseo-spyware-check` skill directories. On first use,
-the save wrapper first checks the normal skillNload manager-owned state for a
-checksum-verified private runtime. When that runtime contains a private
-catalog, use it. Otherwise use the Apache-2.0 public manager boundary bundled
-inside `paseo-skill-save`. The old pinned Git bootstrap is retained only as a
-compatibility fallback for incomplete older installations. Do not ask the user
-to install or invoke skillNload separately. Paseobility never bundles or
-publishes private catalogs, private payloads, or user-saved third-party skills.
-
-The save wrapper must run its bundled Python spyware gate before manager
-bootstrap or registration. Do not bypass it by calling skillNload directly.
-Never execute the target repository's code during inspection or registration.
-High/Critical findings block registration. Medium findings require showing the
-receipt and explicit user approval before `--approve-medium` may be used.
-Default saves use the manager's private `paseo_skill_save` synchronization.
-Use a temporary home and skillNload state directory for tests; pass
-`--local-only`, mock GitHub onboarding, or use a local bare Git remote, and
-never create or modify a real GitHub repository. A successful test must
-prove that the exact scanned commit and checksum were registered,
-checksum-verified, found by search, and selected by a natural-language match
-while no permanent target-skill installation was made.
-For an `instructions-only` fixture, require a `select` decision with no
-confirmation and available bounded skill body evidence. Executable skills must
-retain their confirmation gate.
-
-The private-runtime preference must fail closed. The recorded manager path
-must remain inside manager-owned state, its content digest must match the
-runtime record, and its registry must actually contain private-library items.
-Do not silently fall back to the public manager when a recorded private runtime
-exists but fails ownership or integrity validation.
-
 ## Paseo Share fast path
 
 If the user gives this repository URL and asks to install `paseo-share`, share
@@ -152,7 +118,6 @@ Convenience installer:
 ./scripts/paseobility-init.sh --no-context
 ./scripts/paseobility-init.sh --with-claude --no-context
 ./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
-./scripts/paseobility-init.sh --skill paseo-skill-save --skill paseo-spyware-check --no-context
 ```
 
 Existing same-name skills are backed up to
@@ -180,7 +145,6 @@ Convenience installer:
 .\scripts\paseobility-install.ps1 -WithClaude
 .\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
 .\scripts\paseobility-install.ps1 -Skill paseo-share
-.\scripts\paseobility-install.ps1 -Skill paseo-skill-save,paseo-spyware-check
 
 # Temp-home install test:
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName

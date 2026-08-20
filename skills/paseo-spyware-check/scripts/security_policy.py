@@ -233,7 +233,7 @@ def build_policy(
 
 def local_user_identity() -> str | None:
     """Return an explicitly configured account identity, never a guessed one."""
-    value = os.environ.get("SKILLHUB_LOCAL_ACCOUNT_ID", "").strip()
+    value = os.environ.get("PASEOBILITY_LOCAL_ACCOUNT_ID", "").strip()
     return value if SAFE_USER_ID_RE.fullmatch(value) else None
 
 

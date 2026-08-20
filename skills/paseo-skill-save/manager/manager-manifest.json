@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "repository": "https://github.com/wilgon456/skillNload_private",
-  "revision": "4c290e82422fd35d8501c28c7f5b4ca45ee47bbb",
-  "tree": "19c654fa9efc302d1679b7ba111a68f33efa4006",
-  "content_digest": "7cc548242a0b802ef91270bc9b2e2571c53d22b116d395dcb6ffff24f88319ab",
-  "license": "Apache-2.0",
-  "role": "bundled-manager-code-only"
-}

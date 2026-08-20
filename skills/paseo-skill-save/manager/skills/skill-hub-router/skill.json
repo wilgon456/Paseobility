@@ -1,7 +1,0 @@
-{
-  "name": "skill-hub-router",
-  "description": "자연어 요청을 개인 스킬 라이브러리와 매칭하고 필요한 스킬만 안전하게 연결합니다.",
-  "version": "0.6.0",
-  "license": "Apache-2.0",
-  "risk": "local-management"
-}

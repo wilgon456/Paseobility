@@ -20,18 +20,16 @@ from urllib.parse import urlparse
 
 try:
     from . import policy
-except ImportError:  # pragma: no cover - bundled pre-bootstrap execution
-    # Paseobility loads this scanner before importing the manager package.  A
-    # sibling policy module is therefore the portable fallback for both the
-    # manager checkout (``policy.py``) and the standalone scanner bundle
-    # (``security_policy.py``).  Keep the import path explicit so the
-    # pre-bootstrap scanner and the installed manager use the same contract.
+except ImportError:  # pragma: no cover - direct script execution
+    # A sibling policy module is the portable fallback for the standalone
+    # scanner bundle. Keep the import path explicit so direct execution and
+    # package imports use the same contract.
     import importlib.util
 
     _policy_path = Path(__file__).with_name("policy.py")
     if not _policy_path.is_file():
         _policy_path = Path(__file__).with_name("security_policy.py")
-    _policy_spec = importlib.util.spec_from_file_location("skillhub_scanner_policy", _policy_path)
+    _policy_spec = importlib.util.spec_from_file_location("paseobility_scanner_policy", _policy_path)
     if _policy_spec is None or _policy_spec.loader is None:
         raise ImportError("security policy contract is unavailable")
     policy = importlib.util.module_from_spec(_policy_spec)
@@ -828,7 +826,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args(argv)
     try:
-        with tempfile.TemporaryDirectory(prefix="skillnload-spyware-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="paseobility-spyware-") as temporary:
             receipt, _ = scan_target(args.target, Path(temporary), args.timeout)
             print(json.dumps(receipt, ensure_ascii=True, indent=2, sort_keys=True))
     except (ScanError, OSError, subprocess.SubprocessError) as exc:

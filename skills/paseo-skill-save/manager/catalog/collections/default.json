@@ -1,8 +1,0 @@
-{
-  "collection_id": "default",
-  "name": "Default router-only profile",
-  "description": "The default profile exposes only the project router.",
-  "items": ["core.skill-hub-router"],
-  "activation_policy": "router-only"
-}
-
