@@ -39,6 +39,23 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
+## 최신 변경사항
+
+현재 `main`에서는 `/paseo-skill-save`와 그 안에 번들로 포함되던 manager를 제거했습니다. 새 설치와 전체 업데이트에는 아래 **8개 스킬만** 포함됩니다.
+
+- `paseo-agent-cleanup`
+- `paseo-agent-tournament`
+- `paseo-computer-use`
+- `paseo-orchestration`
+- `paseo-project-bootstrap`
+- `paseo-session-brief`
+- `paseo-share`
+- `paseo-spyware-check`
+
+installer는 현재 저장소의 스킬을 복사하지만 과거 설치본을 자동 삭제하지는 않습니다. 이전 버전을 설치했던 사용자는 `~/.agents/skills/paseo-skill-save`, `~/.claude/skills/paseo-skill-save` 또는 Windows의 대응 경로에 남은 기존 복사본을 별도로 제거해야 합니다. 과거 commit과 tag에는 예전 파일이 이력으로 남을 수 있지만 현재 `main`의 설치 대상에는 포함되지 않습니다.
+
+---
+
 ## v2.5.2 업데이트
 
 v2.5.2는 `/paseo-agent-cleanup`이 정상적인 idle Codex 세션을 상태만 보고
