@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <code>/paseo-computer-use</code>로 웹 UI를 직접 조작하고,<br>
+  <code>/paseo-browser</code>로 웹 UI를 직접 조작하고,<br>
   <code>/paseo-agent-tournament</code>로 여러 모델의 답을 비교하고,<br>
   <code>/paseo-project-bootstrap</code>으로 새 프로젝트 맥락을 세팅하고,<br>
   <code>/paseo-share</code>로 컴퓨터와 모바일 사이에 산출물을 공유합니다.
@@ -45,7 +45,7 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 - `paseo-agent-cleanup`
 - `paseo-agent-tournament`
-- `paseo-computer-use`
+- `paseo-browser`
 - `paseo-orchestration`
 - `paseo-project-bootstrap`
 - `paseo-session-brief`
@@ -53,6 +53,41 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 - `paseo-spyware-check`
 
 installer는 현재 저장소의 스킬을 복사하지만 과거 설치본을 자동 삭제하지는 않습니다. 이전 버전을 설치했던 사용자는 `~/.agents/skills/paseo-skill-save`, `~/.claude/skills/paseo-skill-save` 또는 Windows의 대응 경로에 남은 기존 복사본을 별도로 제거해야 합니다. 과거 commit과 tag에는 예전 파일이 이력으로 남을 수 있지만 현재 `main`의 설치 대상에는 포함되지 않습니다.
+
+---
+
+## v2.6.0 업데이트 — Paseo 0.6.1 호환
+
+v2.6.0은 현재 Paseo 0.6.1의 CLI와 내장 도구 스키마에 맞춰 8개 기능을
+다시 점검하고, Paseo 런타임에 직접 연결되는 기능을 갱신합니다.
+
+- orchestration/tournament는 구형 `paseo_*` 도구명을 제거하고
+  `list_profiles` 우선 선택, profile materialization, `settings.modeId`,
+  `settings.thinkingOptionId`, `settings.features` 흐름을 사용합니다.
+- provider/model을 추측하지 않고 `list_providers`, `inspect_provider`,
+  필요할 때만 `list_models`로 확인합니다.
+- worktree workspace, supervised workspace scripts, agent notification,
+  schedule 전체 lifecycle, heartbeat delete/recreate 의미를 반영했습니다.
+- paseo-browser는 정식 `browser_*` 도구명, workspace 필수 조건, 연결된
+  desktop browser host, 최신 stale-ref/error 복구 흐름을 반영했습니다.
+- 기존 `/paseo-computer-use`는 실제 OS 전체 제어로 오해될 수 있어
+  `/paseo-browser`로 이름을 바꿨습니다. installer는 과거 이름의 설치본을
+  자동 삭제하지 않으므로 업데이트 후 기존 `paseo-computer-use` 디렉터리는
+  별도로 제거해야 합니다.
+- agent-cleanup은 최신 archive JSON인
+  `{ agentId|workspaceId, status: "archived", archivedAt }`를 검증합니다.
+  더 이상 존재하지 않는 `providerRelease` 필드를 요구해 정상 archive를
+  부분 실패로 오판하지 않으며, `initializing` agent도 활성 상태로 보호합니다.
+- project-bootstrap/session-brief는 Paseo version/daemon/project/workspace와
+  `paseo.json` workspace script 상태를 읽기 전용으로 확인합니다.
+- share/spyware-check는 daemon/MCP와 독립적인 로컬 helper라는 호환성 경계를
+  명시했습니다. spyware receipt는 문서형 스킬에 선언된 외부 API와 credential
+  이름도 실행 코드와 구분된 capability로 보존해 review gate를 유지합니다.
+
+호환 기준은 [Paseo CLI](https://paseo.sh/docs/cli),
+[MCP tools](https://paseo.sh/docs/mcp),
+[workspaces/worktrees](https://paseo.sh/docs/worktrees),
+[schedules](https://paseo.sh/docs/schedules)와 로컬 Paseo 0.6.1입니다.
 
 ---
 
@@ -67,9 +102,8 @@ archive하던 안전 문제를 수정합니다.
   세션으로 보존합니다.
 - 명시적 `--agent <id>` 또는 사용자 지정 `--pattern`으로 범위를 제한할 수
   있고, active agent와 승인되지 않은 workspace는 계속 보호합니다.
-- archive 후 active 목록을 다시 조회해 Paseo record 제거를 검증합니다.
-  native provider 해제가 확인되지 않으면 `providerRelease: unknown`과
-  partial failure로 보고하고 non-zero로 종료합니다.
+- archive 후 최신 JSON acknowledgement와 active 목록의 Paseo record 제거를
+  함께 검증합니다.
 - 검증 과정에서 history/timeline/resume을 열지 않으며 delete, stop, kill,
   lock-file 삭제, daemon restart를 수행하지 않습니다.
 
@@ -146,7 +180,7 @@ https://github.com/wilgon456/Paseobility
 
 | Skill | 역할 | 이런 요청에 강함 |
 | --- | --- | --- |
-| `/paseo-computer-use` | 브라우저 조작 워크플로우 | 로그인 폼 채우기, 검색 결과 읽기, UI 클릭, 반응형 스크린샷, 웹앱 상태 확인 |
+| `/paseo-browser` | 브라우저 조작 워크플로우 | 로그인 폼 채우기, 검색 결과 읽기, UI 클릭, 반응형 스크린샷, 웹앱 상태 확인 |
 | `/paseo-orchestration` | 멀티에이전트 지휘 패턴 | 병렬 구현, 코드리뷰 게이트, 작업 DAG, 장기 실행 코디네이터, 실패 에스컬레이션 |
 | `/paseo-agent-tournament` | 멀티 모델 비교/심사 | GPT vs Claude vs DeepSeek, 찬반 토론, 설계안 비교, judge 기반 winner 선정 |
 | `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
@@ -245,7 +279,8 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 - 1개 이상의 AI 프로바이더
   - 예: Codex, Claude Code 등
 - `/paseo-share`는 Node.js와 Git 필요. 기본 GitHub 자동 온보딩에는 인증된 GitHub CLI(`gh`)가 필요하며, Forgejo·custom remote는 명시적인 저장소 URL로 연결. GitHub Actions는 사용하지 않음
-- 오케스트레이션을 제대로 쓰려면 `~/.paseo/orchestration-preferences.json` 설정 권장
+- 오케스트레이션은 Paseo의 `list_profiles`를 우선 사용합니다. 기존
+  `~/.paseo/orchestration-preferences.json`은 선택형 추가 지침으로만 읽습니다.
 - 설치 대상 skills 경로
   - macOS/Linux: `~/.agents/skills`
   - Windows: `%USERPROFILE%\.agents\skills`
@@ -258,13 +293,14 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 | 환경 | 상태 | 확인한 내용 |
 | --- | --- | --- |
+| Paseo 0.6.1 on Windows | Tested locally | CLI/daemon 0.6.1 일치, agent/workspace/provider JSON, worktree·schedule·heartbeat·archive CLI schema, 최신 MCP/profile/browser 소스 대조, PowerShell 임시 설치 확인 |
 | Apple Silicon macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/arm64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Intel macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/x86_64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Windows | Tested | Windows 11 x64, Windows PowerShell 5.1, Paseo CLI 0.2.5에서 PowerShell installer, `-TargetHome` 임시 설치, 실제 `%USERPROFILE%\.agents\skills` 설치, 새 Paseo agent의 `/paseo-session-brief` 인식 확인. Native bash context script는 미검증 |
 | `/paseo-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인. 필수 report I/O fail-closed와 선택 scanner 실패 계속 처리 회귀 테스트 통과 |
 | `/paseo-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
 | `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
-| `/paseo-agent-cleanup` helper | Tested locally | Node 회귀 테스트에서 bare dry-run, 일반 idle 보존, disposable marker/명시 ID/사용자 패턴 제한, active agent 보호, post-archive 목록 검증, provider release unknown 부분 실패, workspace 승인 gate, 위험 명령 미실행 확인 |
+| `/paseo-agent-cleanup` helper | Tested locally | Node 회귀 테스트에서 bare dry-run, 일반 idle 보존, disposable marker/명시 ID/사용자 패턴 제한, running/initializing 보호, Paseo 0.6 archive acknowledgement와 post-archive 목록 검증, workspace 승인 gate, 위험 명령 미실행 확인 |
 | `/paseo-agent-cleanup` on Windows | Previous install verified | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 설치 및 dry-run JSON 확인. v2.5.2 정책 회귀는 cross-platform Node 단위 테스트로 검증 |
 | `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안·온보딩·help/`--help` 회귀 테스트, private 저장소 생성/재사용과 public·비관련 저장소 거부 검증, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
 | `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
@@ -302,7 +338,7 @@ GitHub 인증이 없으면 `gh auth login --hostname github.com` 연결을 먼�
 ### 웹 UI를 직접 다루기
 
 ```text
-/paseo-computer-use
+/paseo-browser
 https://example.com 로그인 페이지 열고, 폼 구조 확인한 다음,
 테스트 계정으로 로그인되는지 스크린샷까지 찍어서 검증해줘.
 ```
@@ -453,7 +489,9 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
 
 핵심 규칙:
 
-- provider/model 문자열은 실제 `paseo_list_providers`, `paseo_list_models`로 확인합니다.
+- 먼저 `list_profiles`의 notes를 읽고 profile을 `create_agent` 인자로
+  materialize합니다. 맞는 profile이 없으면 `list_providers`,
+  `inspect_provider`, 필요 시 `list_models`로 확인합니다.
 - 분석만 하면 같은 workspace를 써도 됩니다.
 - 파일을 수정하는 tournament는 참가자별 별도 workspace를 씁니다.
 - judge는 참가자와 다른 provider를 우선합니다.
@@ -468,6 +506,7 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
 확인하는 것:
 
 - project root, remote, branch, git status
+- Paseo version/daemon reachability와 현재 project/workspace identity
 - `README*`, `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/**`, `.github/copilot-instructions.md`
 - `docs/`의 setup/architecture/contributing 문서
 - `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile`, `paseo.json`
@@ -492,7 +531,7 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
 | 할 일 | 확인하는 것 |
 | --- | --- |
 | 프로젝트 루트 확인 | `pwd`, `git rev-parse --show-toplevel`, `git remote -v`, `git status` |
-| 환경 진단 | macOS arch, Paseo CLI, skill directory, `paseo.json` |
+| 환경 진단 | OS/arch, Paseo CLI/daemon version, project/workspace, skill directory, `paseo.json` |
 | 문서 수집 | `README*`, `docs/**/*.md`, `AGENTS.md`, `CLAUDE.md` |
 | 지침 수집 | `.cursor/rules/**`, `.github/copilot-instructions.md` |
 | 명령 추론 | `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile` |
@@ -581,10 +620,10 @@ Paseo의 비활성 agent와 테스트 workspace를 안전하게 정리합니다.
 
 - 기본 실행은 dry-run이며 일반 idle agent를 상태만 보고 archive하지 않습니다.
 - `--auto`는 명시적 ID, 사용자 지정 패턴, 또는 분명한 disposable/test/validation 표식이 있는 inactive agent만 archive합니다.
-- running, working, active, starting, queued, pending, busy, executing,
+- running, initializing, working, active, starting, queued, pending, busy, executing,
   in-progress 상태의 agent는 archive하지 않습니다.
 - delete/stop/kill/restart와 history/timeline/resume 검증은 사용하지 않습니다.
-- archive 후 목록을 다시 조회하고 native provider release가 확인되지 않으면 partial failure로 보고합니다.
+- archive 후 Paseo 0.6 JSON acknowledgement와 active 목록 제거를 검증합니다.
 - workspace archive는 명시적 ID와 `--archive --yes` 또는 명확한 사용자 승인 후에만 실행합니다.
 
 포함된 helper:
@@ -599,23 +638,25 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 ---
 
-## `/paseo-computer-use`
+## `/paseo-browser`
 
 브라우저를 "보는" 수준이 아니라 실제로 조작하는 워크플로우를 제공합니다.
 
 | 할 일 | 사용하는 흐름 |
 | --- | --- |
-| 페이지 읽기 | `new_tab` -> `snapshot` |
-| 버튼 클릭 | `snapshot` -> ref 찾기 -> `click` |
-| 폼 입력 | `snapshot` -> ref 찾기 -> `fill` / `type` |
-| 드롭다운 선택 | `snapshot` -> ref 찾기 -> `select` |
-| 화면 검증 | `screenshot` / `snapshot` |
-| 반응형 확인 | `resize` -> `screenshot` |
-| 디버깅 | `logs` / `evaluate` |
+| 페이지 읽기 | `browser_new_tab` -> `browser_snapshot` |
+| 버튼 클릭 | `browser_snapshot` -> ref 찾기 -> `browser_click` |
+| 폼 입력 | `browser_snapshot` -> ref 찾기 -> `browser_fill` / `browser_type` |
+| 드롭다운 선택 | `browser_snapshot` -> ref 찾기 -> `browser_select` |
+| 화면 검증 | `browser_screenshot` / `browser_snapshot` |
+| 반응형 확인 | `browser_resize` -> `browser_screenshot` |
+| 디버깅 | `browser_logs` / `browser_evaluate` |
 
 핵심 규칙:
 
 - 액션 전에 항상 최신 snapshot을 뜹니다. 페이지가 바뀌면 ref도 바뀝니다.
+- 정식 도구명은 `browser_*`이며 agent가 Paseo workspace에 속하고 desktop
+  browser automation host가 연결되어 있어야 합니다.
 - 텍스트 이해에는 snapshot, 시각 검증에는 screenshot을 씁니다.
 - 결제, 제출, 계정 변경처럼 되돌리기 어려운 액션은 사용자 확인을 먼저 받습니다.
 - `evaluate`로 쿠키, 토큰, localStorage 같은 민감 정보를 읽지 않습니다.
@@ -647,25 +688,24 @@ Coordinator -> 작업 분해 / 진행 관리 / 최종 합성
 안전 규칙:
 
 - 같은 파일을 여러 워커가 수정할 가능성이 있으면 별도 workspace를 만듭니다.
+- `list_profiles`의 notes를 먼저 읽고 선택한 profile을 provider/settings로
+  materialize합니다. 오래된 provider 문자열을 그대로 재사용하지 않습니다.
 - heartbeat와 schedule에는 `maxRuns` 또는 `expiresIn`을 둡니다.
 - 네트워크 timeout 같은 일시적 실패는 최대 1회 재시도합니다.
 - 권한 부족, 요구사항 모호함, 파괴적 작업은 추측하지 않고 사용자에게 에스컬레이션합니다.
 
 ---
 
-## 추천 설정
+## 선택형 추가 지침
+
+Paseo 0.6에서는 앱에 설정된 agent profile이 provider/model/mode/thinking/
+feature 선택의 기준입니다. 아래 legacy 파일은 provider source가 아니라
+추가적인 사용자 지침만 전달할 때 사용할 수 있습니다.
 
 `~/.paseo/orchestration-preferences.json` 예시:
 
 ```json
 {
-  "providers": {
-    "impl": "codex/gpt-5.4",
-    "ui": "claude/opus",
-    "research": "codex/gpt-5.4",
-    "planning": "codex/gpt-5.4",
-    "audit": "claude/opus"
-  },
   "preferences": [
     "작업 지시는 self-contained briefing으로 작성한다.",
     "리뷰 에이전트는 구현 에이전트와 다른 provider를 우선한다.",
@@ -673,8 +713,6 @@ Coordinator -> 작업 분해 / 진행 관리 / 최종 합성
   ]
 }
 ```
-
-프로바이더 문자열은 로컬 Paseo 환경에 맞게 바꿔 사용하세요.
 
 ---
 
@@ -690,7 +728,7 @@ skills/
 │   ├── SKILL.md
 │   └── scripts/
 │       └── agent-cleanup.js
-├── paseo-computer-use/
+├── paseo-browser/
 │   └── SKILL.md
 ├── paseo-project-bootstrap/
 │   └── SKILL.md

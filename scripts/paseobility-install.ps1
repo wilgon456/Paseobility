@@ -125,6 +125,16 @@ if (-not $NoPaseoCheck) {
   $paseo = Find-PaseoCli
   if ($paseo) {
     Write-Status "paseo_cli" $paseo
+    try {
+      $paseoVersion = (& $paseo --version 2>$null | Select-Object -First 1)
+      if (-not [string]::IsNullOrWhiteSpace($paseoVersion)) {
+        Write-Status "paseo_version" $paseoVersion.Trim()
+      } else {
+        Write-Status "paseo_version" "unavailable"
+      }
+    } catch {
+      Write-Status "paseo_version" "unavailable"
+    }
   } else {
     Write-Status "paseo_cli" "not found; copying skills can still be complete"
   }

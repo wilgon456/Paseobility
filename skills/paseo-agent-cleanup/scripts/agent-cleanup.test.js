@@ -69,9 +69,9 @@ function createRunner(options = {}) {
       if (exitCode === 0 && !options.keepArchivedAgentListed) {
         agents = agents.filter((agent) => agent.id !== id);
       }
-      const payload = options.providerRelease === undefined
+      const payload = options.invalidArchiveResponse
         ? { archived: id }
-        : { archived: id, providerRelease: options.providerRelease };
+        : { agentId: id, status: "archived", archivedAt: "2026-08-27T00:00:00.000Z" };
       return response(exitCode, payload, exitCode === 0 ? "" : "archive failed");
     }
 
@@ -81,7 +81,10 @@ function createRunner(options = {}) {
       if (exitCode === 0 && !options.keepArchivedWorkspaceListed) {
         workspaces = workspaces.filter((workspace) => workspace.workspaceId !== id);
       }
-      return response(exitCode, { archived: id }, exitCode === 0 ? "" : "archive failed");
+      const payload = options.invalidWorkspaceArchiveResponse
+        ? { archived: id }
+        : { workspaceId: id, status: "archived", archivedAt: "2026-08-27T00:00:00.000Z" };
+      return response(exitCode, payload, exitCode === 0 ? "" : "archive failed");
     }
 
     throw new Error(`unexpected command: paseo ${key}`);
@@ -114,7 +117,6 @@ test("bare invocation is a dry-run and preserves an ordinary idle agent", () => 
 test("unfiltered --auto archives only clearly marked disposable agents", () => {
   const runner = createRunner({
     agents: [idleAgent, testAgent],
-    providerRelease: "confirmed",
   });
   const result = execute(parseArgs(["--auto"]), runner.run);
 
@@ -131,21 +133,19 @@ test("unfiltered --auto archives only clearly marked disposable agents", () => {
 test("an explicit inactive agent ID is archived and then rechecked", () => {
   const runner = createRunner({
     agents: [idleAgent, testAgent],
-    providerRelease: true,
   });
   const result = execute(parseArgs(["--auto", "--agent", idleAgent.id]), runner.run);
 
   assert.deepEqual(result.summary.agentsSelected, [idleAgent.id]);
   assert.equal(result.summary.verification.agentListRechecked, true);
   assert.equal(result.summary.actions[0].paseoRecordRemoved, true);
-  assert.equal(result.summary.actions[0].providerRelease, "confirmed");
+  assert.equal(result.summary.actions[0].archiveAcknowledged, true);
   assert.equal(result.exitCode, 0);
 });
 
 test("a user pattern archives only matching inactive agents", () => {
   const runner = createRunner({
     agents: [idleAgent, testAgent],
-    providerRelease: "released",
   });
   const result = execute(
     parseArgs(["--auto", "--pattern", "cleanup-validation"]),
@@ -176,7 +176,6 @@ test("an active agent is never archived even when explicitly selected", () => {
 test("archive exit 0 fails verification when the agent remains listed", () => {
   const runner = createRunner({
     agents: [testAgent],
-    providerRelease: "confirmed",
     keepArchivedAgentListed: true,
   });
   const result = execute(parseArgs(["--auto"]), runner.run);
@@ -188,14 +187,14 @@ test("archive exit 0 fails verification when the agent remains listed", () => {
   assert.equal(result.exitCode, 1);
 });
 
-test("unknown provider release is reported as a partial failure", () => {
-  const runner = createRunner({ agents: [testAgent] });
+test("an invalid Paseo 0.6 archive response is reported as a partial failure", () => {
+  const runner = createRunner({ agents: [testAgent], invalidArchiveResponse: true });
   const result = execute(parseArgs(["--auto"]), runner.run);
 
   assert.equal(result.summary.status, "partial-failure");
   assert.equal(result.summary.actions[0].paseoRecordRemoved, true);
-  assert.equal(result.summary.actions[0].providerRelease, "unknown");
-  assert.equal(result.summary.actions[0].outcome, "provider-release-unknown");
+  assert.equal(result.summary.actions[0].archiveAcknowledged, false);
+  assert.equal(result.summary.actions[0].outcome, "archive-response-invalid");
   assert.equal(result.exitCode, 1);
 
   const lines = [];
@@ -207,13 +206,12 @@ test("unknown provider release is reported as a partial failure", () => {
     console.log = originalLog;
   }
   const human = lines.join("\n");
-  assert.match(human, /providerRelease=unknown/);
+  assert.match(human, /archiveAcknowledged=false/);
   assert.match(human, /result: partial-failure/);
-  assert.match(human, /could not be confirmed/);
 
   const json = JSON.parse(JSON.stringify(result.summary));
   assert.equal(json.status, "partial-failure");
-  assert.equal(json.actions[0].providerRelease, "unknown");
+  assert.equal(json.actions[0].archiveAcknowledged, false);
 });
 
 test("mixed archive outcomes are an explicit non-zero partial failure", () => {
@@ -235,7 +233,15 @@ test("mixed archive outcomes are an explicit non-zero partial failure", () => {
     }
     if (args[0] === "archive" && args[1] === testAgent.id) {
       agents = agents.filter((agent) => agent.id !== testAgent.id);
-      return { status: 0, stdout: JSON.stringify({ providerRelease: "confirmed" }), stderr: "" };
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          agentId: testAgent.id,
+          status: "archived",
+          archivedAt: "2026-08-27T00:00:00.000Z",
+        }),
+        stderr: "",
+      };
     }
     if (args[0] === "archive" && args[1] === secondTestAgent.id) {
       return { status: 1, stdout: "", stderr: "native archive failed" };
@@ -285,4 +291,14 @@ test("the default catch-all pattern and unsafe implicit archive are gone", () =>
   assert.equal(defaults.pattern, null);
   assert.equal(defaults.patternProvided, false);
   assert.throws(() => parseArgs(["--archive", "--yes"]), /requires --agent/);
+});
+
+test("initializing agents are protected as active", () => {
+  const initializingAgent = { ...testAgent, status: "initializing" };
+  const runner = createRunner({ agents: [initializingAgent] });
+  const result = execute(parseArgs(["--auto"]), runner.run);
+
+  assert.deepEqual(result.summary.agentsSelected, []);
+  assert.equal(result.summary.status, "no-op");
+  assert.equal(runner.calls.some((call) => call[0] === "archive"), false);
 });

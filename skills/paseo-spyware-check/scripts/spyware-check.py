@@ -467,6 +467,7 @@ def _line_findings(relative: str, line: str, number: int, role: str) -> list[dic
     code_role = _is_code_role(role)
     runtime_role = role == "executable"
     comment_like = _is_documentation_line(line)
+    capability_role = (runtime_role and not comment_like) or role == "documentation"
     if SECRET_TOKEN_PATTERN.search(line):
         rows.append(_finding(
             severity="High", rule_id="secret.actual-token", relative=relative, line=number,
@@ -580,14 +581,14 @@ def _line_findings(relative: str, line: str, number: int, role: str) -> list[dic
             confidence="medium", mitigation="Review the exact call and keep execution behind an explicit local confirmation gate.",
             capabilities=("subprocess",), review=True,
         ))
-    if runtime_role and not comment_like and API_KEY_NAME_PATTERN.search(line):
+    if capability_role and API_KEY_NAME_PATTERN.search(line):
         rows.append(_finding(
             severity="Info", rule_id="capability.credentials.api-key-name", relative=relative, line=number,
             reason="an API-key or credential variable name indicates credential capability", evidence=redacted, role=role,
             confidence="high", mitigation="Provide credentials only through the host's approved secret flow; never embed them in the skill.",
             capabilities=("credentials",),
         ))
-    if runtime_role and not comment_like and NETWORK_PATTERN.search(line):
+    if capability_role and NETWORK_PATTERN.search(line):
         rows.append(_finding(
             severity="Info", rule_id="capability.network.external-api", relative=relative, line=number,
             reason="an external API or network operation indicates network capability", evidence=redacted, role=role,

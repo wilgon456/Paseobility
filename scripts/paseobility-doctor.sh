@@ -98,6 +98,11 @@ section "Paseo"
 if PASEO_CLI="$(find_paseo_cli)"; then
   status "paseo_cli" "$PASEO_CLI"
   "$PASEO_CLI" --version 2>/dev/null | sed 's/^/[paseo_version] /' || status "paseo_version" "unavailable"
+  if "$PASEO_CLI" daemon status --json >/dev/null 2>&1; then
+    status "paseo_daemon" "reachable"
+  else
+    status "paseo_daemon" "unreachable (skill installation still works)"
+  fi
 else
   status "paseo_cli" "not found"
   status "hint" "Install/open Paseo or ensure the bundled CLI is linked into PATH."

@@ -4,336 +4,171 @@ description: >-
   Structured multi-agent coordination through Paseo. Use when the user wants to
   decompose complex work across multiple agents, fan out work in parallel, build
   task DAGs with dependencies, set up blocking ask/reply between agents, create
-  decision gates, run coordinator loops, or when one agent needs to spawn and
-  manage several others. Use this when the task is "orchestrate X", "coordinate
-  Y across agents", "fan out Z to multiple agents", "decompose this into
-  subtasks", or the user wants parallel execution with result synthesis. Use
-  `paseo-handoff` when delegating to a single agent. Use `paseo-loop` for
-  repetitive worker/verifier cycles. Use `paseo-committee` for root-cause
-  analysis by two agents. Use `paseo-advisor` for a single second opinion.
+  decision gates, run coordinator loops, or coordinate work across providers
+  and isolated workspaces.
 ---
 
 # Paseo Orchestration
 
-Paseo orchestration lets one agent coordinate multiple other agents — across
-providers, in isolated workspaces, with structured patterns. This skill
-teaches the coordination patterns; the base `/paseo` skill teaches the
-individual tool surface.
+Use Paseo's current agent, profile, workspace, schedule, and heartbeat tools to
+coordinate multiple agents. Read the base **paseo** skill first; it is the
+authority for exact tool schemas in the active installation.
 
-## Prerequisites
+## Paseo 0.6 launch discovery
 
-Read the **paseo** skill first. Before choosing any provider, read
-`~/.paseo/orchestration-preferences.json`. This file has two parts:
-- `providers` — maps role categories to provider strings (e.g. `"impl": "codex/gpt-5.5"`).
-  Use these exact strings when calling `paseo_create_agent`.
-- `preferences` — freeform string array with user guidance (e.g. model preferences,
-  style notes). Weave these into the initialPrompt of every agent you create.
+Do not guess provider, model, mode, thinking, or feature IDs.
 
-If the file is missing, use sensible defaults (e.g. `codex/gpt-5.4` for impl,
-`claude/opus` for ui) and tell the user once that preferences are unset.
+1. Call `list_profiles` before creating agents and read every profile's `notes`.
+2. If the user names a profile, use it. Otherwise choose the profile whose notes
+   best match the delegated role.
+3. There is no `profile` field on `create_agent`. Materialize the profile:
+   - combine `provider` and `model` as `create_agent.provider`
+   - copy `modeId` to `settings.modeId`
+   - copy `thinkingOptionId` to `settings.thinkingOptionId`
+   - copy `featureValues` to `settings.features`
+4. If no profile fits, call `list_providers`, then `inspect_provider`. Call
+   `list_models` only when model or thinking IDs are needed; the result can be
+   large. Tell the user when no configured profile fits.
+5. Only pass feature IDs returned by `inspect_provider`. For example, enable
+   Codex fast mode only when `fast_mode` is advertised.
+
+If `~/.paseo/orchestration-preferences.json` exists, treat its free-form
+preferences as additional user guidance. Do not treat provider strings in that
+legacy file as current capability truth; validate them through the discovery
+tools above.
 
 ## Core principles
 
-1. **You are the coordinator, not the worker.** Your job is to decompose,
-   dispatch, monitor, and synthesize. Delegate implementation to subagents.
-2. **Every subagent starts with zero context.** Its prompt must be a
-   self-contained briefing with task, files, constraints, and acceptance
-   criteria.
-3. **Cross-provider is the superpower.** Use different providers for different
-   roles — Codex for implementation, Claude for review, etc. Each catches the
-   other's blind spots.
-4. **Isolation prevents interference.** When workers modify the same files or
-   run conflicting commands, give each its own workspace via
-   `paseo_create_workspace`. Pass the returned `workspaceId` when creating
-   the agent. Archive workspaces when done.
-5. **Don't poll.** Subagents notify you on completion via `notifyOnFinish`,
-   which is true by default for agent-scoped calls. Move on to other work.
-6. **Prefer asynchronous.** `create_agent` with `notifyOnFinish` (default
-   true) so you can continue. Only use `background: false` on
-   `send_agent_prompt` when you specifically need a blocking response.
+1. Give every agent a self-contained prompt with task, context, paths,
+   constraints, acceptance criteria, and expected output.
+2. Use different providers when their strengths or an independent review are
+   useful; do not force cross-provider work when one profile clearly fits.
+3. Read-only workers may share a workspace. Writers that can overlap must use
+   separate worktree workspaces.
+4. Agent parentage and workspace placement are separate. A child created in a
+   different workspace remains the caller's subagent.
+5. Prefer asynchronous creation. Agent-scoped `create_agent` defaults
+   `notifyOnFinish` to true; continue useful work and wait for the notification.
+   Do not poll `list_agents` or `get_agent_status` merely to check progress.
+6. Archive only agents and workspaces created for the workflow, and only when
+   cleanup is part of the user's request or the workflow contract.
 
-## Tool reference
+## Current tool reference
 
-These are the Paseo MCP tools you use for orchestration. The `/paseo` skill
-has full signatures.
+| Area | Tools |
+| --- | --- |
+| Agent lifecycle | `create_agent`, `send_agent_prompt`, `get_agent_status`, `get_agent_activity`, `list_agents`, `update_agent`, `set_agent_mode`, `cancel_agent`, `archive_agent`, `kill_agent` |
+| Discovery | `list_profiles`, `list_providers`, `inspect_provider`, `list_models` |
+| Workspaces | `create_workspace`, `list_workspaces`, `rename_workspace`, `archive_workspace` |
+| Workspace scripts | `list_workspace_scripts`, `start_workspace_script`, `stop_workspace_script` |
+| Heartbeats | `create_heartbeat`, `delete_heartbeat` |
+| Schedules | `create_schedule`, `list_schedules`, `inspect_schedule`, `update_schedule`, `pause_schedule`, `resume_schedule`, `run_schedule_once`, `schedule_logs`, `delete_schedule` |
 
-| Tool | Use |
-|------|-----|
-| `paseo_create_agent` | Spawn a new subagent with a task |
-| `paseo_send_agent_prompt` | Send a follow-up to an existing agent |
-| `paseo_get_agent_status` | Check lifecycle state of an agent |
-| `paseo_get_agent_activity` | Read agent timeline entries |
-| `paseo_list_agents` | Find agents by status, cwd, or recency |
-| `paseo_cancel_agent` | Interrupt a running agent (keep alive) |
-| `paseo_kill_agent` | Terminate an agent permanently |
-| `paseo_archive_agent` | Soft-delete an agent |
-| `paseo_create_workspace` | Create isolated workspace for a task |
-| `paseo_create_heartbeat` | Recurring prompt back to same agent |
-| `paseo_create_schedule` | Fresh agent on a cron cadence |
+`create_agent` requires `title`, `provider`, and `initialPrompt`. Optional launch
+configuration belongs under `settings`; optional placement is `workspaceId`.
+Agent-scoped `send_agent_prompt` defaults to background delivery. Use
+`background: false` only when a short synchronous reply is genuinely required.
 
-`paseo_create_agent` requires: `title`, `provider`, `initialPrompt`.
-Optional: `workspaceId` (put worker in a different workspace),
-`notifyOnFinish` (default true for agent-scoped calls).
+## Pattern 1: Fan-out
 
-Agent-scoped `paseo_send_agent_prompt` defaults to `background: true` and
-`notifyOnFinish: true`. For synchronous follow-ups, pass `background: false`.
+Use for independent subtasks.
 
-## Pattern 1: Fan-out (parallel execution)
+1. Define non-overlapping deliverables and acceptance criteria.
+2. Create a worktree workspace per writer when changes may overlap:
+   `create_workspace { isolation: "worktree", mode: "branch-off", ... }`.
+3. Create all agents with the selected profiles materialized into their launch
+   calls. Pass the returned `workspaceId` when isolation is needed.
+4. Let completion notifications arrive; collect final evidence with
+   `get_agent_activity` when needed.
+5. Synthesize results. Retry a transient failure at most once with a changed
+   approach; escalate permission, requirement, or destructive-action blockers.
 
-Decompose a task into N independent subtasks, launch them simultaneously,
-then synthesize results.
+Never let multiple agents edit the same checkout concurrently.
 
-```
-1. Identify independent subtasks.
-2. If subtasks edit the same files or run conflicting commands, create an
-   isolated workspace per subtask via paseo_create_workspace.
-3. For each subtask, call paseo_create_agent with:
-   - title: "[Fan-out] <subtask description>"
-   - provider: from preferences (impl for coding)
-   - initialPrompt: self-contained briefing
-   - workspaceId: isolated workspace if needed, otherwise current
-4. All notifications arrive as agents finish.
-5. Synthesize results.
-   - If a transient failure (test flake, network timeout): bounded retry
-     (at most 1 retry, different approach).
-   - If a hard failure (permission error, missing dependency, ambiguity):
-     escalate to user via Pattern 7. Do not silently retry or reroute.
+## Pattern 2: Task DAG
+
+Use when each step depends on the previous result.
+
+```text
+Step 1 implementation -> Step 2 test -> Step 3 review -> decision
 ```
 
-**When to use:** Independent files, no shared state, results can be merged.
-**Isolation rule:** If two workers will write to overlapping files, use
-separate workspaces. If they only read shared files, same workspace is fine.
+Launch only ready nodes. Include the predecessor's output and evidence in the
+next agent's prompt. A completion notification is not proof of success: compare
+the reported output with the node's acceptance criteria before advancing.
 
-## Pattern 2: Task DAG (sequenced execution)
+## Pattern 3: Hybrid split/merge
 
-Break work into steps where each depends on the previous. Launch step N+1
-only after step N reports success.
-
-```
-1. Define the dependency graph: Step1 → Step2 → Step3.
-2. Launch Step1 with paseo_create_agent.
-3. Wait for notification that Step1 finished.
-4. Check paseo_get_agent_activity for Step1's output.
-5. Feed Step1's results into Step2's initialPrompt.
-6. Launch Step2 with paseo_create_agent.
-7. Repeat through the DAG.
+```text
+             -> Worker A -\
+Split work                  -> synthesis -> independent review
+             -> Worker B -/
 ```
 
-**When to use:** Sequential dependencies — codegen → review → test → deploy.
-
-## Pattern 3: Hybrid DAG (fan-out with dependencies)
-
-Some steps are parallel, others sequential. Common shape:
-```
-          ┌→ Worker A (component 1) ─┐
-Split ────┤                          ├──→ Merge (synthesize) ──→ Review
-          └→ Worker B (component 2) ─┘
-```
-
-```
-1. Launch Worker A and Worker B simultaneously (Pattern 1).
-2. Wait for both to finish.
-3. Use paseo_get_agent_activity on both to collect outputs.
-4. Create Merge agent with both outputs in its initialPrompt.
-5. After Merge finishes, create Review agent with the merged result.
-```
-
-**When to use:** Any split-merge workflow — parallel feature branches,
-multi-file refactors, or cross-cutting changes.
+Fan out isolated work, collect results, then create a synthesis or review agent
+with all relevant outputs and diffs. Keep the review agent analysis-only unless
+the user explicitly asks it to edit.
 
 ## Pattern 4: Decision gate
 
-Between steps, pause and evaluate whether to proceed. Create an analysis-only
-agent that returns a judgment.
+Create an analysis-only gate agent using an audit/review profile, preferably a
+different provider from the worker. Require one of:
 
-```
-1. Worker completes a step.
-2. Create a Gate agent:
-   - title: "[Gate] Evaluate <step> before proceeding"
-   - provider: from audit or planning preferences
-   - initialPrompt: "You are a decision gate. Review the following output.
-     Determine if we should proceed to the next step or stop. Return your
-     decision as PROCEED or BLOCK with specific reasons. DO NOT edit files."
-     Include: worker output, acceptance criteria, risk factors.
-3. Wait for Gate's judgment.
-4. If PROCEED → launch next step. If BLOCK → report to user with reasons.
+```text
+PROCEED — acceptance criteria met, with evidence
+BLOCK — failed criteria, risks, and the exact decision needed
 ```
 
-**When to use:** High-risk steps, security-sensitive changes, deployment
-gates, or any time you need a second look before proceeding.
+Do not advance on a vague or missing gate result.
 
-## Pattern 5: Coordinator loop
+## Pattern 5: Coordinator heartbeat
 
-A heartbeat-driven pattern where the coordinator periodically checks on
-workers and issues new instructions.
+Use `create_heartbeat` when periodic checks should return to this same agent.
+Always set `maxRuns` or `expiresIn`, preferably both. When complete, call
+`delete_heartbeat`.
 
-```
-1. Create workers with paseo_create_agent.
-2. Create a heartbeat with paseo_create_heartbeat:
-   - prompt: "Check all workers. If any are done, evaluate their output.
-     If all are done, synthesize and report. If any need follow-up, send it.
-     Delete this heartbeat when all work is complete."
-   - cron: "*/5 * * * *" (every 5 minutes)
-   - maxRuns: 12 (safety cap — adjust to your time budget)
-   - expiresIn: "2h" (auto-cleanup if not manually deleted)
-3. Heartbeat repeats until work is done or limits are hit.
-4. Call paseo_delete_heartbeat when complete.
-```
-
-**When to use:** Long-running parallel work, CI babysitting, or when you
-need to periodically reassess progress across multiple agents.
+MCP intentionally has no heartbeat update tool. Delete and recreate a heartbeat
+when its cadence or prompt changes. Use `create_schedule` instead when each run
+should start a fresh agent; schedules have update, pause, resume, run-once, log,
+and delete operations.
 
 ## Pattern 6: Blocking ask/reply
 
-You need a specific piece of information or judgment from another agent
-before you can continue your own work (e.g. a code review before merging).
+For a new specialist, create an asynchronous query agent and use its completion
+notification. For a short follow-up to an existing agent, call
+`send_agent_prompt` with `background: false`. Do not use blocking mode for work
+that may take minutes.
 
-```
-1. Create a query agent:
-   - title: "[Ask] <question>"
-   - provider: from audit or planning preferences
-   - initialPrompt: the specific question with all context needed
-2. Wait for the notification that the query agent finished.
-3. Check paseo_get_agent_activity to read its response.
-4. Feed the response into your next decision or action.
-```
+## Pattern 7: Workspace script verification
 
-For a follow-up to an existing agent that must return synchronously,
-use `paseo_send_agent_prompt` with `background: false`. This blocks
-until the agent responds. Use sparingly — async is better for anything
-that takes more than a few seconds.
+When a repository defines supervised scripts in `paseo.json`:
 
-**When to use:** Code review before merge, architecture decision needed,
-technical question for a specialist.
+1. Call `list_workspace_scripts` for the exact workspace.
+2. Start only the script required by the task with `start_workspace_script`.
+3. Use returned lifecycle, port, proxy URL, health, exit code, and terminal ID as
+   evidence.
+4. Stop scripts started for the workflow with `stop_workspace_script` when the
+   task is finished.
 
-## Pattern 7: Escalation
+Do not invent script names or start every service by default.
 
-When a worker reports an unexpected problem, escalate to the user with
-context rather than silently failing.
+## Escalation and safety
 
-```
-1. Worker reports failure or blocker.
-2. Check paseo_get_agent_activity for details.
-3. Prepare an escalation message:
-   - What was attempted
-   - What failed
-   - What the worker tried
-   - What the user needs to decide
-4. Report to the user. Do not silently retry or route around.
-```
+- `cancel_agent` interrupts the current run but keeps the agent. Use it for an
+  in-scope course correction.
+- `archive_agent` soft-deletes. `kill_agent` is permanent; use it only for an
+  agent created by this workflow and only when permanent termination is clearly
+  required.
+- `archive_workspace` archives the workspace, its agents, and terminals. Paseo
+  may remove an owned worktree when its final active reference is archived;
+  verify the target before calling it.
+- Do not push, merge, deploy, approve permissions, or perform another external
+  write unless the user authorized that action.
+- For permission errors, missing dependencies, ambiguous requirements, or
+  destructive choices, report what failed and the exact decision needed.
 
-**When to use:** Permission needed, ambiguous requirements, conflicts the
-coordinator can't resolve.
+## Final response
 
-## Putting it together: a full orchestrated workflow
-
-"Implement a new API endpoint with tests, then review it"
-
-```
-1. Decompose:
-   - Worker A: Implement the endpoint (pref: impl)
-   - Worker B: Write tests (pref: impl)
-   These are independent → fan-out.
-
-2. Create Worker A:
-   paseo_create_agent
-     title: "[Fan-out] Implement /api/foo endpoint"
-     provider: <impl provider from preferences>
-     initialPrompt: |
-       ## Task
-       Implement a new GET /api/foo endpoint in src/routes/foo.ts.
-       ## Context
-       Part of the orchestrated workflow. Worker B is writing tests.
-       ## Acceptance
-       - Endpoint returns JSON with { status, data }
-       - Follows existing route patterns in src/routes/
-       - TypeScript strict, no anys
-       - Run the linter before reporting done.
-
-3. Create Worker B:
-   paseo_create_agent
-     title: "[Fan-out] Write tests for /api/foo"
-     provider: <impl provider from preferences>
-     initialPrompt: |
-       ## Task
-       Write tests for the new GET /api/foo endpoint (Worker A is building it).
-       ## Context
-       Tests go in src/routes/__tests__/foo.test.ts.
-       Follow patterns in existing route tests.
-       ## Acceptance
-       - Cover success, error, and edge cases
-       - Tests pass (npm test)
-       - Expect endpoint at GET /api/foo returns { status, data }
-
-4. Both finish → collect output via paseo_get_agent_activity.
-
-5. Decision gate:
-   paseo_create_agent
-     title: "[Gate] Review implementation before merge"
-     provider: <audit provider from preferences — must differ from worker>
-     initialPrompt: |
-       You are a decision gate. Review the implementation and test outputs
-       below. Determine PROCEED or BLOCK.
-       ## Worker A output: [paste output]
-       ## Worker B output: [paste output]
-       ## Criteria: all tests pass, endpoint follows conventions,
-       TypeScript strict, no anys.
-       Return PROCEED or BLOCK with reasons. DO NOT edit files.
-
-6. If PROCEED → report synthesis to user. If BLOCK → escalate with reasons.
-```
-
-## When NOT to use orchestration
-
-- **Single task delegation** → use `paseo-handoff`.
-- **Simple retry loops** → use `paseo-loop`.
-- **Second opinion on one thing** → use `paseo-advisor`.
-- **Root cause analysis** → use `paseo-committee`.
-- **Native subagents** → if the task fits within one provider's native
-  subagent system, use that. Paseo orchestration is for cross-provider work.
-
-## Provider selection
-
-Always read `~/.paseo/orchestration-preferences.json` before choosing.
-The file maps role categories to provider strings. If missing, use defaults
-and tell the user once. Role mapping:
-
-| Role | Pref key | Use for |
-|------|----------|---------|
-| Implementation | `impl` | Writing code, fixing bugs |
-| UI/Styling | `ui` | Visual design, CSS, UX copy |
-| Research | `research` | Investigation, search, reading |
-| Planning | `planning` | Architecture, decomposition |
-| Audit/Review | `audit` | Code review, decision gates |
-
-For decision gates and reviews, use a different provider from the worker —
-cross-provider review catches blind spots. When reading the preferences file,
-also check the `preferences` array — weave those notes into every agent's
-initialPrompt as contextual guidance.
-
-## Safety constraints
-
-### Workspace isolation
-- When two or more workers will write to overlapping files, create separate
-  workspaces via `paseo_create_workspace` with `isolation: "worktree"`.
-- Archive workspaces with `paseo_archive_workspace` when done.
-
-### Destructive lifecycle operations
-- `paseo_kill_agent` permanently terminates an agent. Only use it on agents
-  you created. Never kill agents the user started independently.
-- `paseo_cancel_agent` interrupts a running agent but keeps it alive. Use
-  this for actions you want the agent to reconsider, not as punishment.
-- `paseo_archive_agent` soft-deletes. Prefer this over kill for cleanup.
-
-### Bounded execution
-- Every coordinator loop (Pattern 5) must have `maxRuns` and `expiresIn`.
-- Every heartbeat must include `maxRuns` or `expiresIn`. Unbounded recurring
-  prompts are runaways waiting to happen.
-- For schedules (`paseo_create_schedule`), always set `maxRuns`.
-
-### Escalation vs retry
-- **Transient failures** (network timeout, test flake, race condition): one
-  bounded retry with a different approach.
-- **Hard failures** (permission error, missing dependency, ambiguous
-  requirements, destructive action): escalate to the user (Pattern 7).
-  Do NOT silently retry, reroute, or guess.
+Report the profiles/providers actually used, workspace isolation, completed and
+failed nodes, verification evidence, synthesis or gate decision, and any active
+agents, schedules, heartbeats, scripts, or workspaces intentionally left behind.

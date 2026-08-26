@@ -26,8 +26,9 @@ marker. Workspace archive always requires an explicit workspace ID and
   - explicit `--agent <id>`
   - a user-supplied `--pattern <regex>`
   - a clear disposable, fixture, smoke, temp, test, or validation marker
-- Never archive active agents, including `running`, `working`, `active`,
-  `starting`, `queued`, `pending`, `busy`, `executing`, or `in-progress`.
+- Never archive active agents, including `running`, `initializing`, `working`,
+  `active`, `starting`, `queued`, `pending`, `busy`, `executing`, or
+  `in-progress`.
 - Never delete, stop, interrupt, or kill agents or workspaces. Never remove lock
   files or restart the Paseo daemon as part of cleanup.
 - Archive workspaces only after the user explicitly approves the exact cleanup
@@ -36,12 +37,12 @@ marker. Workspace archive always requires an explicit workspace ID and
   --json`) and verify the archived record is no longer in the active listing.
 - Do not open timeline/history or resume an archived agent to verify cleanup.
   Those operations can acquire a native provider writer lock.
-- Exit code 0 from `paseo archive` proves only that the command returned
-  successfully. It does not by itself prove that the native provider runtime
-  released its writer or lock.
-- Report an unconfirmed native release as `providerRelease: unknown`, a
-  provider failure, a command failure, or a record-removal verification failure
-  as partial/failed cleanup, and return non-zero.
+- Paseo 0.6 archive JSON must acknowledge the exact record with
+  `{ agentId|workspaceId, status: "archived", archivedAt }`. Exit code 0 alone
+  is not enough.
+- Treat an invalid archive acknowledgement, a command failure, or a
+  record-removal verification failure as partial/failed cleanup and return
+  non-zero.
 
 ## Quick workflow
 
@@ -116,7 +117,8 @@ Defaults:
 - workspaces are never auto-archived; `--include-workspaces` is preview-only
 - all archive attempts are verified by listing records again, never by opening
   archived history or resuming a provider thread
-- unknown native provider release is not reported as complete success
+- archive success requires both the Paseo 0.6 JSON acknowledgement and removal
+  from the fresh active listing
 
 ## Candidate policy
 
@@ -144,15 +146,15 @@ Do not clean up automatically:
 For each archive action, distinguish three separate facts:
 
 1. `commandExitCode`: whether the Paseo archive command returned successfully.
-2. `paseoRecordRemoved`: whether a fresh active-list query no longer contains
+2. `archiveAcknowledged`: whether the JSON result identifies the exact agent or
+   workspace and reports `status: "archived"`.
+3. `paseoRecordRemoved`: whether a fresh active-list query no longer contains
    the record.
-3. `providerRelease`: whether the archive response explicitly confirms native
-   provider release. When it does not, report `unknown`.
 
+Command success with an invalid acknowledgement is `archive-response-invalid`.
 Command success with a remaining Paseo record is `verification-failed`.
-Verified Paseo record removal with an unknown provider release is
-`provider-release-unknown`, not full success. Partial failures and verification
-failures must be visible in both JSON and human output and return non-zero.
+Partial failures and verification failures must be visible in both JSON and
+human output and return non-zero.
 
 ## Manual fallback
 
@@ -168,9 +170,9 @@ paseo workspace archive <approved-workspace-id> --json
 paseo workspace ls --json
 ```
 
-On Windows PowerShell, use the same Paseo commands. If provider release is not
-explicitly present in the archive result, report it as unknown. Never infer
-native release from exit code 0.
+On Windows PowerShell, use the same Paseo commands. Validate the current archive
+response and then recheck the active listing. Never infer cleanup success from
+exit code 0 alone.
 
 ## Output expectations
 
@@ -185,8 +187,8 @@ Cleanup Plan
 
 Actions
 - command exit code
+- Paseo 0.6 archive acknowledgement
 - Paseo record-removal verification
-- provider release: confirmed / failed / unknown
 - outcome: success / partial-failure / failed
 
 Remaining
@@ -200,5 +202,4 @@ Remaining
 - `delete`, `stop`, `kill`, lock-file removal, and daemon restart are out of
   scope and must not be run automatically.
 - Session data may still exist after archive. Do not probe it through
-  history/resume during cleanup; escalate native-provider release problems to
-  Paseo core instead.
+  history/resume during cleanup.

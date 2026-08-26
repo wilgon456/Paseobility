@@ -37,22 +37,31 @@ the conversation.
    git branch --show-current
    git status --short
    ```
-2. List files with `rg --files` first.
-3. Read available instruction sources:
+2. When Paseo CLI is available, establish the live topology without mutation:
+   ```bash
+   paseo --version
+   paseo daemon status --json
+   paseo project ls --json
+   paseo workspace ls --json
+   paseo script ls --cwd <project-root> --json
+   ```
+   Do not restart the daemon or start workspace scripts for a brief.
+3. List files with `rg --files` first.
+4. Read available instruction sources:
    - `README*`
    - `AGENTS.md`
    - `CLAUDE.md`
    - `.cursor/rules/**`
    - `.github/copilot-instructions.md`
    - important files under `docs/`
-4. Detect project commands from:
+5. Detect project commands from:
    - `package.json`
    - `pyproject.toml`, `requirements*.txt`
    - `Cargo.toml`
    - `go.mod`
    - `Makefile`, `justfile`, `Taskfile.yml`
    - `paseo.json`
-5. Produce the brief. Do not edit files unless the user asks.
+6. Produce the brief. Do not edit files unless the user asks.
 
 ## Reading strategy
 
@@ -73,6 +82,7 @@ Return this structure:
 ```text
 Project
 - name, root, remote, branch
+- Paseo version, daemon reachability, project/workspace identity
 - one-paragraph purpose
 
 Current State
@@ -88,6 +98,7 @@ Commands
 - build
 - test
 - lint/typecheck
+- configured Paseo workspace scripts and current lifecycle, if any
 
 Project Map
 - important directories/files

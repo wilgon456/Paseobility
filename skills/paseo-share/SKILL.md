@@ -18,6 +18,11 @@ Use a dedicated private Git repository as a small artifact inbox. Run the
 bundled Node.js CLI for deterministic Git operations. It uses only local
 `git fetch`/`rebase`/`commit`/`push`; it never creates or runs GitHub Actions.
 
+This feature is intentionally independent of Paseo's daemon, MCP tool names,
+agent profiles, and workspace lifecycle. Paseo 0.6 compatibility depends only
+on the skill being installed and discovered; sharing continues through the
+bundled CLI.
+
 ## Requirements
 
 - Require `node` and `git` on every computer.

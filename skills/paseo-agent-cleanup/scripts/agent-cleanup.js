@@ -4,7 +4,7 @@
 
 const { spawnSync } = require("node:child_process");
 
-const ACTIVE_STATUS_PATTERN = /(^|[\s_-])(running|working|active|starting|queued|pending|busy|executing|in[\s_-]?progress)([\s_-]|$)/i;
+const ACTIVE_STATUS_PATTERN = /(^|[\s_-])(running|initializing|working|active|starting|queued|pending|busy|executing|in[\s_-]?progress)([\s_-]|$)/i;
 const DISPOSABLE_MARKER_PATTERN = /(^|[\s/_.-])(disposable|fixture|fixtures|smoke|temp|temporary|test|tests|testing|validation|validate|verification|verify)([\s/_.-]|$)/i;
 
 function usage() {
@@ -243,35 +243,14 @@ function selectWorkspaces(workspaces, opts, regex) {
   });
 }
 
-function findProviderReleaseValue(value) {
-  if (!value || typeof value !== "object") return undefined;
-  for (const [key, nested] of Object.entries(value)) {
-    if (["providerRelease", "provider_release", "nativeProviderRelease", "native_provider_release"].includes(key)) {
-      return nested;
-    }
-  }
-  for (const nested of Object.values(value)) {
-    const found = findProviderReleaseValue(nested);
-    if (found !== undefined) return found;
-  }
-  return undefined;
-}
-
-function providerReleaseFromOutput(stdout) {
-  let payload;
+function archiveAcknowledgement(stdout, expectedId, kind) {
   try {
-    payload = JSON.parse(String(stdout || "").trim());
+    const payload = JSON.parse(String(stdout || "").trim());
+    const idKey = kind === "workspace" ? "workspaceId" : "agentId";
+    return payload?.status === "archived" && payload?.[idKey] === expectedId;
   } catch (_error) {
-    return "unknown";
+    return false;
   }
-  const value = findProviderReleaseValue(payload);
-  if (value === true || /^(confirmed|released|success|succeeded)$/i.test(String(value || ""))) {
-    return "confirmed";
-  }
-  if (value === false || /^(failed|error|not[-_ ]?released)$/i.test(String(value || ""))) {
-    return "failed";
-  }
-  return "unknown";
 }
 
 function requestedIdsMissing(items, requestedIds, kind) {
@@ -339,8 +318,10 @@ function execute(opts, runCommand = run) {
       type: "agent",
       id,
       commandExitCode: result.status,
+      archiveAcknowledged: result.status === 0
+        ? archiveAcknowledgement(result.stdout, id, "agent")
+        : false,
       paseoRecordRemoved: null,
-      providerRelease: providerReleaseFromOutput(result.stdout),
       outcome: result.status === 0 ? "pending-verification" : "archive-command-failed",
       stdout: result.stdout,
       stderr: result.stderr,
@@ -355,6 +336,9 @@ function execute(opts, runCommand = run) {
       type: "workspace",
       id,
       commandExitCode: result.status,
+      archiveAcknowledged: result.status === 0
+        ? archiveAcknowledgement(result.stdout, id, "workspace")
+        : false,
       paseoRecordRemoved: null,
       outcome: result.status === 0 ? "pending-verification" : "archive-command-failed",
       stdout: result.stdout,
@@ -392,10 +376,10 @@ function execute(opts, runCommand = run) {
   for (const action of summary.actions) {
     if (action.commandExitCode !== 0) {
       action.outcome = "archive-command-failed";
+    } else if (action.archiveAcknowledged !== true) {
+      action.outcome = "archive-response-invalid";
     } else if (action.paseoRecordRemoved !== true) {
       action.outcome = "verification-failed";
-    } else if (action.type === "agent" && action.providerRelease !== "confirmed") {
-      action.outcome = action.providerRelease === "failed" ? "provider-release-failed" : "provider-release-unknown";
     } else {
       action.outcome = "success";
     }
@@ -452,10 +436,9 @@ function printHuman(result) {
   console.log("\n## Actions");
   if (!summary.actions.length) console.log("- none");
   for (const action of summary.actions) {
-    const provider = action.type === "agent" ? ` providerRelease=${action.providerRelease}` : "";
     console.log(
       `- ${action.type} ${action.id}: outcome=${action.outcome} exit=${action.commandExitCode} ` +
-      `paseoRecordRemoved=${action.paseoRecordRemoved}${provider}`
+      `archiveAcknowledged=${action.archiveAcknowledged} paseoRecordRemoved=${action.paseoRecordRemoved}`
     );
     if (action.stderr) console.log(`  stderr: ${action.stderr.trim()}`);
   }
@@ -463,9 +446,6 @@ function printHuman(result) {
   if (summary.verification.agentListError) console.log(`- agent verification failure: ${summary.verification.agentListError}`);
   if (summary.verification.workspaceListError) console.log(`- workspace verification failure: ${summary.verification.workspaceListError}`);
   console.log(`\nresult: ${summary.status}`);
-  if (summary.actions.some((action) => action.providerRelease === "unknown")) {
-    console.log("warning: Paseo record removal was checked, but native provider release could not be confirmed.");
-  }
 }
 
 function main(argv = process.argv.slice(2)) {
@@ -501,11 +481,11 @@ if (require.main === module) {
 module.exports = {
   ACTIVE_STATUS_PATTERN,
   DISPOSABLE_MARKER_PATTERN,
+  archiveAcknowledgement,
   execute,
   isActive,
   parseArgs,
   printHuman,
-  providerReleaseFromOutput,
   selectAgents,
   selectWorkspaces,
 };

@@ -1,7 +1,7 @@
 ---
 name: paseo-project-bootstrap
 description: >-
-  Bootstrap a Paseo project workspace on macOS or any local checkout. Use when
+  Bootstrap a Paseo project workspace on macOS, Linux, or Windows. Use when
   the user wants to set up a project environment, understand a new repo before
   work starts, collect README/docs/AGENTS/CLAUDE/Cursor/Copilot instructions,
   generate working context, inspect build/test/dev commands, or diagnose Paseo
@@ -22,7 +22,7 @@ bootstrap scripts into a repeatable setup workflow.
 Use this skill to:
 
 - identify the current project root and remote
-- check macOS architecture and Paseo CLI availability
+- check OS/architecture and Paseo CLI/daemon compatibility
 - install or update Paseobility skills
 - collect project context from README, docs, and agent instruction files
 - summarize install/dev/build/test commands
@@ -67,7 +67,18 @@ Run scripts from the Paseobility repository:
    sed -n '1,220p' .paseobility/commands.md
    sed -n '1,220p' .paseobility/project-map.md
    ```
-5. If the user asked to install the skills, run:
+5. When Paseo CLI is available, inspect the current integration without
+   mutating it:
+   ```bash
+   paseo --version
+   paseo daemon status --json
+   paseo project ls --json
+   paseo workspace ls --json
+   paseo script ls --cwd <project-root> --json
+   ```
+   A project with no configured `paseo.json` scripts may return an empty list;
+   do not invent or start scripts.
+6. If the user asked to install the skills, run:
    ```bash
    ./scripts/paseobility-init.sh --with-claude
    ```
@@ -93,6 +104,11 @@ exist:
 | `Makefile`, `justfile`, `Taskfile.yml` | Project command entrypoints. |
 | `paseo.json` | Existing Paseo workspace script definitions. |
 
+Current Paseo workspaces are first-class records. Do not infer the active
+workspace solely from the directory: compare the project root with
+`paseo workspace ls --json` when the CLI is available. Workspace scripts are
+supervised by Paseo and should be inspected with `paseo script ls` before use.
+
 ## macOS setup policy
 
 On macOS:
@@ -106,6 +122,14 @@ On macOS:
 
 If `paseo.json` exists, report it. If it does not, suggest commands in
 `.paseobility/commands.md` rather than silently inventing app registrations.
+
+## Windows setup policy
+
+On Windows, use `scripts/paseobility-install.ps1` for installation and its
+`-TargetHome` option for isolated install tests. The bash doctor/context scripts
+are not native PowerShell workflows. Read the same repository sources directly,
+run the read-only Paseo CLI checks above, and do not claim that `.paseobility/`
+context files were generated unless a compatible shell actually produced them.
 
 ## Workspace hygiene
 
@@ -124,7 +148,8 @@ This skill should guide behavior, not block valid work.
 After bootstrapping, report:
 
 - detected project root and remote
-- macOS architecture and Paseo CLI status
+- OS/architecture and Paseo CLI/daemon version status
+- matching Paseo project/workspace and configured workspace scripts, if any
 - generated `.paseobility/` files
 - likely install/dev/build/test commands
 - important project instructions discovered from README, docs, AGENTS, CLAUDE,
@@ -138,5 +163,5 @@ After bootstrapping, report:
   already understood.
 - Do not use this as a replacement for `/paseo-orchestration` when the user
   specifically wants multi-agent coordination.
-- Do not use this as a replacement for `/paseo-computer-use` when the task is
+- Do not use this as a replacement for `/paseo-browser` when the task is
   direct browser interaction.

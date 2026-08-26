@@ -160,12 +160,19 @@ unless `-NoBackup` is passed.
 ## Paseo CLI detection
 
 Paseo CLI is useful for diagnosis but not required for copying skills.
+The current package is validated against Paseo 0.6.1. When a CLI is found, run
+`paseo --version` and report the detected version; do not downgrade, update, or
+restart Paseo as part of skill installation. A future version is not by itself
+an install failure, but behavior-sensitive validation should use the tool names
+and schemas documented in the installed base `paseo` skill.
 
 Check common locations:
 
 - PATH: `paseo`
 - macOS app bundle: `/Applications/Paseo.app/Contents/Resources/bin/paseo`
 - Windows app bundle: `C:\Program Files\Paseo\resources\bin\paseo.cmd`
+- Windows per-user app bundle:
+  `%LOCALAPPDATA%\Programs\Paseo\resources\bin\paseo.cmd`
 
 Do not restart the Paseo daemon unless the user explicitly asks. It can kill
 running agents.
