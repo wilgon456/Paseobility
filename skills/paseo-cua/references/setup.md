@@ -43,15 +43,68 @@ pinned source at the commit below, not from a moving endpoint.
   the human. `cua-driver permissions grant` opens the correct identity so the
   Settings entries match the driver, not the terminal. `permissions status`
   is read-only; if Accessibility is `false`, stop and ask the user to grant it.
+  `unknown` is not `false`: it means the driver could not confirm its own
+  identity/readiness, not that the grant was denied. Re-check after the driver
+  app is running; do not assert a specific cause.
 - Windows: the daemon must run on an interactive user desktop, not Session 0.
 - Linux: the daemon must share the graphical session and the AT-SPI session bus.
 
+## Reproducible macOS onboarding
+
+The Paseobility installer only prepares the pinned binary. It does not start the
+daemon and does not grant permissions. On a Mac:
+
+1. Record the installed version: `cua-driver --version`. The Paseobility
+   installer defaults to the pinned `0.28.2`, but a working existing driver is
+   reused as-is — do not downgrade or replace it just to match the pin.
+2. Start the driver app so it runs under its own app identity, not the terminal:
+   `open -n -g -a CuaDriver --args serve`
+3. Grant permissions as the human (cannot be scripted):
+   `cua-driver permissions grant`, then confirm with
+   `cua-driver permissions status`. `true` under the `driver-daemon` identity
+   confirms the OS grants **only**; it is not proof the driver can act. Verify
+   the real target with a snapshot and one action before treating it as ready.
+4. Register MCP only if you want a persistent connection (see below). The
+   printed snippet is guidance; merge it into your actual client config.
+5. Start a new agent session, or reload integrations, so the client re-reads its
+   config.
+
+Notes:
+
+- Stop or reopen this driver only when it is safe: no live sessions from this
+  driver's own tasks and no unrelated use. Prefer `cua-driver stop`, then
+  `open -n -g -a CuaDriver --args serve`. **Never restart Paseo to apply this.**
+- Existing Paseo sessions may keep the provider they already loaded. A new
+  session or an integration reload **may be needed** to pick up the change, but a
+  refreshed long-lived provider is not guaranteed — this path was not tested.
+  Confirm the tools appear in the actual fresh client instead of assuming it.
+
 ## Optional persistent connection
 
-`cua-driver mcp-config --client opencode` only prints a config snippet; it does
-not register anything. For a persistent multi-call connection, merge the printed
-`mcp` entry into the client config while preserving existing entries, then start
-a new session. One-off calls do not need it.
+`cua-driver mcp-config --client <client>` only prints a config snippet; it does
+**not** register anything. This skill does not auto-register MCP either. The
+snippet's key is client-specific — the OpenCode form nests under an `mcp` key,
+while Codex uses `mcp_servers` and Claude uses `mcpServers`. Use the schema the
+command actually prints for the client you run; do not paste one client's key
+into another. For a persistent multi-call connection, merge that entry into the
+real client config while preserving existing entries, then start a new session.
+One-off calls do not need it. Verify with the client's own list or status command
+rather than assuming the edit took effect.
+
+## Telemetry
+
+The driver reports content-free product telemetry **enabled by default**; the
+installer does not change this. Inspect or disable it yourself — this skill
+never changes the setting:
+
+```bash
+cua-driver telemetry status      # current setting + install-id presence
+cua-driver telemetry disable     # stop sending; keeps the local install id
+```
+
+Precedence is environment override, then persisted preference, then enabled by
+default. Collection details were not independently audited here; the pinned
+source is authoritative.
 
 ## Source
 
