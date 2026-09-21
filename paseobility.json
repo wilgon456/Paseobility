@@ -1,6 +1,6 @@
 {
   "name": "Paseobility",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "skillPath": "skills",
   "installTargets": {
     "paseo": {
@@ -14,11 +14,9 @@
   },
   "skills": [
     "paseo-agent-cleanup",
-    "paseo-agent-tournament",
     "paseo-browser",
     "paseo-orchestration",
-    "paseo-project-bootstrap",
-    "paseo-session-brief",
+    "paseo-project",
     "paseo-share",
     "paseo-spyware-check"
   ]

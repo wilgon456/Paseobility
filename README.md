@@ -5,7 +5,7 @@
 <p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.6.0-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.7.0-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -18,8 +18,8 @@
 
 <p>
   <code>/paseo-browser</code>로 웹 UI를 직접 조작하고,<br>
-  <code>/paseo-agent-tournament</code>로 여러 모델의 답을 비교하고,<br>
-  <code>/paseo-project-bootstrap</code>으로 새 프로젝트 맥락을 세팅하고,<br>
+  <code>/paseo-orchestration</code>로 여러 모델의 답을 비교하고,<br>
+  <code>/paseo-project</code>으로 새 프로젝트 맥락을 세팅하고,<br>
   <code>/paseo-share</code>로 컴퓨터와 모바일 사이에 산출물을 공유합니다.
 </p>
 
@@ -31,7 +31,7 @@
 
 Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에게 던져 설치하게 만든 **agent-installable Paseo 슬래쉬 스킬팩**입니다.
 
-설치되면 Paseo에서 자주 쓰는 브라우저 computer use, 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 비활성 서브에이전트 정리와 기기 간 산출물 공유를 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
+설치되면 Paseo에서 자주 쓰는 browser use(웹 브라우저 조작), 멀티에이전트 오케스트레이션, 에이전트 토너먼트, 세션 브리프, 프로젝트 bootstrap, 설치 전 repo 보안 점검, 비활성 서브에이전트 정리와 기기 간 산출물 공유를 슬래쉬 명령처럼 꺼내 쓸 수 있습니다.
 
 기본 Paseo만으로도 내장 도구를 조합하면 비슷한 일을 할 수 있습니다. 다만 매번 에이전트가 그 조합을 새로 판단하게 두면 느리고 결과가 들쭉날쭉할 수 있어서, 자주 쓰는 패턴을 바로 꺼내 쓰기 쉽게 묶었습니다.
 
@@ -39,26 +39,55 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
-## 최신 변경사항
+## v2.7.0 — 스킬 통합과 호출 범위 축소
 
-현재 `main`에서는 `/paseo-skill-save`와 그 안에 번들로 포함되던 manager를 제거했습니다. 새 설치와 전체 업데이트에는 아래 **8개 스킬만** 포함됩니다.
+현재 패키지는 **6개 스킬**입니다. 로컬 Paseo CLI와 데몬
+`0.9.0-beta.2`를 기준으로 도구 규격과 호환성을 확인했습니다.
+브라우저 호스트 타임아웃과 Windows 실동작 미검증 등 범위는
+[호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에 구분해 기록합니다.
 
-- `paseo-agent-cleanup`
-- `paseo-agent-tournament`
-- `paseo-browser`
-- `paseo-orchestration`
-- `paseo-project-bootstrap`
-- `paseo-session-brief`
-- `paseo-share`
-- `paseo-spyware-check`
+| 스킬 | 사용 범위 |
+| --- | --- |
+| `/paseo-orchestration` | 명시 요청한 다중 에이전트 조율 또는 비교·토너먼트 |
+| `/paseo-project` | 요청한 프로젝트 요약·인수인계 또는 초기 설정·환경 수정 |
+| `/paseo-browser` | Paseo 브라우저의 웹 UI 조작·검증 |
+| `/paseo-agent-cleanup` | 선택한 테스트 에이전트·workspace 정리 |
+| `/paseo-share` | 개인 기기 간 산출물 공유 |
+| `/paseo-spyware-check` | 설치 전 저장소 정적 보안 검사 |
 
-installer는 현재 저장소의 스킬을 복사하지만 과거 설치본을 자동 삭제하지는 않습니다. 이전 버전을 설치했던 사용자는 `~/.agents/skills/paseo-skill-save`, `~/.claude/skills/paseo-skill-save` 또는 Windows의 대응 경로에 남은 기존 복사본을 별도로 제거해야 합니다. 과거 commit과 tag에는 예전 파일이 이력으로 남을 수 있지만 현재 `main`의 설치 대상에는 포함되지 않습니다.
+오케스트레이션은 `allow_implicit_invocation: false`를 유지합니다.
+프로젝트 스킬은 일반 코딩·세션 재개만으로 실행하지 않습니다.
+비교/조율, 요약/설정의 상세 지침은 선택한 모드의 reference만 읽습니다.
+
+| 과거 스킬 | 통합 대상 |
+| --- | --- |
+| `paseo-agent-tournament` | `paseo-orchestration` 비교 모드 |
+| `paseo-session-brief` | `paseo-project` 읽기 전용 요약 모드 |
+| `paseo-project-bootstrap` | `paseo-project` 설정 모드 |
+| `paseo-computer-use` | `paseo-browser` |
+| `paseo-skill-save` | 제거됨; 개인 라이브러리 데이터는 보존 |
+
+기존 설치 업데이트 시 다음 명령은 통합 전 스킬을 백업으로 옮깁니다.
+`--with-claude` / `-WithClaude`는 Claude 설치본도 갱신할 때만 사용합니다.
+
+```bash
+./scripts/paseobility-init.sh --migrate-skills --no-context
+```
+
+```powershell
+.\scripts\paseobility-install.ps1 -MigrateSkills
+```
+
+일반 복사·설치는 과거 이름을 제거하지 않습니다. 선택 설치에서는 해당
+스킬의 이전 이름만 이동합니다. 이전 이름의 백업은 `--no-backup` 또는
+`-NoBackup`이어도 남깁니다. unrelated skills와 private runtime은 건드리지
+않으며, 이전 디렉터리의 이름/소유를 확인할 수 없거나 링크면 중단합니다.
 
 ---
 
 ## v2.6.0 업데이트 — Paseo 0.6.1 호환
 
-v2.6.0은 현재 Paseo 0.6.1의 CLI와 내장 도구 스키마에 맞춰 8개 기능을
+v2.6.0은 당시 Paseo 0.6.1의 CLI와 내장 도구 스키마에 맞춰 8개 기능을
 다시 점검하고, Paseo 런타임에 직접 연결되는 기능을 갱신합니다.
 
 - orchestration/tournament는 구형 `paseo_*` 도구명을 제거하고
@@ -155,13 +184,13 @@ https://github.com/wilgon456/Paseobility
 https://github.com/wilgon456/Paseobility
 
 이 repo를 읽고 AGENTS.md 지침대로 내 로컬 Paseo skills 디렉터리에 설치해줘.
-먼저 임시 HOME/TargetHome으로 설치 테스트하고, 통과하면 실제 skills 디렉터리에 설치해줘.
-설치 후 새 Paseo 세션에서 /paseo-session-brief가 인식되는지도 확인해줘.
+먼저 --target-home/-TargetHome 임시 경로로 설치 테스트하고, 통과하면 실제 skills 디렉터리에 설치해줘.
+설치 후 새 Paseo 세션에서 /paseo-project가 인식되는지도 확인해줘.
 ```
 
 에이전트는 Codex/Paseo에서는 [AGENTS.md](./AGENTS.md), Claude Code에서는 [CLAUDE.md](./CLAUDE.md)를 읽고 OS별 경로와 설치 절차를 따라갑니다. 이 Paseobility 저장소는 설치 원본입니다. 실제 공유 artifact는 인증 계정의 private `paseo_share` 저장소에 보관하며, 설치만으로 저장소를 만들지는 않습니다.
 
-즉, "코드 짜줘"에서 끝나는 게 아니라:
+해당 작업을 명시적으로 요청하면 다음 기능을 사용할 수 있습니다:
 
 - 웹페이지를 열고, 읽고, 클릭하고, 입력하고, 스크린샷으로 검증합니다.
 - 작업을 여러 에이전트에게 나눠 맡기고 결과를 합성합니다.
@@ -169,8 +198,8 @@ https://github.com/wilgon456/Paseobility
 - GitHub URL이나 로컬 repo를 설치하기 전에 spyware/supply-chain 위험 신호를 읽기 전용으로 점검합니다.
 - 테스트 후 쌓인 disposable 표식의 inactive agent를 범위를 확인해 archive하고, 일반 idle 세션은 보존하며 workspace는 승인 후 archive합니다.
 - 작업 산출물을 private Git 공유함에 올리고 다른 컴퓨터나 모바일에서 바로 열거나 가져옵니다.
-- 세션 시작 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
-- 새 프로젝트에 들어갈 때 README, docs, Claude/Codex/Cursor 계열 지침을 모아 작업 맥락을 만듭니다.
+- 요청 시 repo 맥락, 명령어, 지침, 리스크를 한 장으로 요약합니다.
+- 초기 설정을 요청할 때 README, docs, Claude/Codex/Cursor 계열 지침을 모아 작업 맥락을 만듭니다.
 - Codex로 구현하고 Claude로 리뷰하는 식의 크로스 프로바이더 협업을 설계합니다.
 - 무한 루프, 위험한 제출, 계정 변경 같은 작업에는 명확한 가드레일을 둡니다.
 
@@ -181,10 +210,8 @@ https://github.com/wilgon456/Paseobility
 | Skill | 역할 | 이런 요청에 강함 |
 | --- | --- | --- |
 | `/paseo-browser` | 브라우저 조작 워크플로우 | 로그인 폼 채우기, 검색 결과 읽기, UI 클릭, 반응형 스크린샷, 웹앱 상태 확인 |
-| `/paseo-orchestration` | 멀티에이전트 지휘 패턴 | 병렬 구현, 코드리뷰 게이트, 작업 DAG, 장기 실행 코디네이터, 실패 에스컬레이션 |
-| `/paseo-agent-tournament` | 멀티 모델 비교/심사 | GPT vs Claude vs DeepSeek, 찬반 토론, 설계안 비교, judge 기반 winner 선정 |
-| `/paseo-session-brief` | 세션 시작/인수인계 브리프 | repo 요약, 현재 git 상태, 명령어, 지침, 리스크, 다음 행동 정리 |
-| `/paseo-project-bootstrap` | 프로젝트 초기 맥락/환경 세팅 | macOS/Paseo 점검, docs/지침 수집, 실행 명령 추론, `.paseobility/` context 생성 |
+| `/paseo-orchestration` | 다중 에이전트 조율과 비교 | 명시 요청한 조율 또는 토너먼트, 모드별 지침 |
+| `/paseo-project` | 프로젝트 요약과 설정 | 요청한 읽기 전용 brief 또는 환경·context 설정 |
 | `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private `paseo_share` 자동 준비, 클릭 가능한 미리보기/다운로드 링크, 공유 ID 기반 검증·가져오기 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
 | `/paseo-agent-cleanup` | 비활성 agent/workspace 정리 | 기본 dry-run, 일반 idle 보존, 명시적/테스트 표식 후보만 archive, 활성 agent 보호, workspace는 승인 후 archive |
@@ -291,6 +318,14 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 ## 검증 상태
 
+현재 `2.7.0` 통합본은 macOS arm64 / Paseo `0.9.0-beta.2` 기준으로
+CLI·MCP 규격, 임시 경로 설치·이전, helper 회귀 테스트를 확인합니다.
+브라우저 실동작과 Windows 신규 migration 실동작은 확인하지 못했습니다.
+세부 결과와 제한은 [현재 호환성 보고서](docs/compatibility-0.9.0-beta.2.md)를
+참고하세요. 아래는 이전 버전에 기록된 검증이며 현재 버전의 증거로 사용하지 않습니다.
+
+### 과거 검증 기록 — 이번 통합본 검증과 별개
+
 | 환경 | 상태 | 확인한 내용 |
 | --- | --- | --- |
 | Paseo 0.6.1 on Windows | Tested locally | CLI/daemon 0.6.1 일치, agent/workspace/provider JSON, worktree·schedule·heartbeat·archive CLI schema, 최신 MCP/profile/browser 소스 대조, PowerShell 임시 설치 확인 |
@@ -368,7 +403,7 @@ https://example.com 로그인 페이지 열고, 폼 구조 확인한 다음,
 ### 여러 모델 답을 비교하기
 
 ```text
-/paseo-agent-tournament
+/paseo-orchestration
 이 README 방향을 두고 GPT는 옹호, OpenCode DeepSeek은 반대,
 Grok은 둘을 비교해서 최종 판단을 정리해줘.
 ```
@@ -384,7 +419,7 @@ Grok은 둘을 비교해서 최종 판단을 정리해줘.
 ### 세션 브리프 만들기
 
 ```text
-/paseo-session-brief
+/paseo-project
 이 프로젝트 처음 보는 상태라고 생각하고 현재 작업 가능한 브리프 만들어줘.
 ```
 
@@ -398,7 +433,7 @@ Project -> Current State -> Instructions -> Commands
 ### 새 프로젝트 맥락 세팅하기
 
 ```text
-/paseo-project-bootstrap
+/paseo-project
 이 repo 처음 보는 상태라고 생각하고 docs, CLAUDE.md, AGENTS.md,
 package scripts를 읽어서 작업 맥락을 만들어줘.
 ```
@@ -454,7 +489,7 @@ install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위
 - `--auto`는 명시적 ID, 사용자 지정 패턴, 또는 분명한 disposable/test/validation 표식이 있는 inactive agent에만 허용됩니다.
 - `delete`는 하지 않고 `archive`만 하며 활성 agent는 항상 보호합니다.
 - workspace archive는 사용자 승인과 명시적 ID가 있을 때만 진행합니다.
-- archive 후 active 목록을 재조회하고, provider release가 확인되지 않으면 완전 성공으로 보고하지 않습니다.
+- archive 응답의 대상 ID와 상태를 확인하고 active 목록에서 사라졌는지 재조회합니다.
 
 ---
 
@@ -477,7 +512,7 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
 
 ---
 
-## `/paseo-agent-tournament`
+## `/paseo-orchestration` 비교 모드
 
 같은 문제를 여러 에이전트에게 독립적으로 맡긴 뒤, 별도 judge가 비교해서 최종 답을 고르는 스킬입니다.
 
@@ -499,58 +534,19 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
 
 ---
 
-## `/paseo-session-brief`
+## `/paseo-project`
 
-새 세션을 시작하거나 다른 에이전트에게 넘기기 전에, repo 맥락을 짧고 실행 가능한 형태로 정리합니다.
+프로젝트 요약과 환경 설정을 하나의 진입점에서 선택합니다.
 
-확인하는 것:
+- **요약 모드:** 요청한 repo 개요·명령·인수인계만 읽기 전용으로 정리합니다.
+- **설정 모드:** 요청한 초기 설정·환경 수정·context 생성만 수행합니다.
+- 이미 확인한 정보를 재사용하고 같은 문서를 다시 전부 조사하지 않습니다.
+- Paseo runtime이 관련될 때만 버전·daemon·workspace를 조회합니다. 경로
+  별칭 때문에 `--cwd` 조회가 실패하면 기존 workspace ID를 사용합니다.
+- 설치·생성 작업 없이 단순 요약만 요청했다면 파일을 만들지 않습니다.
 
-- project root, remote, branch, git status
-- Paseo version/daemon reachability와 현재 project/workspace identity
-- `README*`, `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/**`, `.github/copilot-instructions.md`
-- `docs/`의 setup/architecture/contributing 문서
-- `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile`, `paseo.json`
-
-출력:
-
-- Project
-- Current State
-- Instructions
-- Commands
-- Project Map
-- Risks
-- Suggested First Moves
-- Handoff Prompt, 요청 시
-
----
-
-## `/paseo-project-bootstrap`
-
-프로젝트를 처음 열었을 때 에이전트가 바로 구현으로 뛰어들지 않고, 먼저 작업 환경과 맥락을 정리하게 만드는 스킬입니다.
-
-| 할 일 | 확인하는 것 |
-| --- | --- |
-| 프로젝트 루트 확인 | `pwd`, `git rev-parse --show-toplevel`, `git remote -v`, `git status` |
-| 환경 진단 | OS/arch, Paseo CLI/daemon version, project/workspace, skill directory, `paseo.json` |
-| 문서 수집 | `README*`, `docs/**/*.md`, `AGENTS.md`, `CLAUDE.md` |
-| 지침 수집 | `.cursor/rules/**`, `.github/copilot-instructions.md` |
-| 명령 추론 | `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `Makefile` |
-| context 생성 | `.paseobility/context.md`, `commands.md`, `project-map.md`, `bootstrap-log.md` |
-
-포함된 스크립트:
-
-| Script | 역할 |
-| --- | --- |
-| `scripts/paseobility-doctor.sh` | OS/arch/Paseo CLI/skill path/project signal 진단 |
-| `scripts/paseobility-context.sh` | 프로젝트 문서와 명령 힌트를 `.paseobility/`에 생성 |
-| `scripts/paseobility-init.sh` | 스킬 설치 후 doctor/context를 한 번에 실행 |
-| `scripts/paseobility-install.ps1` | Windows PowerShell에서 `skills/*`를 Paseo/Claude skills 경로로 복사 |
-
-Workspace hygiene:
-
-- 현재 프로젝트 루트 안에서 작업하는 것을 우선합니다.
-- 외부 clone, sibling project, 새 workspace는 사용자가 요청했거나 명확히 필요할 때만 씁니다.
-- 외부 경로에서 작업했다면 최종 보고에 경로와 이유를 남깁니다.
+필요한 모드의 절차는 [스킬](skills/paseo-project/SKILL.md)과 연결된
+references에서 확인할 수 있습니다.
 
 ---
 
@@ -623,7 +619,7 @@ Paseo의 비활성 agent와 테스트 workspace를 안전하게 정리합니다.
 - running, initializing, working, active, starting, queued, pending, busy, executing,
   in-progress 상태의 agent는 archive하지 않습니다.
 - delete/stop/kill/restart와 history/timeline/resume 검증은 사용하지 않습니다.
-- archive 후 Paseo 0.6 JSON acknowledgement와 active 목록 제거를 검증합니다.
+- archive 후 Paseo CLI JSON acknowledgement와 active 목록 제거를 검증합니다.
 - workspace archive는 명시적 ID와 `--archive --yes` 또는 명확한 사용자 승인 후에만 실행합니다.
 
 포함된 helper:
@@ -719,47 +715,22 @@ feature 선택의 기준입니다. 아래 legacy 파일은 provider source가 �
 ## 저장소 구조
 
 ```text
-VERSION
-paseobility.json
 skills/
-├── paseo-agent-tournament/
-│   └── SKILL.md
-├── paseo-agent-cleanup/
-│   ├── SKILL.md
-│   └── scripts/
-│       └── agent-cleanup.js
-├── paseo-browser/
-│   └── SKILL.md
-├── paseo-project-bootstrap/
-│   └── SKILL.md
-├── paseo-spyware-check/
-│   ├── SKILL.md
-│   └── scripts/
-│       ├── install-scanners.sh
-│       ├── install-scanners.ps1
-│       ├── spyware-check.py
-│       ├── spyware-check.test.py
-│       ├── spyware-check-shell.test.sh
-│       ├── spyware-check.ps1
-│       └── spyware-check.sh
-├── paseo-session-brief/
-│   └── SKILL.md
-├── paseo-share/
-│   ├── SKILL.md
-│   ├── agents/
-│   │   └── openai.yaml
-│   └── scripts/
-│       ├── paseo-share.js
-│       └── paseo-share.test.js
-└── paseo-orchestration/
-    └── SKILL.md
-scripts/
-├── paseobility-context.sh
-├── paseobility-doctor.sh
-├── paseobility-init.sh
-└── paseobility-install.ps1
+├── paseo-agent-cleanup/       # SKILL.md + CLI helper/tests
+├── paseo-browser/            # SKILL.md
+├── paseo-orchestration/      # SKILL.md + explicit-only policy
+│   └── references/           # coordination.md, tournament.md
+├── paseo-project/            # SKILL.md
+│   └── references/           # brief.md, setup.md
+├── paseo-share/              # SKILL.md + CLI helper/tests
+└── paseo-spyware-check/      # SKILL.md + scanners/tests
+scripts/                     # installers, doctor, context helper
+tests/test_skill_migration.py # isolated migration checks
+docs/compatibility-0.9.0-beta.2.md
 AGENTS.md
 CLAUDE.md
+VERSION
+paseobility.json
 ```
 
 ---

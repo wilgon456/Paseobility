@@ -9,7 +9,7 @@ description: >-
 
 # Paseo Browser
 
-Paseo 0.6 exposes browser automation as the `browser_*` tool family. Use the
+Paseo 0.9.0-beta.2 exposes browser automation as the `browser_*` tool family. Use the
 exact tool names present in the active environment; do not add the old
 `paseo_browser_*` prefix.
 

@@ -3,6 +3,7 @@ param(
   [string[]]$Skill = @(),
   [switch]$WithClaude,
   [switch]$NoBackup,
+  [switch]$MigrateSkills,
   [switch]$NoPaseoCheck
 )
 
@@ -41,7 +42,7 @@ function Copy-Skills {
 
   New-Item -ItemType Directory -Force $Target | Out-Null
   $timestamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
-  $backupRoot = Join-Path $BackupParent "Paseobility-$Version-$timestamp"
+  $backupRoot = Join-Path $BackupParent "Paseobility-$Version-$timestamp-$([guid]::NewGuid().ToString('N').Substring(0,8))"
   $backupCount = 0
   $skillDirs = @()
   if ($Skill.Count -gt 0) {
@@ -77,8 +78,68 @@ function Copy-Skills {
     Write-Status "install" ("copied {0} to {1}" -f $name, $Target)
   }
 
+  if ($MigrateSkills) {
+    foreach ($entry in $RetiredSkills.GetEnumerator()) {
+      if (-not (Selected-Skill $entry.Value)) { continue }
+      $retired = Join-Path $Target $entry.Key
+      if (-not (Test-Path -LiteralPath $retired)) { continue }
+      if ($entry.Value -and -not (Test-Path -LiteralPath (Join-Path $Target "$($entry.Value)/SKILL.md"))) {
+        throw "Replacement missing; preserving $retired"
+      }
+      New-Item -ItemType Directory -Force $backupRoot | Out-Null
+      $backupDest = Join-Path $backupRoot $entry.Key
+      if (Test-Path -LiteralPath $backupDest) { throw "Backup collision: $backupDest" }
+      Move-Item -LiteralPath $retired -Destination $backupDest
+      $backupCount += 1
+      Write-Status "migrate" "moved $retired to $backupDest"
+    }
+  }
+
   if ($backupCount -gt 0) {
     Write-Status "backup" ("saved {0} existing skill(s) to {1}" -f $backupCount, $backupRoot)
+  }
+}
+
+$RetiredSkills = [ordered]@{
+  "paseo-agent-tournament" = "paseo-orchestration"
+  "paseo-session-brief" = "paseo-project"
+  "paseo-project-bootstrap" = "paseo-project"
+  "paseo-computer-use" = "paseo-browser"
+  "paseo-skill-save" = ""
+}
+
+function Selected-Skill([string]$Name) {
+  return ($Skill.Count -eq 0 -or $Skill -contains $Name)
+}
+
+function Check-Retired([string]$Target) {
+  if (-not $MigrateSkills) { return }
+  $rootItem = Get-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
+  if ($rootItem -and ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw "Refusing linked skill root: $Target"
+  }
+  foreach ($entry in $RetiredSkills.GetEnumerator()) {
+    if (-not (Selected-Skill $entry.Value)) { continue }
+    if ($entry.Value -and -not (Test-Path -LiteralPath (Join-Path $SkillsDir "$($entry.Value)/SKILL.md"))) {
+      throw "Replacement source missing: $($entry.Value)"
+    }
+    $dest = Join-Path $Target $entry.Key
+    $item = Get-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+    if (-not $item) { continue }
+    $skillFile = Join-Path $dest "SKILL.md"
+    $skillItem = Get-Item -LiteralPath $skillFile -Force -ErrorAction SilentlyContinue
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+        -not $skillItem -or ($skillItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+      throw "Refusing unrecognized retired skill: $dest"
+    }
+    $namePattern = '(?m)^name: [''" ]*' + [regex]::Escape($entry.Key) + '[''" ]*\r?$'
+    $content = Get-Content -LiteralPath $skillFile -Raw
+    if ($content -notmatch '\A---\r?\n(?<header>[\s\S]*?)\r?\n---(?:\r?\n|$)') {
+      throw "Refusing unrecognized retired skill: $dest"
+    }
+    if ($Matches['header'] -notmatch $namePattern) {
+      throw "Refusing unrecognized retired skill: $dest"
+    }
   }
 }
 
@@ -113,6 +174,8 @@ Write-Status "target_home" $TargetHome
 Write-Status "os" ([System.Runtime.InteropServices.RuntimeInformation]::OSDescription)
 Write-Status "arch" ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString())
 
+Check-Retired (Join-Path $TargetHome ".agents\skills")
+if ($WithClaude) { Check-Retired (Join-Path $TargetHome ".claude\skills") }
 Copy-Skills (Join-Path $TargetHome ".agents\skills") (Join-Path $TargetHome ".agents\skills-backups")
 
 if ($WithClaude) {

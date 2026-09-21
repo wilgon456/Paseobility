@@ -6,6 +6,9 @@ INSTALL_CLAUDE=0
 SKIP_CONTEXT=0
 FORCE_CONTEXT=0
 BACKUP_EXISTING=1
+MIGRATE_SKILLS=0
+TARGET_HOME="$HOME"
+CHECK_PASEO=1
 SKILLS=()
 
 usage() {
@@ -13,6 +16,12 @@ usage() {
 Usage:
   paseobility-init.sh [--root PATH] [--with-claude] [--no-context] [--force-context]
   paseobility-init.sh --skill <name> [--skill <name>] [--no-context]
+  paseobility-init.sh --migrate-skills [--with-claude] --no-context
+
+Options:
+  --migrate-skills    Move retired skill directories to backup after installing replacements
+  --target-home PATH Install under this home (use for isolated validation)
+  --no-paseo-check   Skip live Paseo CLI/daemon checks
 
 Install Paseobility skills and generate project context.
 
@@ -50,6 +59,18 @@ while [ "$#" -gt 0 ]; do
       BACKUP_EXISTING=0
       shift
       ;;
+    --migrate-skills)
+      MIGRATE_SKILLS=1
+      shift
+      ;;
+    --target-home)
+      TARGET_HOME="${2:?--target-home requires a path}"
+      shift 2
+      ;;
+    --no-paseo-check)
+      CHECK_PASEO=0
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -61,6 +82,8 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+[ -n "$TARGET_HOME" ] || { echo "--target-home must not be empty" >&2; exit 2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
@@ -75,13 +98,54 @@ if [ -z "$ROOT" ]; then
 fi
 ROOT="$(cd "$ROOT" && pwd -P)"
 
+selected_skill() {
+  local requested="$1" candidate
+  [ "${#SKILLS[@]}" -eq 0 ] && return 0
+  for candidate in "${SKILLS[@]}"; do
+    [ "$candidate" = "$requested" ] && return 0
+  done
+  return 1
+}
+
+# Preflight every retired entry before copying anything. Moving a directory
+# preserves local edits; symlink roots and unknown ownership fail closed.
+retired_entries() {
+  printf '%s\n' 'paseo-agent-tournament:paseo-orchestration' \
+    'paseo-session-brief:paseo-project' 'paseo-project-bootstrap:paseo-project' \
+    'paseo-computer-use:paseo-browser' 'paseo-skill-save:'
+}
+
+check_retired() {
+  local target="$1" old replacement dest
+  [ "$MIGRATE_SKILLS" -eq 1 ] || return 0
+  [ ! -L "$target" ] || { echo "Refusing symlink skill root: $target" >&2; return 1; }
+  while IFS=: read -r old replacement; do
+    selected_skill "$replacement" || continue
+    if [ -n "$replacement" ] && [ ! -f "$REPO_ROOT/skills/$replacement/SKILL.md" ]; then
+      echo "Replacement source missing: $replacement" >&2
+      return 1
+    fi
+    dest="$target/$old"
+    [ -e "$dest" ] || [ -L "$dest" ] || continue
+    if [ -L "$dest" ] || [ ! -d "$dest" ] || [ -L "$dest/SKILL.md" ] ||
+       [ "$(head -n 1 "$dest/SKILL.md")" != '---' ] ||
+       ! sed -n '2,/^---$/p' "$dest/SKILL.md" | grep -Eq "^name: ['\"]?$old['\"]?[[:space:]]*$"; then
+      echo "Refusing unrecognized retired skill: $dest" >&2
+      return 1
+    fi
+  done < <(retired_entries)
+}
+
+check_retired "$TARGET_HOME/.agents/skills"
+if [ "$INSTALL_CLAUDE" -eq 1 ]; then check_retired "$TARGET_HOME/.claude/skills"; fi
+
 copy_skills() {
   local target="$1"
   local backup_parent="$2"
   local backup_root backup_count skill source dest
 
   mkdir -p "$target"
-  backup_root="$backup_parent/Paseobility-${VERSION}-$(date -u +"%Y%m%dT%H%M%SZ")"
+  backup_root="$backup_parent/Paseobility-${VERSION}-$(date -u +"%Y%m%dT%H%M%SZ")-$$"
   backup_count=0
 
   if [ "${#SKILLS[@]}" -eq 0 ]; then
@@ -119,21 +183,43 @@ copy_skills() {
     done
   fi
 
+  if [ "$MIGRATE_SKILLS" -eq 1 ]; then
+    local old replacement retired
+    while IFS=: read -r old replacement; do
+      selected_skill "$replacement" || continue
+      retired="$target/$old"
+      [ -d "$retired" ] || continue
+      if [ -n "$replacement" ] && [ ! -f "$target/$replacement/SKILL.md" ]; then
+        echo "Replacement missing; preserving $retired" >&2
+        return 1
+      fi
+      mkdir -p "$backup_root"
+      [ ! -e "$backup_root/$old" ] || { echo "Backup collision: $old" >&2; return 1; }
+      mv "$retired" "$backup_root/$old"
+      backup_count=$((backup_count + 1))
+      printf '[migrate] moved %s to %s\n' "$retired" "$backup_root/$old"
+    done < <(retired_entries)
+  fi
+
   if [ "$backup_count" -gt 0 ]; then
     printf '[backup] saved %s existing skill(s) to %s\n' "$backup_count" "$backup_root"
   fi
 }
 
-copy_skills "$HOME/.agents/skills" "$HOME/.agents/skills-backups"
+copy_skills "$TARGET_HOME/.agents/skills" "$TARGET_HOME/.agents/skills-backups"
 
 if [ "$INSTALL_CLAUDE" -eq 1 ]; then
-  copy_skills "$HOME/.claude/skills" "$HOME/.claude/skills-backups"
+  copy_skills "$TARGET_HOME/.claude/skills" "$TARGET_HOME/.claude/skills-backups"
 else
   printf '[skip] ~/.claude/skills not touched. Pass --with-claude to install there.\n'
 fi
 
 printf '\n'
-"$SCRIPT_DIR/paseobility-doctor.sh" --root "$ROOT"
+if [ "$CHECK_PASEO" -eq 1 ]; then
+  "$SCRIPT_DIR/paseobility-doctor.sh" --root "$ROOT"
+else
+  printf '[skip] live Paseo checks skipped.\n'
+fi
 
 if [ "$SKIP_CONTEXT" -eq 0 ]; then
   printf '\n'

@@ -68,6 +68,18 @@ Paseobility is a skill document package. Installation means copying every
 directory under `skills/` into the user's local skills directory. It does not
 require a package build.
 
+## Consolidated skill migration
+
+The package contains six skills. `paseo-agent-tournament` is comparison mode in
+`paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap` are
+brief/setup modes in `paseo-project`. No duplicate alias skills are installed.
+
+For an authorized update, use `--migrate-skills` (PowerShell: `-MigrateSkills`)
+to move selected predecessors to backup after installing replacements. This
+also handles old `paseo-computer-use` -> `paseo-browser` and retired
+`paseo-skill-save` on full migration. Without the flag, old directories remain.
+Never delete private skill-library/runtime data. Report the backup path.
+
 ## Supported install target
 
 Install for the Paseo/Codex-style skill path:
@@ -94,7 +106,7 @@ Optional Claude Code install target:
 9. If the user also wants Claude Code support, copy the same `skills/*` into
    the Claude skills directory.
 10. If Paseo CLI is available, start a fresh read-only test agent to verify that
-    `/paseo-session-brief` is recognized, then archive the test agent.
+    `/paseo-project` is recognized, then archive the test agent.
 11. Tell the user to start a new agent session or reload integrations if the
    skills do not appear immediately.
 
@@ -160,7 +172,8 @@ unless `-NoBackup` is passed.
 ## Paseo CLI detection
 
 Paseo CLI is useful for diagnosis but not required for copying skills.
-The current package is validated against Paseo 0.6.1. When a CLI is found, run
+The current local compatibility baseline is Paseo 0.9.0-beta.2; see
+`docs/compatibility-0.9.0-beta.2.md` for verified layers and limitations. When a CLI is found, run
 `paseo --version` and report the detected version; do not downgrade, update, or
 restart Paseo as part of skill installation. A future version is not by itself
 an install failure, but behavior-sensitive validation should use the tool names
@@ -179,7 +192,7 @@ running agents.
 
 ## Project bootstrap
 
-For a target project, use `/paseo-project-bootstrap` after installation, or run
+For a target project, use `/paseo-project` after installation, or run
 the bash context helper in Unix-like environments:
 
 ```bash

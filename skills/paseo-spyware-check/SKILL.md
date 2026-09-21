@@ -19,7 +19,7 @@ installs or runs it. It is a risk triage workflow, not a guarantee that code is
 safe.
 
 The scanner is intentionally independent of Paseo's daemon, MCP tool names,
-agent profiles, and workspace lifecycle. Paseo 0.6 compatibility depends only
+agent profiles, and workspace lifecycle. Paseo compatibility depends only
 on the skill being installed and discovered; scanning remains a local,
 read-only helper workflow.
 

@@ -37,7 +37,7 @@ marker. Workspace archive always requires an explicit workspace ID and
   --json`) and verify the archived record is no longer in the active listing.
 - Do not open timeline/history or resume an archived agent to verify cleanup.
   Those operations can acquire a native provider writer lock.
-- Paseo 0.6 archive JSON must acknowledge the exact record with
+- Paseo CLI archive JSON must acknowledge the exact record with
   `{ agentId|workspaceId, status: "archived", archivedAt }`. Exit code 0 alone
   is not enough.
 - Treat an invalid archive acknowledgement, a command failure, or a
@@ -117,7 +117,7 @@ Defaults:
 - workspaces are never auto-archived; `--include-workspaces` is preview-only
 - all archive attempts are verified by listing records again, never by opening
   archived history or resuming a provider thread
-- archive success requires both the Paseo 0.6 JSON acknowledgement and removal
+- archive success requires both the Paseo CLI JSON acknowledgement and removal
   from the fresh active listing
 
 ## Candidate policy
@@ -187,7 +187,7 @@ Cleanup Plan
 
 Actions
 - command exit code
-- Paseo 0.6 archive acknowledgement
+- Paseo CLI archive acknowledgement
 - Paseo record-removal verification
 - outcome: success / partial-failure / failed
 

@@ -19,7 +19,7 @@ bundled Node.js CLI for deterministic Git operations. It uses only local
 `git fetch`/`rebase`/`commit`/`push`; it never creates or runs GitHub Actions.
 
 This feature is intentionally independent of Paseo's daemon, MCP tool names,
-agent profiles, and workspace lifecycle. Paseo 0.6 compatibility depends only
+agent profiles, and workspace lifecycle. Paseo compatibility depends only
 on the skill being installed and discovered; sharing continues through the
 bundled CLI.
 
