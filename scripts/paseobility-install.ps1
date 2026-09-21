@@ -4,7 +4,9 @@ param(
   [switch]$WithClaude,
   [switch]$NoBackup,
   [switch]$MigrateSkills,
-  [switch]$NoPaseoCheck
+  [switch]$NoPaseoCheck,
+  [switch]$SkipCuaDriver,
+  [switch]$AllowHostRuntime
 )
 
 $ErrorActionPreference = "Stop"
@@ -182,6 +184,35 @@ if ($WithClaude) {
   Copy-Skills (Join-Path $TargetHome ".claude\skills") (Join-Path $TargetHome ".claude\skills-backups")
 } else {
   Write-Status "skip" "Claude skills not touched. Pass -WithClaude to install there."
+}
+
+# Ensure the Cua Driver runtime when paseo-cua (or the full package) is selected.
+# Idempotent: an existing driver is reused, never auto-upgraded.
+$wantsRuntime = ($Skill.Count -eq 0 -or (Selected-Skill "paseo-cua"))
+Write-Host ""
+if (-not $wantsRuntime) {
+  Write-Status "skip" "Cua Driver runtime not requested for this skill selection."
+} elseif ($SkipCuaDriver) {
+  Write-Status "skip" "Cua Driver runtime install skipped (-SkipCuaDriver)."
+} elseif ($TargetHome -ne $env:USERPROFILE -and -not $AllowHostRuntime) {
+  Write-Status "skip" "Cua Driver runtime install skipped for custom -TargetHome ($TargetHome); pass -AllowHostRuntime to install on the real host."
+} else {
+  # Host runtime: use the driver's normal host binary location (or the
+  # PASEOBILITY_CUA_BIN_DIR test hook). The custom -TargetHome only redirects
+  # the skill copy, so it must not redirect the driver.
+  $runtimeStatus = "installed"
+  try {
+    & (Join-Path $ScriptDir "paseobility-cua-driver.ps1")
+    if ($LASTEXITCODE -ne 0) { $runtimeStatus = "failed" }
+  } catch {
+    $runtimeStatus = "failed"
+  }
+  if ($runtimeStatus -eq "failed") {
+    Write-Host ""
+    Write-Host "Skills were copied, but the Cua Driver runtime setup failed." -ForegroundColor Red
+    Write-Host "Installation may be incomplete (partial files possible). Resolve the error above and re-run, or pass -SkipCuaDriver to install skills only."
+    exit 1
+  }
 }
 
 if (-not $NoPaseoCheck) {

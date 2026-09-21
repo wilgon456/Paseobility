@@ -45,7 +45,7 @@ class SkillMigrationTests(unittest.TestCase):
         unrelated.write_text("unrelated")
         self.assert_success(self.install("--migrate-skills", "--with-claude"))
         expected = json.loads((ROOT / "paseobility.json").read_text())["skills"]
-        self.assertEqual(len(expected), 6)
+        self.assertEqual(len(expected), 7)
         for base in (".agents", ".claude"):
             for name in RETIRED:
                 self.assertFalse((self.home / base / "skills" / name).exists())

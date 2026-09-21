@@ -9,6 +9,8 @@ BACKUP_EXISTING=1
 MIGRATE_SKILLS=0
 TARGET_HOME="$HOME"
 CHECK_PASEO=1
+SKIP_CUA_DRIVER=0
+ALLOW_HOST_RUNTIME=0
 SKILLS=()
 
 usage() {
@@ -20,10 +22,20 @@ Usage:
 
 Options:
   --migrate-skills    Move retired skill directories to backup after installing replacements
-  --target-home PATH Install under this home (use for isolated validation)
+  --target-home PATH Install skills under this home (custom target; host runtime skipped by default)
   --no-paseo-check   Skip live Paseo CLI/daemon checks
+  --skip-cua-driver     Do not install the Cua Driver runtime (docs-only/offline)
+  --allow-host-runtime  Allow real host runtime installation even when the
+                        skills --target-home is custom
 
 Install Paseobility skills and generate project context.
+
+Runtime:
+  Selecting paseo-cua or installing the full package also ensures the trycua
+  Cua Driver exists (reused if present; never auto-upgraded). An ordinary
+  --skill <other> install does not. A custom --target-home skips the real host
+  runtime by default and logs why; --allow-host-runtime instead installs the
+  driver on the real host at its normal host binary location.
 
 Defaults:
   - installs skills to ~/.agents/skills
@@ -69,6 +81,14 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-paseo-check)
       CHECK_PASEO=0
+      shift
+      ;;
+    --skip-cua-driver)
+      SKIP_CUA_DRIVER=1
+      shift
+      ;;
+    --allow-host-runtime)
+      ALLOW_HOST_RUNTIME=1
       shift
       ;;
     -h|--help)
@@ -214,6 +234,34 @@ else
   printf '[skip] ~/.claude/skills not touched. Pass --with-claude to install there.\n'
 fi
 
+# Ensure the Cua Driver runtime when the paseo-cua skill (or the full package)
+# is selected. Idempotent: an existing driver is reused, never auto-upgraded.
+RUNTIME_STATUS="not-requested"
+wants_runtime=0
+if [ "${#SKILLS[@]}" -eq 0 ] || selected_skill paseo-cua; then
+  wants_runtime=1
+fi
+
+printf '\n'
+if [ "$wants_runtime" -eq 0 ]; then
+  printf '[skip] Cua Driver runtime not requested for this skill selection.\n'
+elif [ "$SKIP_CUA_DRIVER" -eq 1 ]; then
+  printf '[skip] Cua Driver runtime install skipped (--skip-cua-driver).\n'
+  RUNTIME_STATUS="skipped"
+elif [ "$TARGET_HOME" != "$HOME" ] && [ "$ALLOW_HOST_RUNTIME" -eq 0 ]; then
+  printf '[skip] Cua Driver runtime install skipped for custom --target-home (%s); pass --allow-host-runtime to install on the real host.\n' "$TARGET_HOME"
+  RUNTIME_STATUS="skipped-custom-target"
+else
+  # Host runtime: use the driver's normal host binary location (or the
+  # PASEOBILITY_CUA_BIN_DIR test hook). The custom --target-home only redirects
+  # the skill copy, so it must not redirect the driver.
+  if "$SCRIPT_DIR/paseobility-cua-driver.sh"; then
+    RUNTIME_STATUS="installed"
+  else
+    RUNTIME_STATUS="failed"
+  fi
+fi
+
 printf '\n'
 if [ "$CHECK_PASEO" -eq 1 ]; then
   "$SCRIPT_DIR/paseobility-doctor.sh" --root "$ROOT"
@@ -230,6 +278,16 @@ if [ "$SKIP_CONTEXT" -eq 0 ]; then
   fi
 else
   printf '[skip] context generation skipped.\n'
+fi
+
+if [ "$RUNTIME_STATUS" = "failed" ]; then
+  cat <<'EOF'
+
+Skills were copied, but the Cua Driver runtime setup failed.
+Installation may be incomplete (partial files possible). Resolve the error above and
+re-run, or pass --skip-cua-driver to install skills only.
+EOF
+  exit 1
 fi
 
 cat <<'EOF'

@@ -70,15 +70,50 @@ require a package build.
 
 ## Consolidated skill migration
 
-The package contains six skills. `paseo-agent-tournament` is comparison mode in
-`paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap` are
-brief/setup modes in `paseo-project`. No duplicate alias skills are installed.
+The package contains seven skills. `paseo-agent-tournament` is comparison mode
+in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
+are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
+apps through the separately installed trycua Cua Driver and is explicit-only;
+ordinary web page work stays with `paseo-browser`. No duplicate alias skills
+are installed.
 
 For an authorized update, use `--migrate-skills` (PowerShell: `-MigrateSkills`)
 to move selected predecessors to backup after installing replacements. This
 also handles old `paseo-computer-use` -> `paseo-browser` and retired
 `paseo-skill-save` on full migration. Without the flag, old directories remain.
 Never delete private skill-library/runtime data. Report the backup path.
+
+## Cua Driver runtime
+
+Selecting `paseo-cua`, or installing the full package, also ensures the trycua
+Cua Driver runtime through `scripts/paseobility-cua-driver.sh` (Windows:
+`scripts/paseobility-cua-driver.ps1`). A driver counts as present only when
+`cua-driver --version` succeeds; an existing working driver is reused and never
+auto-upgraded. A candidate that exists but fails `--version` is reported as
+broken and left untouched (non-zero exit), never overwritten. Selecting only
+other skills has no driver side effects.
+
+- The helper fetches the pinned installer scripts (commit
+  `9bbfa7dd3e27ca7f1861ede70aaca390174493f9`, Cua Driver `0.28.2`) and runs
+  them from a temp directory. It never edits PATH or registers MCP config, and
+  it never starts the daemon: the pinned `install.sh` / `_install-rust.sh` only
+  resolve/download a release and stop stale daemons
+  (https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/).
+- `--skip-cua-driver` / `-SkipCuaDriver` installs skills only
+  (docs-only/offline).
+- A custom `--target-home` / `-TargetHome` skips the real-host runtime by
+  default and logs why. `--allow-host-runtime` / `-AllowHostRuntime` allows real
+  host runtime installation even when the skills `--target-home` is custom; the
+  driver still installs at its normal host location (macOS writes
+  `/Applications/CuaDriver.app` and `~/.cua-driver`), so it is not a sandbox.
+  Do not repurpose `HOME` for tests.
+- A runtime failure exits non-zero and states that skills were copied but the
+  runtime setup failed (installation may be incomplete). Re-run or pass the skip
+  flag.
+- macOS Accessibility and Screen Recording grants stay manual. Binary presence
+  is not permission readiness.
+- A raw `cp -R` / `Copy-Item` copies documents only and cannot install the
+  driver; use the installers for the runtime.
 
 ## Supported install target
 
