@@ -231,7 +231,10 @@ Reported limits and clarifications:
 - The E2E ran on **Paseo 0.7.2**; the later read-only snapshot showed
   0.9.0-beta.2 with a daemon start whose actor/cause is unknown. Do not call this
   a 0.9.0-beta.2 E2E, and do not claim new-session discovery for the updated
-  version. Successful **reuse** of a working `0.17.0` driver is a separate policy
+  version. That "only a read-only lookup, no E2E" scope applies to the
+  **installed** `0.9.0-beta.2` app; the follow-up subsection below did run an E2E,
+  but in a separate isolated `0.3.1` PR build, not in the installed `0.9`.
+  Successful **reuse** of a working `0.17.0` driver is a separate policy
   result and is not proof that a new `0.28.2` install works on this host.
 - The `54`-tool count differs from the Mac mini `56` and Windows `57`; the
   Cua/Paseo versions and OS differ, so the counts alone do not demonstrate
@@ -269,6 +272,48 @@ Reported limits and clarifications:
   free percentage is a command-reported metric, not raw physical RAM or a
   pressure color. This confirms a functional 8 GiB configuration on this one
   config only — not blanket 8 GiB support and not other Cua versions.
+
+### 2026-09-22 MacBook follow-up: isolated PR build native full-page pass
+
+A **separate follow-up** was reported on the same `MacBookPro15,2` host class
+(received 2026-09-22; **not executed or reproduced in this review**). It is
+distinct from the `0.7.2` E2E above: it ran an **isolated packaged Paseo build**
+built from the upstream PR
+[getpaseo/paseo#3197](https://github.com/getpaseo/paseo/pull/3197) with upstream
+PR code used without additional product changes (version `0.3.1` as reported).
+It does **not** revalidate the recorded hardware/OS row, which stays a prior
+record.
+
+| Field | Reported value |
+| --- | --- |
+| Build | Isolated packaged Paseo from upstream PR `#3197`, upstream PR code used without additional product changes, reported version `0.3.1` (exact PR commit SHA not provided) |
+| Engine | Real Paseo MCP `browser_screenshot(fullPage: true)`, not Playwright or manual stitching |
+| Cases | Two pages `2573` px and `3511` px high at DPR 2; **two successful captures each**; `7 + 5` input → Compute click → Result `12` verified |
+| Evidence | Top/middle/bottom markers, left/right edges, a fixed element rendered once, and scroll + style restoration verified; repeat PNGs per page reported with identical SHA-256 (hash values not provided) |
+| Alternate | A separate Playwright path also passed, kept distinct from the native PR-engine pass |
+| Installed app | `/Applications/Paseo.app` `0.9.0-beta.2` **unchanged**; installed `fullPage` is **not** fixed |
+| Backport | **Not delivered**: applying the PR commits onto `0.9` conflicted in 6 files and was aborted/restored; replacing installed `0.9` with `0.3.1` would be a downgrade and was not done |
+| Cleanup | Test app/daemon/tabs/server stopped; the existing Paseo install and agents untouched |
+
+Reported limits and clarifications:
+
+- Supplied evidence, **not independently reproduced in this review**. The user
+  supplied remote filenames (`*.png`, `report.json`, `REPORT.md`,
+  `verify-packaged-mcp-fullpage.mjs`) on another machine as paths only; no raw
+  artifact was read here, so the pasted report is the sole attribution and no
+  private user path is recorded.
+- Actual PNG hash values, the PR commit SHA, and test clock times were **not
+  provided**; do not substitute the current PR head as a "tested SHA", and do not
+  derive PNG dimensions from page height/DPR or frame width.
+- `DeepSeek V4.1` was unavailable on that machine and no other model authored a
+  `0.9` backport; upstream PR code was used without additional product changes, so
+  the model ID used to edit product code is N/A.
+- PR `#3197` was reported still open, as was the issue
+  [getpaseo/paseo#3196](https://github.com/getpaseo/paseo/issues/3196); this is
+  **not** an official released fix and **not** blanket production readiness. The
+  dated link above is kept; no release or merge is asserted.
+- A Playwright result is recorded as an **alternate** pass and is not the same
+  claim as the native PR-engine `fullPage` pass.
 
 ## 2026-09-22 user-reported Windows E2E result
 
@@ -386,7 +431,7 @@ automatically.
 | --- | --- | --- |
 | Apple Silicon macOS 26.6.2 — single host | Preview, partial | 2026-09-21, Cua Driver 0.28.2: driver install + self-check, MCP registered/connected (56 tools, OpenCode), Accessibility + Screen Recording `true` under the driver-daemon identity, Calculator background AX input and screenshot verified. Live Paseo-session exposure, the driver's `verify_state` on that target, and a dedicated capture probe remain unconfirmed. |
 | Intel macOS — 16 GiB Mac mini | User-reported functional pass | Supplied report received 2026-09-22, **not independently reproduced in this review**: `Macmini8,1` (Intel Core i7-8700B, 16 GiB), macOS 15.8 build 24H23, Paseo 0.8.0, Cua Driver 0.28.2 x86_64, Paseobility v2.8.0. Install succeeded without `--skip-cua-driver`; all 7 skills recognized, persistent MCP connected (56 tools), `doctor` 7 probes ok, Accessibility + Screen Recording `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), LAN-browser viewport/scroll capture passed. `verify_state` `unknown`; `fullPage` failed (2x2 repeated tiles, `#3196`). A follow-up run kept native `fullPage` failing while a whole-PNG workaround passed for its two DPR-1 fixtures. Regression 41 = cleanup 11 + share 15 + scanner 13 + shell 2, separate from the prior 48 (migration 7). No 8 GB claim from the Mac mini result alone. |
-| Intel macOS — 8 GiB MacBook Pro | Reported basic flows passed; limitations remain | Supplied report received 2026-09-22, **not independently reproduced in this review**: `MacBookPro15,2` (Intel Core i5-8279U, 8 GiB), macOS 15.7.9 build 24G830, Paseobility v2.8.0. E2E ran on Paseo 0.7.2 with a **reused existing Cua Driver 0.17.0** (not the pinned 0.28.2; no auto-upgrade); 7/7 skills recognized, stdio MCP returned 54 tools, AX/Screen Recording `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), local-HTML/public-HTTPS browser viewport/scroll capture passed. `verify_state` matched only a false-positive label and stayed `unknown`; `fullPage` repeated the viewport three times; no automated suite is recorded. This one 8 GiB configuration worked; it is not blanket 8 GiB support. |
+| Intel macOS — 8 GiB MacBook Pro | Reported basic flows passed; isolated PR build `fullPage` passed, installed 0.9 unchanged | Supplied report received 2026-09-22, **not independently reproduced in this review**: `MacBookPro15,2` (Intel Core i5-8279U, 8 GiB), macOS 15.7.9 build 24G830, Paseobility v2.8.0. E2E ran on Paseo 0.7.2 with a **reused existing Cua Driver 0.17.0** (not the pinned 0.28.2; no auto-upgrade); 7/7 skills recognized, stdio MCP returned 54 tools, AX/Screen Recording `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), local-HTML/public-HTTPS browser viewport/scroll capture passed. `verify_state` matched only a false-positive label and stayed `unknown`; `fullPage` repeated the viewport three times; no automated suite is recorded. A separate follow-up on the same host class ran an **isolated packaged Paseo build** from upstream PR [#3197](https://github.com/getpaseo/paseo/pull/3197) (upstream PR code used without additional product changes, reported `0.3.1`) and reported the native MCP `fullPage` engine passing on two DPR-2 pages (2573/3511 px, two captures each, identical repeat SHA-256); the installed `/Applications/Paseo.app` `0.9.0-beta.2` stayed unchanged (`fullPage` not fixed there) and no `0.9` backport was delivered, so this is not a released fix. The `0.7.2` three-times `fullPage` failure above remains prior history. This one 8 GiB configuration worked; it is not blanket 8 GiB support. |
 | Other macOS versions | Unverified | One directly verified host + OS and two user-reported Intel results only; no other macOS version was exercised. |
 | Native Windows runtime | User-reported E2E pass (browser PNG capture failed) | Supplied follow-up report received 2026-09-22, **not independently reproduced in this review**: Windows 11 Home 25H2 build 26200.9457, Intel Core Ultra 7 255H x64, 32 GB; Paseobility v2.8.0, Paseo 0.9.0-beta.2, Cua Driver 0.28.2 x86_64. `initialize`→`tools/list` (57) plus actual calls on one persistent MCP connection passed; Calculator `7 + 5 = 12` via UIA/AX with an inspected PNG passed; `verify_state` satisfied across two stable samples (contrast macOS `unknown`). Browser DOM-fixture input and scroll passed, but **viewport and full-page PNG capture failed** (`screenshot_no_frame`, then `browser_timeout`, no image — repeated/clipped output was not visually observed). Reported automation `63 pass / 2 fail / 1 skip`; the two failures stay failed. An earlier readiness-only run and the installer conflict are retained as dated history. |
 | Linux | Unverified | No evidence. |

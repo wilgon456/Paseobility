@@ -94,7 +94,7 @@ v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-bet
 **preview / 제한 검증** 단계로, 직접 검증된 경계는 2026-09-21 Apple Silicon macOS 26.6.2 한
 대, Cua Driver 0.28.2이고, **사용자 보고** Intel Mac mini(`Macmini8,1`, 16GiB,
 macOS 15.8, Paseo 0.8.0)와 8GiB Intel MacBook Pro(`MacBookPro15,2`, macOS 15.7.9;
-E2E는 Paseo 0.7.2, 기존 Cua Driver 0.17.0 재사용) 통과 사례가 기록되어 있고, **사용자 보고** Windows native E2E 통과(2026-09-22 접수; Paseo
+E2E는 Paseo 0.7.2, 기존 Cua Driver 0.17.0 재사용) 통과 사례, 그리고 격리된 PR #3197 테스트 앱(보고된 버전 0.3.1)에서 native MCP `fullPage`가 통과하고 설치된 `0.9.0-beta.2` 앱은 그대로였다는 사례가 기록되어 있고, **사용자 보고** Windows native E2E 통과(2026-09-22 접수; Paseo
 0.9.0-beta.2, Cua Driver 0.28.2 x86_64에서 MCP·Calculator 입력/재확인·`verify_state`
 통과, 다만 viewport·fullpage PNG 캡처는 실패)가 별도로 기록되어 있습니다. 그 밖의 macOS
 버전과 Linux는 **미검증**이며, Windows 브라우저 PNG 캡처는 실패로 보고되었습니다. 자세한 경계와 날짜별 매트릭스는
@@ -437,6 +437,8 @@ PNG 검사), LAN 브라우저 뷰포트·스크롤 캡처 통과. `verify_state`
 복구되었습니다. 동일 호스트의 후속 실행에서도 native `fullPage`는 실패했지만, DPR 1의 두 fixture에 한해 타일링·크롭 대안이 통과했습니다. 이 보고만으로 8GB를 보장하지 않습니다.
 
 또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지 않음): 8GiB Intel MacBook Pro(`MacBookPro15,2`, Core i5-8279U, macOS 15.7.9) — E2E는 Paseo 0.7.2와 기존 Cua Driver 0.17.0 재사용(고정 0.28.2 아님)에서 실행, 7/7 스킬 인식, stdio MCP 54개 도구, AX/Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 + PNG 검사), local-HTML/public-HTTPS 브라우저 입력·뷰포트·스크롤 캡처 통과; `verify_state`는 메뉴 항목 매칭 1건이 제외되었고 role 제한 검사는 `unknown`이며 verify_state 통과는 없습니다. `fullPage`는 뷰포트 3회 반복, 자동 회귀 스위트 실행 기록 없음. Paseo가 0.9.0-beta.2로 바뀐 뒤에는 읽기 전용 조회만 수행했으며, E2E와 새 세션 인식은 재검증하지 않았습니다. 이 8GiB 구성 하나가 동작한 것이며 일반적 8GiB 지원이 아닙니다.
+
+이후 **사용자 보고** 후속에서는 upstream PR [#3197](https://github.com/getpaseo/paseo/pull/3197)(보고된 버전 0.3.1)의 격리된 빌드를 사용했으며, upstream PR 코드를 추가 수정 없이 사용했습니다. 실제 Paseo MCP `fullPage` 캡처가 DPR 2에서 2573px·3511px 페이지를 각각 2회 통과했고 반복 해시도 일치했다고 보고되었습니다. 설치된 Paseo 0.9.0-beta.2 앱은 그대로 두었고, 시도된 0.9 backport는 충돌로 중단되었습니다. 이는 격리된 PR 빌드를 검증한 것이며 설치된 앱에 전달된 수정이 아닙니다.
 
 또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지 않음): Windows 11 25H2 /
 Intel Core Ultra 7 x64 호스트가 native E2E를 통과했습니다 — Paseobility v2.8.0, Paseo
