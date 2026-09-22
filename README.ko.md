@@ -90,17 +90,13 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 
 현재 패키지는 **7개 스킬**입니다. CLI·MCP 도구 규격 호환성은 기존 6개 스킬에 대해
 v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에
-기록되어 있으며, 이 보고서는 **`paseo-cua`를 포함하지 않습니다**. `paseo-cua`는
-**preview / 제한 검증** 단계로, 직접 검증된 경계는 2026-09-21 Apple Silicon macOS 26.6.2 한
-대, Cua Driver 0.28.2이고, **사용자 보고** Intel Mac mini(`Macmini8,1`, 16GiB,
-macOS 15.8, Paseo 0.8.0)와 8GiB Intel MacBook Pro(`MacBookPro15,2`, macOS 15.7.9;
-E2E는 Paseo 0.7.2, 기존 Cua Driver 0.17.0 재사용) 통과 사례, 그리고 격리된 PR #3197 테스트 앱(보고된 버전 0.3.1)에서 native MCP `fullPage`가 통과하고 설치된 `0.9.0-beta.2` 앱은 그대로였다는 사례가 기록되어 있고, **사용자 보고** Windows native E2E 통과(2026-09-22 접수; Paseo
-0.9.0-beta.2, Cua Driver 0.28.2 x86_64에서 MCP·Calculator 입력/재확인·`verify_state`
-통과, 다만 viewport·fullpage PNG 캡처는 실패)가 별도로 기록되어 있습니다. 그 밖의 macOS
-버전과 Linux는 **미검증**이며, Windows 브라우저 PNG 캡처는 실패로 보고되었습니다. 자세한 경계와 날짜별 매트릭스는
-[Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)에 있습니다. 6개 스킬 기록을
-7개 전체에 대한 검증으로 해석하면 안 됩니다. 브라우저 호스트 타임아웃과 Windows
-런타임 동작 범위도 같은 보고서에 구분해 기록합니다.
+기록되어 있으며, 이 보고서는 **`paseo-cua`를 포함하지 않습니다**. 6개 스킬 기록을
+7개 전체에 대한 검증으로 해석하면 안 됩니다. `paseo-cua`는 **preview / 제한 검증**
+단계로, 넓은 범위의 안정적인 Mac·Windows 지원이 아닙니다. 직접 검증된 경계는
+2026-09-21 Apple Silicon macOS 26.6.2 한 대(Cua Driver 0.28.2)이고, Intel macOS와
+Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 날짜별 매트릭스와 함께
+[Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)에 정리되어 있습니다. 2026-09-22
+기준 요약은 아래 [검증 상태](#검증-상태)를 참고하세요.
 
 | 스킬 | 사용 범위 |
 | --- | --- |
@@ -420,50 +416,31 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 기존 6개 스킬의 CLI·MCP 호환성 기록은 v2.7.0 시점
 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에 있으며, **신규 `paseo-cua`는
-포함하지 않습니다**. `paseo-cua`는 **preview / 제한 검증** 단계로, 넓은 범위의 안정적인
-Mac·Windows 지원이 아닙니다. 전체 경계와 날짜별 매트릭스는
-[Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)에 있습니다. 검증된 것: 2026-09-21
-Apple Silicon macOS 26.6.2 한 대, Cua Driver 0.28.2 — installer가 고정 바이너리를 준비하고
-`cua-driver doctor`가 통과했으며, MCP가 OpenCode 클라이언트에 등록·연결되어 56개 도구를
-반환했고, macOS Accessibility·Screen Recording이 드라이버 데몬 identity에서 `true`로
-보고되었고, 백그라운드 Calculator `1 + 1 = 2` 스모크가 입력을 전달해 드라이버 자체 창
-스크린샷으로 시각 확인되었습니다. 별도로 **사용자 보고**(2026-09-22 접수, 이번
-리뷰에서 독립 재현되지 않음): Intel Mac mini(`Macmini8,1`, Core i7-8700B, 16GiB),
-macOS 15.8(24H23), Paseo 0.8.0, Cua Driver 0.28.2 x86_64 — `--skip-cua-driver` 없이
-설치 성공, 7개 스킬 인식, persistent Cua MCP 연결(56개 도구), `doctor` 7개 프로브
-통과, Accessibility·Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 +
-PNG 검사), LAN 브라우저 뷰포트·스크롤 캡처 통과. `verify_state`는 `unknown`,
-`fullPage`는 실패(2x2 반복 타일)했으며, 기존 탭이 아니라 새 탭에서 브라우저 캡처가
-복구되었습니다. 동일 호스트의 후속 실행에서도 native `fullPage`는 실패했지만, DPR 1의 두 fixture에 한해 타일링·크롭 대안이 통과했습니다. 이 보고만으로 8GB를 보장하지 않습니다.
+포함하지 않습니다**. 6개 스킬 기록을 7개 전체에 대한 검증으로 해석하면 안 됩니다.
 
-또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지 않음): 8GiB Intel MacBook Pro(`MacBookPro15,2`, Core i5-8279U, macOS 15.7.9) — E2E는 Paseo 0.7.2와 기존 Cua Driver 0.17.0 재사용(고정 0.28.2 아님)에서 실행, 7/7 스킬 인식, stdio MCP 54개 도구, AX/Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 + PNG 검사), local-HTML/public-HTTPS 브라우저 입력·뷰포트·스크롤 캡처 통과; `verify_state`는 메뉴 항목 매칭 1건이 제외되었고 role 제한 검사는 `unknown`이며 verify_state 통과는 없습니다. `fullPage`는 뷰포트 3회 반복, 자동 회귀 스위트 실행 기록 없음. Paseo가 0.9.0-beta.2로 바뀐 뒤에는 읽기 전용 조회만 수행했으며, E2E와 새 세션 인식은 재검증하지 않았습니다. 이 8GiB 구성 하나가 동작한 것이며 일반적 8GiB 지원이 아닙니다.
+`paseo-cua`는 **preview / 제한 검증** 단계로, 넓은 범위의 안정적인 Mac·Windows
+지원이 아닙니다. 2026-09-22 기준 현재 상태:
 
-이후 **사용자 보고** 후속에서는 upstream PR [#3197](https://github.com/getpaseo/paseo/pull/3197)(보고된 버전 0.3.1)의 격리된 빌드를 사용했으며, upstream PR 코드를 추가 수정 없이 사용했습니다. 실제 Paseo MCP `fullPage` 캡처가 DPR 2에서 2573px·3511px 페이지를 각각 2회 통과했고 반복 해시도 일치했다고 보고되었습니다. 설치된 Paseo 0.9.0-beta.2 앱은 그대로 두었고, 시도된 0.9 backport는 충돌로 중단되었습니다. 이는 격리된 PR 빌드를 검증한 것이며 설치된 앱에 전달된 수정이 아닙니다.
+| 환경 | 네이티브 GUI (Cua) | 브라우저 결과와 제한 |
+| --- | --- | --- |
+| Apple Silicon macOS 26.6.2 · Cua 0.28.2 · 직접 로컬 | Calculator 입력/재확인 + PNG 통과; `verify_state` unknown | viewport 통과; 내장 `fullPage` 실패 |
+| Intel Mac mini 16GiB · macOS 15.8 · Paseo 0.8.0 · Cua 0.28.2 | 사용자 보고: 네이티브 GUI + PNG 통과; `verify_state` unknown | 브라우저 입력·viewport 통과; 내장 `fullPage` 실패; 같은 탭 스크롤+이어붙인 전체 PNG는 DPR 1 두 fixture에서만 통과(범용 helper 아님) |
+| Intel MacBook 8GiB · macOS 15.7.9 · Paseo 0.7.2 · Cua 0.17.0(재사용) | 사용자 보고 이전 E2E: 네이티브 GUI/PNG 통과; `verify_state` unknown | 브라우저 입력·viewport 통과; 내장 `fullPage` 실패; 설치된 0.9.0-beta.2는 그대로 두었고 재검증하지 않음 |
+| MacBook 후속 · 격리된 upstream PR `#3197` 빌드(보고 버전 0.3.1) | — | 사용자 보고: 실제 MCP `browser_screenshot(fullPage:true)`가 DPR 2에서 2573px·3511px를 각각 2회 통과, 반복 SHA 동일 |
+| Windows 11 25H2 · Paseo 0.9.0-beta.2 · Cua 0.28.2 | 사용자 보고: MCP 57개 도구 + Calculator 입력/AX/PNG/`verify_state` 통과 | viewport·fullpage PNG 실패(`screenshot_no_frame` 후 15초 timeout, 이미지 없음); DOM fixture 입력·클릭·스크롤 통과; localhost HTTP 실패; 물리적 브라우저 호스트 불명 |
 
-또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지 않음): Windows 11 25H2 /
-Intel Core Ultra 7 x64 호스트가 native E2E를 통과했습니다 — Paseobility v2.8.0, Paseo
-0.9.0-beta.2, Cua Driver 0.28.2 x86_64에서 하나의 persistent MCP 연결로
-`initialize`→`tools/list`(57개)와 실제 호출이 동작했고, Calculator `7 + 5 = 12`를
-UIA/AX와 검사한 PNG로 확인했으며, `verify_state`는 통과했습니다(대비: macOS는 `unknown`).
-브라우저 DOM fixture 입력·스크롤은 통과했지만 **viewport·fullpage PNG 캡처는
-실패**했습니다(`screenshot_no_frame` 후 `browser_timeout`). 이전 readiness-only 실행과
-미해결 installer 충돌은 날짜가 표시된 이력으로 남아 있습니다.
+참고:
 
-**앞선 직접 Apple Silicon 실행과 보고된 macOS 결과에 한정**: 검증하지 않은 것 — 이미 실행 중인
-Paseo 세션에서의 도구 노출(provider를 재시작하지 않았음), macOS Calculator 결과에 대한
-드라이버의 `verify_state`(`unknown` 반환 — 이는 Cua 자체의 관찰이 불완전했다는 뜻이며
-플랫폼에 대한 단정이 아닙니다), 전용 ScreenCaptureKit 캡처 프로브(`not_checked`).
-Windows에서는 `verify_state`가 **통과**했습니다. 그 밖의 macOS 버전과 Linux는 **미검증**입니다.
-바이너리 설치를 권한 준비 완료로 오해하면 안 되며, 7개 스킬 전체가 런타임 호환
-검증되었다고 해석해서도 안 됩니다.
-임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다. 제공된 Intel Mac mini 실행은 별도로 41개
-테스트(cleanup 11 + share 15 + scanner 13 + shell 2)를 보고하며, 이는 이전 48개 테스트
-총계의 migration 7개를 제외한 수치입니다. PowerShell wrapper는 이 Mac에서
-`pwsh`가 없어 소스 검토만 했습니다. 제공된 Windows 보고는 스킬 migration과 런타임
-수동 복구를 확인했지만, 런타임 자동 설치 충돌은 미해결로 남아 있습니다
-([플랫폼 검증 상태](docs/cua-platform-validation.md) 참고). 세부 결과와 제한은
-[현재 호환성 보고서](docs/compatibility-0.9.0-beta.2.md)를
-참고하세요. 아래는 이전 버전에 기록된 검증이며 현재 버전의 증거로 사용하지 않습니다.
+- 이번 리뷰에서 직접 확인한 것은 Apple Silicon 행 하나뿐이며, Intel Mac과 Windows 행은 **사용자 보고**로 독립 재현되지 않았습니다. MacBook 후속은 upstream PR 빌드를 제품 코드 추가 수정 없이 사용한 것으로, Paseobility가 릴리스·설치한 수정이 **아닙니다** — 0.9 backport는 충돌로 중단했고, 0.3.1 다운그레이드는 권장하지 않습니다.
+- 네이티브 통과는 좁게 시험한 흐름에 한정되며 플랫폼 전체 지원이 아닙니다. 8GiB는 최소 RAM 보장이 아니고, 메모리는 최대 사용량까지 측정하지 않았습니다.
+- 보고된 호스트에서 Windows 자동 런타임 설치는 **미해결**입니다: 기존 비정션(non-junction) `.local/bin`이 upstream installer와 충돌했습니다. 수동 하드링크로 드라이버를 복구했지만, 매끄러운 자동 설치 통과를 입증하지는 **않습니다**. Windows catalog에서 명시 전용 스킬 2개는 여전히 확인되지 않았습니다.
+- 테스트 수는 보고 기준이며 이번 README 업데이트에서 재실행하지 **않았습니다**: Intel Mac mini 41개(cleanup 11 + share 15 + scanner 13 + shell 2); Windows 63 passed / 2 failed / 1 skipped, 이전과 동일.
+- PowerShell wrapper는 이 Mac에서 `pwsh`가 없어 소스 검토만 했습니다. 제공된 Windows 보고는 스킬 migration과 런타임 수동 복구를 확인했습니다. 임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다.
+- v2.7 6개 스킬 호환 문서는 7개 전체의 런타임을 증명하지 **않습니다**. 이 문서 업데이트는 Paseo 앱이나 캡처 엔진을 수정하지 않습니다. 바이너리 설치를 권한 준비 완료로 오해하면 안 됩니다. 그 밖의 macOS 버전과 Linux는 **미검증**입니다.
+
+세부 내용과 선택형 Playwright 대안, 호스트별 프로브는
+[Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)와
+[호환성 보고서](docs/compatibility-0.9.0-beta.2.md)를 참고하세요. 아래는 이전 버전에 기록된 검증이며 현재 버전의 증거로 사용하지 않습니다.
 
 ### 과거 검증 기록 — 이번 통합본 검증과 별개
 
