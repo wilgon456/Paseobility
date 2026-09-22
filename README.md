@@ -61,7 +61,7 @@ Selecting `paseo-cua`, or installing the full package, also prepares the trycua 
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
 - A manual `cp -R` / `Copy-Item` copies documents only and cannot auto-install the Cua Driver runtime.
 
-The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`. `paseo-cua` is **preview / limited validation**: its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; a separate **user-reported** pass on an Intel Mac mini (`Macmini8,1`, 16 GiB, macOS 15.8, Paseo 0.8.0) is recorded; and a **user-reported** Windows result (received 2026-09-22) covered install recovery and readiness only, not end-to-end behavior. Other macOS versions, native Windows end-to-end GUI behavior, and Linux remain **unverified**. See the [Cua platform validation status](docs/cua-platform-validation.md). The six-skill record must not be read as covering all seven. Browser host timeouts and Windows runtime behavior are also recorded in that report.
+The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`. `paseo-cua` is **preview / limited validation**: its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on an Intel Mac mini (`Macmini8,1`, 16 GiB, macOS 15.8, Paseo 0.8.0) and an 8 GiB Intel MacBook Pro (`MacBookPro15,2`, macOS 15.7.9; E2E on Paseo 0.7.2 with a reused Cua Driver 0.17.0) are recorded; and a **user-reported** Windows result (received 2026-09-22) covered install recovery and readiness only, not end-to-end behavior. Other macOS versions, native Windows end-to-end GUI behavior, and Linux remain **unverified**. See the [Cua platform validation status](docs/cua-platform-validation.md). The six-skill record must not be read as covering all seven. Browser host timeouts and Windows runtime behavior are also recorded in that report.
 
 | Skill | Scope |
 | --- | --- |
@@ -358,7 +358,19 @@ macOS 15.8 (24H23) with Paseo 0.8.0 and Cua Driver 0.28.2 x86_64 — install suc
 7 probes ok, Accessibility and Screen Recording `true`, Calculator `7 + 5 = 12` with accessibility
 read-back and an inspected PNG, plus LAN-browser viewport/scroll capture; `verify_state` returned
 `unknown` and `fullPage` failed (2x2 repeated tiles); a new tab, not the existing one, restored
-browser capture. No 8 GB guarantee or benchmark-based limit follows from that report. Also **user-reported** (received 2026-09-22, not independently reproduced in this
+browser capture. No 8 GB claim follows from the Mac mini result alone.
+
+Also **user-reported** (received 2026-09-22, not independently reproduced in this
+review): an 8 GiB Intel MacBook Pro (`MacBookPro15,2`, Core i5-8279U, macOS 15.7.9) —
+its E2E ran on Paseo 0.7.2 with a reused existing Cua Driver 0.17.0 (not the pinned
+0.28.2); 7/7 skills were recognized, stdio MCP returned 54 tools, AX/Screen Recording
+reported `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), and
+local-HTML/public-HTTPS browser input/viewport/scroll capture passed. `verify_state`
+matched only a false-positive label and stayed `unknown`; `fullPage` repeated the
+viewport three times; no automated suite is recorded. After Paseo changed to 0.9.0-beta.2, only a read-only lookup was performed; E2E and fresh-session discovery were not repeated. This one 8 GiB configuration worked; it is not
+blanket 8 GiB support.
+
+Also **user-reported** (received 2026-09-22, not independently reproduced in this
 review): a Windows 11 25H2 / Intel Core Ultra 7 x64 host reached install recovery and readiness
 only — the official installer exited non-zero at the Cua runtime stage and was manually recovered to
 Cua Driver 0.28.2, `doctor` readiness passed, and the only functional checks were a CLI tool listing
@@ -369,7 +381,7 @@ session (the provider was not restarted), the driver's `verify_state` on the Cal
 returned `unknown`, because Cua's own observation of that target was incomplete — not a platform
 statement), a dedicated ScreenCaptureKit capture probe (`not_checked`), every other macOS version,
 native Windows end-to-end GUI behavior, and Linux. Do not read binary presence as permission
-readiness, and do not treat all 7 skills as runtime-compatibility-verified. Isolated-path install/migration and helper regression tests were confirmed. The supplied Intel run
+readiness, and do not treat all 7 skills as runtime-compatibility-verified. Isolated-path install/migration and helper regression tests were confirmed. The supplied Intel Mac mini run
 separately reports 41 tests: cleanup 11 + share 15 + scanner 13 + shell 2; this excludes the 7
 migration tests in the prior 48-test total. The PowerShell wrappers were
 source-reviewed only on this Mac, because `pwsh` is unavailable here; the supplied Windows report

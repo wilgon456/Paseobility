@@ -165,6 +165,81 @@ The browser `fullPage` failure matches the open upstream issue
 the recheck section explains why it is a matching symptom and not proof of this
 host's exact cause or version.
 
+## 2026-09-22 user-reported Intel 8 GiB MacBook Pro result
+
+A separate run on an **Intel MacBook Pro (`MacBookPro15,2`, 8 GiB)** was reported
+by a user; it was **not** executed or reproduced in this review (supplied
+evidence). Report received 2026-09-22. Reported basic flows passed; limitations
+remain. This is the only 8 GiB Intel data point recorded here: it confirms one
+working 8 GiB configuration, not blanket 8 GiB support and not other Cua
+versions.
+
+| Field | Reported value |
+| --- | --- |
+| Host | `MacBookPro15,2`, Intel Core i5-8279U 2.40 GHz, 4 cores, x86_64, 8 GiB |
+| OS | macOS 15.7.9, build 24G830 |
+| Paseo (E2E) | app and CLI 0.7.2 |
+| Paseo (later read-only snapshot) | app / CLI / daemon 0.9.0-beta.2; daemon started 12:56:14 KST, actor/cause unknown |
+| Cua Driver | reused existing 0.17.0 (app/CLI), **not** the pinned 0.28.2; no auto-upgrade |
+| Installed Paseobility | v2.8.0, public `main` commit `cf7af69809` |
+| Provider/client | initial: Paseo 0.7.2 with Grok `grok-4.6` (Grok client version unknown); subsequent: Codex CLI 0.155.1 `gpt-5.6-sol` |
+| Test window | 2026-09-22 11:40:56–12:48:49 KST; read-only snapshot 13:01:55–13:05:43 |
+| Install | official installer `--migrate-skills --no-context --with-claude`; both skill roots had 7 dirs matching the installed diff and 28 source files were later recounted (no new current-file hash check asserted); 9 prior skills backed up per root; 5 obsolete migrated; unrelated skills preserved |
+| New session | 7/7 skills recognized |
+| MCP integration | stdio MCP `initialize` / `tools/list` returned 54 tools |
+| Readiness | AX and Screen Recording `true` after unlock and human grants |
+| Native GUI smoke | 12:47:39 Calculator `7 + 5 = 12` via a separate Calculator AX expression/result and an inspected `396x700` PNG (`screenshot_frame_valid: true`) |
+| `verify_state` | matched `label_contains 12` on AXMenuItem `12` (false positive excluded); the stricter `AXStaticText + 12` returned `unknown` (`observation_unavailable`) — no pass |
+| Browser | local HTML inserted into the tab DOM: input `7 + 5`, click Compute, Result `12`; an additional public HTTPS page also verified `12`; viewport PNG inspected and scroll hit the bottom marker |
+| `fullPage` | repeated the viewport three times — failed |
+| Regression tests | none recorded; the reported `12 pass / 1 fail / 1 unknown` are report rows, not a test-runner result, and no Mac mini `41` inference is drawn |
+| Cleanup | calculator/server/tab/agent cleanup reported; other agents preserved |
+
+Reported limits and clarifications:
+
+- Supplied evidence, **not independently reproduced in this review**.
+- The E2E ran on **Paseo 0.7.2**; the later read-only snapshot showed
+  0.9.0-beta.2 with a daemon start whose actor/cause is unknown. Do not call this
+  a 0.9.0-beta.2 E2E, and do not claim new-session discovery for the updated
+  version. Successful **reuse** of a working `0.17.0` driver is a separate policy
+  result and is not proof that a new `0.28.2` install works on this host.
+- The `54`-tool count differs from the Mac mini `56` and Windows `57`; the
+  Cua/Paseo versions and OS differ, so the counts alone do not demonstrate
+  missing tools or a regression.
+- Error context: with the session initially locked and permissions not yet
+  granted, the reported error/field was `px_capture_unavailable` with
+  `screenshot_frame_valid: false` and a black browser frame, recovered after
+  unlock and grants. An AX-click daemon-connection drop had unknown cause;
+  `press_key` completed and later fresh Calculator AX clicks succeeded. A
+  `127.0.0.1` HTTP attempt was refused and a LAN attempt returned an empty
+  response / socket 57; the reporter observed the browser host was another
+  machine. This does not generalize to "localhost is unsupported"; the
+  DOM-injection and HTTPS-fallback scopes are clear, and Mac-localhost HTTP
+  access was not proven.
+- The `fullPage` three-times repetition relates to the still-open upstream PR
+  [getpaseo/paseo#3197](https://github.com/getpaseo/paseo/pull/3197); it remains
+  open as of 2026-09-22 and is not a released fix.
+- A separate old checkout of `2.5.2` (SHA `8226e3b`) is not the installed `2.8.0`
+  source `cf7af69809`.
+- Memory: the user labelled samples before/during/after/current but gave no exact
+  individual times, and the final current capture is **after** the Paseo version
+  change.
+
+  | Metric | before | during | after | current |
+  | --- | --- | --- | --- | --- |
+  | `memory_pressure -Q` free (%) | 58 | 54 (retry 52) | 56 | 55 |
+  | swap used (MB) | 2053 | 1829 (retry ~1567) | 1829 | 2083 / 3072 allocated |
+  | Cua RSS | no daemon | 15–21 MiB | stopped | 22.7 MiB |
+  | Paseo daemon RSS | unmeasured | 156–160 MiB | later ~184 MiB | 161.8 MiB |
+
+  Current Paseo: 7-process sum 439.7 MiB — not an E2E-time aggregate; only daemon
+  RSS was recorded during the earlier run. Current physical memory: 7693 MB used, 497 unused, compressor
+  1168 MB. No peak, benchmark, incremental-causality, or durability/concurrency
+  claim follows; RSS may double-count shared pages, and the `memory_pressure`
+  free percentage is a command-reported metric, not raw physical RAM or a
+  pressure color. This confirms a functional 8 GiB configuration on this one
+  config only — not blanket 8 GiB support and not other Cua versions.
+
 ## 2026-09-22 user-reported Windows result (readiness only)
 
 A separate run on a **Lenovo 21SX002EKD laptop** (Intel Core Ultra 7 255H,
@@ -236,14 +311,15 @@ Reported limits and missing fields:
 | Target | Status | Basis / limits |
 | --- | --- | --- |
 | Apple Silicon macOS 26.6.2 — single host | Preview, partial | 2026-09-21, Cua Driver 0.28.2: driver install + self-check, MCP registered/connected (56 tools, OpenCode), Accessibility + Screen Recording `true` under the driver-daemon identity, Calculator background AX input and screenshot verified. Live Paseo-session exposure, the driver's `verify_state` on that target, and a dedicated capture probe remain unconfirmed. |
-| Intel macOS | User-reported functional pass | Supplied report received 2026-09-22, **not independently reproduced in this review**: `Macmini8,1` (Intel Core i7-8700B, 16 GiB), macOS 15.8 build 24H23, Paseo 0.8.0, Cua Driver 0.28.2 x86_64, Paseobility v2.8.0. Install succeeded without `--skip-cua-driver`; all 7 skills recognized, persistent MCP connected (56 tools), `doctor` 7 probes ok, Accessibility + Screen Recording `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), LAN-browser viewport/scroll capture passed. `verify_state` `unknown`; `fullPage` failed (2x2 repeated tiles, `#3196`). Regression 41 = cleanup 11 + share 15 + scanner 13 + shell 2, separate from the prior 48 (migration 7). No 8 GB guarantee or benchmark-based limit. |
-| Other macOS versions | Unverified | One directly verified host + OS and one user-reported Intel result only; no other macOS version was exercised. |
+| Intel macOS — 16 GiB Mac mini | User-reported functional pass | Supplied report received 2026-09-22, **not independently reproduced in this review**: `Macmini8,1` (Intel Core i7-8700B, 16 GiB), macOS 15.8 build 24H23, Paseo 0.8.0, Cua Driver 0.28.2 x86_64, Paseobility v2.8.0. Install succeeded without `--skip-cua-driver`; all 7 skills recognized, persistent MCP connected (56 tools), `doctor` 7 probes ok, Accessibility + Screen Recording `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), LAN-browser viewport/scroll capture passed. `verify_state` `unknown`; `fullPage` failed (2x2 repeated tiles, `#3196`). Regression 41 = cleanup 11 + share 15 + scanner 13 + shell 2, separate from the prior 48 (migration 7). No 8 GB claim from the Mac mini result alone. |
+| Intel macOS — 8 GiB MacBook Pro | Reported basic flows passed; limitations remain | Supplied report received 2026-09-22, **not independently reproduced in this review**: `MacBookPro15,2` (Intel Core i5-8279U, 8 GiB), macOS 15.7.9 build 24G830, Paseobility v2.8.0. E2E ran on Paseo 0.7.2 with a **reused existing Cua Driver 0.17.0** (not the pinned 0.28.2; no auto-upgrade); 7/7 skills recognized, stdio MCP returned 54 tools, AX/Screen Recording `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), local-HTML/public-HTTPS browser viewport/scroll capture passed. `verify_state` matched only a false-positive label and stayed `unknown`; `fullPage` repeated the viewport three times; no automated suite is recorded. This one 8 GiB configuration worked; it is not blanket 8 GiB support. |
+| Other macOS versions | Unverified | One directly verified host + OS and two user-reported Intel results only; no other macOS version was exercised. |
 | Native Windows runtime | User-reported partial readiness; E2E unverified | User report received 2026-09-22, **not independently reproduced in this review**: Windows 11 Home 25H2 build 26200.9457, Intel Core Ultra 7 255H x64, 32 GB; Paseobility v2.8.0. The official installer exited non-zero at the Cua runtime stage and was recovered manually to Cua Driver 0.28.2. `doctor` readiness passed (interactive desktop, UIAutomation, window inventory 17); the only functional checks were a CLI tool listing (57 tools, not an MCP handshake) and a browser open/snapshot/close. Native app input/read-back/screenshot/`verify_state`, a persistent MCP connection, and all regression suites were not run. Not a Windows pass. |
 | Linux | Unverified | No evidence. |
 
 The Apple Silicon entry was directly exercised in this review. The Intel macOS
-and Windows entries are supplied test reports with the limits recorded above;
-they are not blanket platform support guarantees.
+(Mac mini and MacBook) and Windows entries are supplied test reports with the
+limits recorded above; they are not blanket platform support guarantees.
 
 A past Windows-success entry in the compatibility report is a prior-version
 record for other skills and is not evidence for the current Cua Driver runtime.

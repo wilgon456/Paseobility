@@ -93,7 +93,8 @@ v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-bet
 기록되어 있으며, 이 보고서는 **`paseo-cua`를 포함하지 않습니다**. `paseo-cua`는
 **preview / 제한 검증** 단계로, 직접 검증된 경계는 2026-09-21 Apple Silicon macOS 26.6.2 한
 대, Cua Driver 0.28.2이고, **사용자 보고** Intel Mac mini(`Macmini8,1`, 16GiB,
-macOS 15.8, Paseo 0.8.0) 통과 사례, 그리고 설치
+macOS 15.8, Paseo 0.8.0)와 8GiB Intel MacBook Pro(`MacBookPro15,2`, macOS 15.7.9;
+E2E는 Paseo 0.7.2, 기존 Cua Driver 0.17.0 재사용) 통과 사례가 기록되어 있고, 설치
 복구·준비 상태까지만 확인되고 end-to-end는 미검증인 **사용자 보고** Windows 결과
 (2026-09-22 접수)가 별도로 기록되어 있습니다. 그 밖의 macOS 버전, native
 Windows의 end-to-end 동작, Linux는 **미검증**입니다. 자세한 경계와 날짜별 매트릭스는
@@ -433,7 +434,11 @@ macOS 15.8(24H23), Paseo 0.8.0, Cua Driver 0.28.2 x86_64 — `--skip-cua-driver`
 통과, Accessibility·Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 +
 PNG 검사), LAN 브라우저 뷰포트·스크롤 캡처 통과. `verify_state`는 `unknown`,
 `fullPage`는 실패(2x2 반복 타일)했으며, 기존 탭이 아니라 새 탭에서 브라우저 캡처가
-복구되었습니다. 이 보고에서 8GB 보장이나 벤치마크 기반 한도를 주장하지 않습니다. 또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지
+복구되었습니다. 이 보고만으로 8GB를 보장하지 않습니다.
+
+또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지 않음): 8GiB Intel MacBook Pro(`MacBookPro15,2`, Core i5-8279U, macOS 15.7.9) — E2E는 Paseo 0.7.2와 기존 Cua Driver 0.17.0 재사용(고정 0.28.2 아님)에서 실행, 7/7 스킬 인식, stdio MCP 54개 도구, AX/Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 + PNG 검사), local-HTML/public-HTTPS 브라우저 입력·뷰포트·스크롤 캡처 통과; `verify_state`는 메뉴 항목 매칭 1건이 제외되었고 role 제한 검사는 `unknown`이며 verify_state 통과는 없습니다. `fullPage`는 뷰포트 3회 반복, 자동 회귀 스위트 실행 기록 없음. Paseo가 0.9.0-beta.2로 바뀐 뒤에는 읽기 전용 조회만 수행했으며, E2E와 새 세션 인식은 재검증하지 않았습니다. 이 8GiB 구성 하나가 동작한 것이며 일반적 8GiB 지원이 아닙니다.
+
+또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지
 않음): Windows 11 25H2 / Intel Core Ultra 7 x64 호스트가 설치 복구와 준비 상태까지만
 확인했습니다 — 공식 installer가 Cua 런타임 단계에서 0이 아닌 코드로 종료되어 Cua
 Driver 0.28.2로 수동 복구했고, `doctor` 준비 상태 검사는 통과했으며, 기능 확인은
@@ -445,7 +450,7 @@ Windows 통과가 아닙니다. 검증하지 않은 것: 이미 실행 중인 Pa
 아닙니다), 전용 ScreenCaptureKit 캡처 프로브(`not_checked`), 그 밖의 macOS 버전,
 native Windows의 end-to-end 동작, Linux입니다. 바이너리 설치를 권한 준비 완료로
 오해하면 안 되며, 7개 스킬 전체가 런타임 호환 검증되었다고 해석해서도 안 됩니다.
-임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다. 제공된 Intel 실행은 별도로 41개
+임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다. 제공된 Intel Mac mini 실행은 별도로 41개
 테스트(cleanup 11 + share 15 + scanner 13 + shell 2)를 보고하며, 이는 이전 48개 테스트
 총계의 migration 7개를 제외한 수치입니다. PowerShell wrapper는 이 Mac에서
 `pwsh`가 없어 소스 검토만 했습니다. 제공된 Windows 보고는 스킬 migration과 런타임
