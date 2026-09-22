@@ -61,7 +61,7 @@ Selecting `paseo-cua`, or installing the full package, also prepares the trycua 
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
 - A manual `cp -R` / `Copy-Item` copies documents only and cannot auto-install the Cua Driver runtime.
 
-The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`. `paseo-cua` is **preview / limited validation**: its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on an Intel Mac mini (`Macmini8,1`, 16 GiB, macOS 15.8, Paseo 0.8.0) and an 8 GiB Intel MacBook Pro (`MacBookPro15,2`, macOS 15.7.9; E2E on Paseo 0.7.2 with a reused Cua Driver 0.17.0) are recorded; and a **user-reported** Windows result (received 2026-09-22) covered install recovery and readiness only, not end-to-end behavior. Other macOS versions, native Windows end-to-end GUI behavior, and Linux remain **unverified**. See the [Cua platform validation status](docs/cua-platform-validation.md). The six-skill record must not be read as covering all seven. Browser host timeouts and Windows runtime behavior are also recorded in that report.
+The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`. `paseo-cua` is **preview / limited validation**: its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on an Intel Mac mini (`Macmini8,1`, 16 GiB, macOS 15.8, Paseo 0.8.0) and an 8 GiB Intel MacBook Pro (`MacBookPro15,2`, macOS 15.7.9; E2E on Paseo 0.7.2 with a reused Cua Driver 0.17.0) are recorded; and a **user-reported** Windows native E2E pass (received 2026-09-22; Paseo 0.9.0-beta.2 with Cua Driver 0.28.2 x86_64, where MCP, native Calculator input/read-back, and `verify_state` passed but viewport/full-page PNG capture failed). Other macOS versions and Linux remain **unverified**, and Windows browser PNG capture is reported failing. See the [Cua platform validation status](docs/cua-platform-validation.md). The six-skill record must not be read as covering all seven. Browser host timeouts and Windows runtime behavior are also recorded in that report.
 
 | Skill | Scope |
 | --- | --- |
@@ -358,7 +358,9 @@ macOS 15.8 (24H23) with Paseo 0.8.0 and Cua Driver 0.28.2 x86_64 — install suc
 7 probes ok, Accessibility and Screen Recording `true`, Calculator `7 + 5 = 12` with accessibility
 read-back and an inspected PNG, plus LAN-browser viewport/scroll capture; `verify_state` returned
 `unknown` and `fullPage` failed (2x2 repeated tiles); a new tab, not the existing one, restored
-browser capture. No 8 GB claim follows from the Mac mini result alone.
+browser capture. A follow-up run on the same host kept native `fullPage` failing but accepted a
+DPR-1 tiling/crop workaround that passed only for its two fixtures. No 8 GB claim follows from
+the Mac mini result alone.
 
 Also **user-reported** (received 2026-09-22, not independently reproduced in this
 review): an 8 GiB Intel MacBook Pro (`MacBookPro15,2`, Core i5-8279U, macOS 15.7.9) —
@@ -371,17 +373,21 @@ viewport three times; no automated suite is recorded. After Paseo changed to 0.9
 blanket 8 GiB support.
 
 Also **user-reported** (received 2026-09-22, not independently reproduced in this
-review): a Windows 11 25H2 / Intel Core Ultra 7 x64 host reached install recovery and readiness
-only — the official installer exited non-zero at the Cua runtime stage and was manually recovered to
-Cua Driver 0.28.2, `doctor` readiness passed, and the only functional checks were a CLI tool listing
-(57 tools, not an MCP handshake) and a browser open/snapshot/close; native app
-input/read-back/screenshot/`verify_state` and all regression suites were not run, so it is **not** a
-Windows pass. Not verified: exposure inside an **already-running** Paseo
-session (the provider was not restarted), the driver's `verify_state` on the Calculator result (it
-returned `unknown`, because Cua's own observation of that target was incomplete — not a platform
-statement), a dedicated ScreenCaptureKit capture probe (`not_checked`), every other macOS version,
-native Windows end-to-end GUI behavior, and Linux. Do not read binary presence as permission
-readiness, and do not treat all 7 skills as runtime-compatibility-verified. Isolated-path install/migration and helper regression tests were confirmed. The supplied Intel Mac mini run
+review): a Windows 11 25H2 / Intel Core Ultra 7 x64 host passed a native E2E — Paseobility v2.8.0
+on Paseo 0.9.0-beta.2 with Cua Driver 0.28.2 x86_64 — one persistent MCP connection served
+`initialize`→`tools/list` (57) and actual calls, Calculator `7 + 5 = 12` was verified via UIA/AX
+with an inspected PNG, and `verify_state` was satisfied (contrast macOS `unknown`). Browser
+DOM-fixture input and scroll passed, but **viewport and full-page PNG capture failed**
+(`screenshot_no_frame`, then `browser_timeout`, no image). An earlier readiness-only run and the
+unresolved installer conflict remain as dated history.
+
+Scoped to the **earlier direct Apple Silicon run and the reported macOS results**: not verified —
+exposure inside an **already-running** Paseo session (the provider was not restarted), the driver's
+`verify_state` on the macOS Calculator result (it returned `unknown`, because Cua's own observation
+of that target was incomplete — not a platform statement), and a dedicated ScreenCaptureKit capture
+probe (`not_checked`). On Windows the `verify_state` check **passed**. Other macOS versions and Linux
+remain **unverified**. Do not read binary presence as permission readiness, and do not treat all 7
+skills as runtime-compatibility-verified. Isolated-path install/migration and helper regression tests were confirmed. The supplied Intel Mac mini run
 separately reports 41 tests: cleanup 11 + share 15 + scanner 13 + shell 2; this excludes the 7
 migration tests in the prior 48-test total. The PowerShell wrappers were
 source-reviewed only on this Mac, because `pwsh` is unavailable here; the supplied Windows report

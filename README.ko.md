@@ -94,10 +94,10 @@ v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-bet
 **preview / 제한 검증** 단계로, 직접 검증된 경계는 2026-09-21 Apple Silicon macOS 26.6.2 한
 대, Cua Driver 0.28.2이고, **사용자 보고** Intel Mac mini(`Macmini8,1`, 16GiB,
 macOS 15.8, Paseo 0.8.0)와 8GiB Intel MacBook Pro(`MacBookPro15,2`, macOS 15.7.9;
-E2E는 Paseo 0.7.2, 기존 Cua Driver 0.17.0 재사용) 통과 사례가 기록되어 있고, 설치
-복구·준비 상태까지만 확인되고 end-to-end는 미검증인 **사용자 보고** Windows 결과
-(2026-09-22 접수)가 별도로 기록되어 있습니다. 그 밖의 macOS 버전, native
-Windows의 end-to-end 동작, Linux는 **미검증**입니다. 자세한 경계와 날짜별 매트릭스는
+E2E는 Paseo 0.7.2, 기존 Cua Driver 0.17.0 재사용) 통과 사례가 기록되어 있고, **사용자 보고** Windows native E2E 통과(2026-09-22 접수; Paseo
+0.9.0-beta.2, Cua Driver 0.28.2 x86_64에서 MCP·Calculator 입력/재확인·`verify_state`
+통과, 다만 viewport·fullpage PNG 캡처는 실패)가 별도로 기록되어 있습니다. 그 밖의 macOS
+버전과 Linux는 **미검증**이며, Windows 브라우저 PNG 캡처는 실패로 보고되었습니다. 자세한 경계와 날짜별 매트릭스는
 [Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)에 있습니다. 6개 스킬 기록을
 7개 전체에 대한 검증으로 해석하면 안 됩니다. 브라우저 호스트 타임아웃과 Windows
 런타임 동작 범위도 같은 보고서에 구분해 기록합니다.
@@ -434,22 +434,26 @@ macOS 15.8(24H23), Paseo 0.8.0, Cua Driver 0.28.2 x86_64 — `--skip-cua-driver`
 통과, Accessibility·Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 +
 PNG 검사), LAN 브라우저 뷰포트·스크롤 캡처 통과. `verify_state`는 `unknown`,
 `fullPage`는 실패(2x2 반복 타일)했으며, 기존 탭이 아니라 새 탭에서 브라우저 캡처가
-복구되었습니다. 이 보고만으로 8GB를 보장하지 않습니다.
+복구되었습니다. 동일 호스트의 후속 실행에서도 native `fullPage`는 실패했지만, DPR 1의 두 fixture에 한해 타일링·크롭 대안이 통과했습니다. 이 보고만으로 8GB를 보장하지 않습니다.
 
 또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지 않음): 8GiB Intel MacBook Pro(`MacBookPro15,2`, Core i5-8279U, macOS 15.7.9) — E2E는 Paseo 0.7.2와 기존 Cua Driver 0.17.0 재사용(고정 0.28.2 아님)에서 실행, 7/7 스킬 인식, stdio MCP 54개 도구, AX/Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 + PNG 검사), local-HTML/public-HTTPS 브라우저 입력·뷰포트·스크롤 캡처 통과; `verify_state`는 메뉴 항목 매칭 1건이 제외되었고 role 제한 검사는 `unknown`이며 verify_state 통과는 없습니다. `fullPage`는 뷰포트 3회 반복, 자동 회귀 스위트 실행 기록 없음. Paseo가 0.9.0-beta.2로 바뀐 뒤에는 읽기 전용 조회만 수행했으며, E2E와 새 세션 인식은 재검증하지 않았습니다. 이 8GiB 구성 하나가 동작한 것이며 일반적 8GiB 지원이 아닙니다.
 
-또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지
-않음): Windows 11 25H2 / Intel Core Ultra 7 x64 호스트가 설치 복구와 준비 상태까지만
-확인했습니다 — 공식 installer가 Cua 런타임 단계에서 0이 아닌 코드로 종료되어 Cua
-Driver 0.28.2로 수동 복구했고, `doctor` 준비 상태 검사는 통과했으며, 기능 확인은
-CLI 도구 목록(57개 도구, MCP 핸드셰이크 아님)과 브라우저 열기·스냅샷·닫기뿐이었습니다.
-native 앱 입력·재확인·스크린샷·`verify_state`와 모든 회귀 스위트는 실행되지 않아
-Windows 통과가 아닙니다. 검증하지 않은 것: 이미 실행 중인 Paseo 세션에서의 도구
-노출(provider를 재시작하지 않았음), Calculator 결과에 대한 드라이버의 `verify_state`
-(`unknown` 반환 — 이는 Cua 자체의 관찰이 불완전했다는 뜻이며 플랫폼에 대한 단정이
-아닙니다), 전용 ScreenCaptureKit 캡처 프로브(`not_checked`), 그 밖의 macOS 버전,
-native Windows의 end-to-end 동작, Linux입니다. 바이너리 설치를 권한 준비 완료로
-오해하면 안 되며, 7개 스킬 전체가 런타임 호환 검증되었다고 해석해서도 안 됩니다.
+또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지 않음): Windows 11 25H2 /
+Intel Core Ultra 7 x64 호스트가 native E2E를 통과했습니다 — Paseobility v2.8.0, Paseo
+0.9.0-beta.2, Cua Driver 0.28.2 x86_64에서 하나의 persistent MCP 연결로
+`initialize`→`tools/list`(57개)와 실제 호출이 동작했고, Calculator `7 + 5 = 12`를
+UIA/AX와 검사한 PNG로 확인했으며, `verify_state`는 통과했습니다(대비: macOS는 `unknown`).
+브라우저 DOM fixture 입력·스크롤은 통과했지만 **viewport·fullpage PNG 캡처는
+실패**했습니다(`screenshot_no_frame` 후 `browser_timeout`). 이전 readiness-only 실행과
+미해결 installer 충돌은 날짜가 표시된 이력으로 남아 있습니다.
+
+**앞선 직접 Apple Silicon 실행과 보고된 macOS 결과에 한정**: 검증하지 않은 것 — 이미 실행 중인
+Paseo 세션에서의 도구 노출(provider를 재시작하지 않았음), macOS Calculator 결과에 대한
+드라이버의 `verify_state`(`unknown` 반환 — 이는 Cua 자체의 관찰이 불완전했다는 뜻이며
+플랫폼에 대한 단정이 아닙니다), 전용 ScreenCaptureKit 캡처 프로브(`not_checked`).
+Windows에서는 `verify_state`가 **통과**했습니다. 그 밖의 macOS 버전과 Linux는 **미검증**입니다.
+바이너리 설치를 권한 준비 완료로 오해하면 안 되며, 7개 스킬 전체가 런타임 호환
+검증되었다고 해석해서도 안 됩니다.
 임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다. 제공된 Intel Mac mini 실행은 별도로 41개
 테스트(cleanup 11 + share 15 + scanner 13 + shell 2)를 보고하며, 이는 이전 48개 테스트
 총계의 migration 7개를 제외한 수치입니다. PowerShell wrapper는 이 Mac에서
