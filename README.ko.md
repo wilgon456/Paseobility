@@ -92,8 +92,8 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에
 기록되어 있으며, 이 보고서는 **`paseo-cua`를 포함하지 않습니다**. `paseo-cua`는
 **preview / 제한 검증** 단계로, 직접 검증된 경계는 2026-09-21 Apple Silicon macOS 26.6.2 한
-대, Cua Driver 0.28.2이고, 정확한 macOS·Paseo·Cua Driver 버전과 테스트 날짜가
-아직 제공되지 않은 **사용자 보고** Intel Mac mini(16GB) 통과 사례, 그리고 설치
+대, Cua Driver 0.28.2이고, **사용자 보고** Intel Mac mini(`Macmini8,1`, 16GiB,
+macOS 15.8, Paseo 0.8.0) 통과 사례, 그리고 설치
 복구·준비 상태까지만 확인되고 end-to-end는 미검증인 **사용자 보고** Windows 결과
 (2026-09-22 접수)가 별도로 기록되어 있습니다. 그 밖의 macOS 버전, native
 Windows의 end-to-end 동작, Linux는 **미검증**입니다. 자세한 경계와 날짜별 매트릭스는
@@ -427,12 +427,13 @@ Apple Silicon macOS 26.6.2 한 대, Cua Driver 0.28.2 — installer가 고정 �
 반환했고, macOS Accessibility·Screen Recording이 드라이버 데몬 identity에서 `true`로
 보고되었고, 백그라운드 Calculator `1 + 1 = 2` 스모크가 입력을 전달해 드라이버 자체 창
 스크린샷으로 시각 확인되었습니다. 별도로 **사용자 보고**(2026-09-22 접수, 이번
-리뷰에서 독립 재현되지 않음): Intel Mac mini(16GB) 통과 — 7개 스킬 인식, Cua MCP
-연결(56개 도구), Accessibility·Screen Recording `true`, Calculator `7 + 5 = 12`
-(AX 재확인 + PNG 검사), 뷰포트·스크롤 브라우저 캡처 통과. 정확한 macOS·Paseo·Cua
-Driver·provider 버전과 테스트 날짜는 제공되지 않았고, `verify_state`는 `unknown`,
-`fullPage`는 실패했습니다. 이 보고에서 16GB 성능 검증이나 Intel 8GB 지원을
-주장하지 않습니다. 또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지
+리뷰에서 독립 재현되지 않음): Intel Mac mini(`Macmini8,1`, Core i7-8700B, 16GiB),
+macOS 15.8(24H23), Paseo 0.8.0, Cua Driver 0.28.2 x86_64 — `--skip-cua-driver` 없이
+설치 성공, 7개 스킬 인식, persistent Cua MCP 연결(56개 도구), `doctor` 7개 프로브
+통과, Accessibility·Screen Recording `true`, Calculator `7 + 5 = 12`(AX 재확인 +
+PNG 검사), LAN 브라우저 뷰포트·스크롤 캡처 통과. `verify_state`는 `unknown`,
+`fullPage`는 실패(2x2 반복 타일)했으며, 기존 탭이 아니라 새 탭에서 브라우저 캡처가
+복구되었습니다. 이 보고에서 8GB 보장이나 벤치마크 기반 한도를 주장하지 않습니다. 또한 **사용자 보고**(2026-09-22 접수, 이번 리뷰에서 독립 재현되지
 않음): Windows 11 25H2 / Intel Core Ultra 7 x64 호스트가 설치 복구와 준비 상태까지만
 확인했습니다 — 공식 installer가 Cua 런타임 단계에서 0이 아닌 코드로 종료되어 Cua
 Driver 0.28.2로 수동 복구했고, `doctor` 준비 상태 검사는 통과했으며, 기능 확인은
@@ -444,7 +445,9 @@ Windows 통과가 아닙니다. 검증하지 않은 것: 이미 실행 중인 Pa
 아닙니다), 전용 ScreenCaptureKit 캡처 프로브(`not_checked`), 그 밖의 macOS 버전,
 native Windows의 end-to-end 동작, Linux입니다. 바이너리 설치를 권한 준비 완료로
 오해하면 안 되며, 7개 스킬 전체가 런타임 호환 검증되었다고 해석해서도 안 됩니다.
-임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다. PowerShell wrapper는 이 Mac에서
+임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다. 제공된 Intel 실행은 별도로 41개
+테스트(cleanup 11 + share 15 + scanner 13 + shell 2)를 보고하며, 이는 이전 48개 테스트
+총계의 migration 7개를 제외한 수치입니다. PowerShell wrapper는 이 Mac에서
 `pwsh`가 없어 소스 검토만 했습니다. 제공된 Windows 보고는 스킬 migration과 런타임
 수동 복구를 확인했지만, 런타임 자동 설치 충돌은 미해결로 남아 있습니다
 ([플랫폼 검증 상태](docs/cua-platform-validation.md) 참고). 세부 결과와 제한은

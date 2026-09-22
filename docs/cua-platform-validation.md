@@ -99,45 +99,66 @@ evidence for other macOS hardware, other OS versions, Windows, or Linux.
 
 ## 2026-09-22 user-reported Intel macOS result
 
-A separate run on an **Intel Mac mini (16 GB RAM)** was reported by a user; it
-was **not** executed or reproduced in this review. Report received
-2026-09-22. The exact test date and several machine versions were **not
-supplied** and are marked `pending`. Do not read a `pending` entry as the
-reporter's actual version, and do not treat the installer's pinned driver
-`0.28.2` as the installed version.
+A separate run on an **Intel Mac mini (`Macmini8,1`, 16 GiB)** was reported by a
+user; it was **not** executed or reproduced in this review (supplied evidence).
+Report received 2026-09-22.
 
 | Field | Reported value |
 | --- | --- |
-| Host | Intel Mac mini, 16 GB RAM; exact macOS version `pending` |
+| Host | `Macmini8,1`, Intel Core i7-8700B 3.20 GHz, 6 cores, x86_64, 16 GiB |
+| OS | macOS 15.8, build 24H23 |
+| Paseo | app, bundled CLI, and user CLI all 0.8.0 |
 | Installed Paseobility | v2.8.0, public `main` commit `cf7af69809` |
-| Cua Driver | installed version `pending` (pinned `0.28.2` is not proof of the installed version) |
-| Paseo / provider client | version `pending` |
-| Install | 28 source files matched in both the Paseo-style and Claude install paths |
-| Regression tests | 41 passed; suite breakdown unspecified |
+| Cua Driver | installed 0.28.2, `x86_64-macos`; `/Applications/CuaDriver.app` and `~/.local/bin/cua-driver` |
+| Provider/client | initial: Grok CLI 1.0.40 (`eb1a2256660d` stable) `grok-4.6`; subsequent: Codex CLI 0.155.1 `gpt-5.6-sol` |
+| Test window | 2026-09-22 11:45–12:42 KST; environment/memory lookup 13:03; final status 13:06–13:07 |
+| Install | official installer with `--migrate-skills --with-claude --no-context` succeeded without `--skip-cua-driver`; 28 files matched in each install root; obsolete-skill migration not applicable (none present before) |
 | New session | all 7 skills recognized |
-| MCP integration | Cua MCP connected; `tools/list` returned 56 tools |
-| macOS permissions | Accessibility and Screen Recording `true` |
-| Native GUI smoke | separate Calculator instance: `7 + 5 =` produced `12`, confirmed by an accessibility read-back and an inspected PNG |
-| `verify_state` | `unknown` (`observation_unavailable`); not confirmed |
-| Browser capture | input click returned `12`; viewport PNG `1168x730`; scroll capture showed the bottom marker |
-| `fullPage` | repeated / clipped output — failed (same symptom as upstream `#3196` below) |
-| Cleanup | reported done; the Paseo app/daemon and other agents were reported untouched |
+| MCP integration | persistent Cua MCP connected; 56 tools reported, with the CLI `list-tools` count reconfirmed at 13:07 |
+| Readiness | `cua-driver doctor` 7 probes ok; Accessibility and Screen Recording `true` under `com.trycua.driver` |
+| Native GUI smoke | 12:37 Calculator `7 + 5 = 12`, accessibility read-back plus an inspected `198x350` PNG |
+| `verify_state` | `unknown` (`observation_unavailable`), stable `false`; not a pass |
+| Browser capture | 12:41 temporary LAN page: input `7 + 5`, click Compute, observed `12` via DOM/snapshot; viewport PNG `1168x730` passed; 800 px scroll hit the bottom marker |
+| `fullPage` | `1263x1197`, 2x2 repeated tiles with the right edge clipped — failed (known issue `#3196` below) |
+| Regression tests | 41 tests across four suites: Node cleanup 11 + Node share 15 + Python scanner 13 + shell 2 (separate from the prior 48-test total that includes migration 7) |
+| Cleanup | reported done |
 
-Reported limits and missing fields:
+Reported limits and clarifications:
 
-- Exact macOS version, Paseo version, Cua Driver version, provider/client
-  version, and test date were all missing; treat every one as unknown.
-- No memory-pressure or swap numbers were supplied, so **no 16 GB performance
-  claim** is made, and this says nothing about 8 GB Intel hosts.
-- The `41 passed` count has no suite breakdown, so it must **not** be equated
-  with any earlier full-suite total.
-- The reporter attributes permission recovery to restarting **only** Cua through
-  LaunchServices instead of a shell-launched identity. This is recorded as a
-  user-reported troubleshooting observation — not an independently proven root
-  cause and not a universal rule.
-- The reporter also reported that showing the Paseo host window and opening a
-  fresh tab restored browser capture, consistent with the Apple Silicon note
-  above; that is likewise a report, not a reproduced result.
+- This is **supplied evidence, not independently reproduced in this review**.
+- `direct_capture_status` read `not_checked` in the later read-only lookup; that
+  does not negate the earlier PNG success.
+- `verify_state` stayed `unknown` (stable `false`) on the Calculator target and is
+  **not** a pass.
+- The `41` result spans four suites (Node cleanup 11, Node share 15, Python
+  scanner 13, shell 2) and is separate from the E2E run; do **not** conflate it
+  with the prior 48-test total that includes migration `7`.
+- Browser: the OS was already unlocked and Paseo was **not** hidden; restoring the
+  existing tab still failed and a **new** tab succeeded. A stale-WebView-paint
+  cause is an inference, not a confirmed root cause, and this must **not** be
+  conflated with the Apple Silicon host-window recovery. A loopback URL failed
+  with `chrome-error://chromewebdata/` while the LAN URL worked; the cause is
+  unknown, so no universal network claim follows.
+- The initial Cua daemon launched from a shell/symlink identity reported
+  `unknown` / `permissions_pending`. The report records only a Cua LaunchServices
+  restart (after verifying no active Cua session) plus human permission grants
+  fixing the identity; this is a reported observation, not a root-cause
+  reproduction.
+- Memory: timestamped snapshots (KST). The final E2E ran later, so these are not
+  peak or incremental measurements.
+
+  | Metric | 11:51 | 12:22 | 12:23 | 13:03 |
+  | --- | --- | --- | --- | --- |
+  | Paseo RSS (MiB) | 635.8 | 753.8 | 715.2 | 968.6 |
+  | Cua RSS (MiB) | not running / not installed | 44.4 | 44.5 | 68.2 |
+  | `memory_pressure -Q` free (%) | 64 | 55 | 55 | 61 |
+  | swap used (MiB, of 2048 allocated) | 1130.75 | 1081.50 | 1049.50 | 985.50 |
+
+  Chronology caveat: the final native/browser E2E ran 12:37–12:41, **after** the
+  12:22/12:23 samples. There is no measured peak and no causal increment; RSS may
+  double-count shared pages; the `memory_pressure` free percentage is a
+  command-reported metric, not raw physical free RAM or a pressure color; and no
+  8 GB capacity claim follows.
 
 The browser `fullPage` failure matches the open upstream issue
 [getpaseo/paseo#3196](https://github.com/getpaseo/paseo/issues/3196); the note in
@@ -215,7 +236,7 @@ Reported limits and missing fields:
 | Target | Status | Basis / limits |
 | --- | --- | --- |
 | Apple Silicon macOS 26.6.2 — single host | Preview, partial | 2026-09-21, Cua Driver 0.28.2: driver install + self-check, MCP registered/connected (56 tools, OpenCode), Accessibility + Screen Recording `true` under the driver-daemon identity, Calculator background AX input and screenshot verified. Live Paseo-session exposure, the driver's `verify_state` on that target, and a dedicated capture probe remain unconfirmed. |
-| Intel macOS | User-reported functional pass; metadata pending | User report received 2026-09-22, **not independently reproduced in this review**: Intel Mac mini (16 GB), Paseobility v2.8.0; all 7 skills recognized, Cua MCP connected (56 tools), Accessibility + Screen Recording `true`, Calculator `7 + 5 = 12` (accessibility read-back + inspected PNG), viewport/scroll browser capture passed. Exact macOS/Paseo/Cua Driver/provider versions and test date were not supplied; `verify_state` returned `unknown` and `fullPage` failed. No 16 GB performance or 8 GB Intel claim. |
+| Intel macOS | User-reported functional pass | Supplied report received 2026-09-22, **not independently reproduced in this review**: `Macmini8,1` (Intel Core i7-8700B, 16 GiB), macOS 15.8 build 24H23, Paseo 0.8.0, Cua Driver 0.28.2 x86_64, Paseobility v2.8.0. Install succeeded without `--skip-cua-driver`; all 7 skills recognized, persistent MCP connected (56 tools), `doctor` 7 probes ok, Accessibility + Screen Recording `true`, Calculator `7 + 5 = 12` (AX read-back + inspected PNG), LAN-browser viewport/scroll capture passed. `verify_state` `unknown`; `fullPage` failed (2x2 repeated tiles, `#3196`). Regression 41 = cleanup 11 + share 15 + scanner 13 + shell 2, separate from the prior 48 (migration 7). No 8 GB guarantee or benchmark-based limit. |
 | Other macOS versions | Unverified | One directly verified host + OS and one user-reported Intel result only; no other macOS version was exercised. |
 | Native Windows runtime | User-reported partial readiness; E2E unverified | User report received 2026-09-22, **not independently reproduced in this review**: Windows 11 Home 25H2 build 26200.9457, Intel Core Ultra 7 255H x64, 32 GB; Paseobility v2.8.0. The official installer exited non-zero at the Cua runtime stage and was recovered manually to Cua Driver 0.28.2. `doctor` readiness passed (interactive desktop, UIAutomation, window inventory 17); the only functional checks were a CLI tool listing (57 tools, not an MCP handshake) and a browser open/snapshot/close. Native app input/read-back/screenshot/`verify_state`, a persistent MCP connection, and all regression suites were not run. Not a Windows pass. |
 | Linux | Unverified | No evidence. |
