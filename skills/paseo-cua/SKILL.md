@@ -25,6 +25,8 @@ Check before acting:
   granted by the human; never fake or bypass them.
 
 See `references/setup.md` when the driver is absent or the host is not ready.
+See `references/recovery.md` when a flow fails, permissions look unready, or
+`verify_state` returns `unknown` (which is not a pass).
 
 ## Discover the contract first
 

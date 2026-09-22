@@ -1,156 +1,32 @@
 #!/usr/bin/env bash
+# Thin wrapper over the cross-platform Python diagnostics helper.
+#
+# The diagnostics themselves live in paseobility-doctor.py (stdlib only) so the
+# same logic runs on macOS, Linux, and Windows. Arguments are passed through,
+# including --root, --source-root, --target-home, --json, and --check-mcp.
+#
+# Diagnostics are optional: the installers treat a non-zero exit here as
+# "diagnostics unavailable", never as an installation failure, so a host without
+# Python 3 can still install skills.
 set -euo pipefail
 
-ROOT=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PYTHON="${PASEOBILITY_PYTHON:-}"
 
-usage() {
-  cat <<'EOF'
-Usage: paseobility-doctor.sh [--root PATH]
-
-Diagnose the current project for Paseobility/Paseo setup.
-EOF
-}
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --root)
-      ROOT="${2:-}"
-      shift 2
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "Unknown argument: $1" >&2
-      usage >&2
-      exit 2
-      ;;
-  esac
-done
-
-if [ -z "$ROOT" ]; then
-  if git rev-parse --show-toplevel >/dev/null 2>&1; then
-    ROOT="$(git rev-parse --show-toplevel)"
-  else
-    ROOT="$(pwd -P)"
-  fi
+if [ -z "$PYTHON" ]; then
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 &&
+       "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)' >/dev/null 2>&1; then
+      PYTHON="$candidate"
+      break
+    fi
+  done
 fi
 
-ROOT="$(cd "$ROOT" && pwd -P)"
-
-status() {
-  printf '[%s] %s\n' "$1" "$2"
-}
-
-section() {
-  printf '\n== %s ==\n' "$1"
-}
-
-find_paseo_cli() {
-  if command -v paseo >/dev/null 2>&1; then
-    command -v paseo
-    return 0
-  fi
-
-  local app_cli="/Applications/Paseo.app/Contents/Resources/bin/paseo"
-  if [ -x "$app_cli" ]; then
-    printf '%s\n' "$app_cli"
-    return 0
-  fi
-
-  return 1
-}
-
-section "Project"
-status "root" "$ROOT"
-
-if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  status "git" "inside work tree"
-  status "git_root" "$(git -C "$ROOT" rev-parse --show-toplevel)"
-  if git -C "$ROOT" remote -v >/dev/null 2>&1; then
-    git -C "$ROOT" remote -v | sed 's/^/[remote] /'
-  fi
-  git -C "$ROOT" status --short | sed 's/^/[status] /' || true
-else
-  status "git" "not a git repository"
+if [ -z "$PYTHON" ]; then
+  echo "[doctor] diagnostics unavailable: Python 3 was not found." >&2
+  echo "[doctor] Both wrappers (.sh and .ps1) need Python 3; installation still succeeds without diagnostics." >&2
+  exit 2
 fi
 
-section "System"
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-status "os" "$OS"
-status "arch" "$ARCH"
-
-if [ "$OS" = "Darwin" ]; then
-  if [ "$ARCH" = "x86_64" ]; then
-    status "mac" "Intel Mac detected"
-  elif [ "$ARCH" = "arm64" ]; then
-    status "mac" "Apple Silicon detected"
-  else
-    status "mac" "unknown macOS architecture"
-  fi
-else
-  status "mac" "not macOS"
-fi
-
-section "Paseo"
-if PASEO_CLI="$(find_paseo_cli)"; then
-  status "paseo_cli" "$PASEO_CLI"
-  "$PASEO_CLI" --version 2>/dev/null | sed 's/^/[paseo_version] /' || status "paseo_version" "unavailable"
-  if "$PASEO_CLI" daemon status --json >/dev/null 2>&1; then
-    status "paseo_daemon" "reachable"
-  else
-    status "paseo_daemon" "unreachable (skill installation still works)"
-  fi
-else
-  status "paseo_cli" "not found"
-  status "hint" "Install/open Paseo or ensure the bundled CLI is linked into PATH."
-fi
-
-if [ -f "$ROOT/paseo.json" ]; then
-  status "paseo_json" "found"
-else
-  status "paseo_json" "not found"
-fi
-
-section "Skill Directories"
-for dir in "$HOME/.agents/skills" "$HOME/.claude/skills"; do
-  if [ -d "$dir" ]; then
-    status "exists" "$dir"
-  else
-    status "missing" "$dir"
-  fi
-done
-
-section "Project Signals"
-for file in \
-  "package.json" \
-  "pnpm-lock.yaml" \
-  "yarn.lock" \
-  "package-lock.json" \
-  "pyproject.toml" \
-  "requirements.txt" \
-  "Cargo.toml" \
-  "go.mod" \
-  "Makefile" \
-  "justfile" \
-  "Taskfile.yml" \
-  "AGENTS.md" \
-  "CLAUDE.md" \
-  ".github/copilot-instructions.md"; do
-  if [ -e "$ROOT/$file" ]; then
-    status "found" "$file"
-  fi
-done
-
-if [ -d "$ROOT/docs" ]; then
-  status "found" "docs/"
-fi
-if [ -d "$ROOT/.cursor/rules" ]; then
-  status "found" ".cursor/rules/"
-fi
-
-section "Next Steps"
-status "context" "./scripts/paseobility-context.sh --root \"$ROOT\""
-status "init" "./scripts/paseobility-init.sh --root \"$ROOT\""
+exec "$PYTHON" "$SCRIPT_DIR/paseobility-doctor.py" "$@"

@@ -264,7 +264,11 @@ fi
 
 printf '\n'
 if [ "$CHECK_PASEO" -eq 1 ]; then
-  "$SCRIPT_DIR/paseobility-doctor.sh" --root "$ROOT"
+  # Diagnostics are optional and must never fail an otherwise successful skill
+  # install (for example on a host without Python 3).
+  if ! "$SCRIPT_DIR/paseobility-doctor.sh" --root "$ROOT" --target-home "$TARGET_HOME"; then
+    printf '[warn] diagnostics unavailable (paseobility-doctor.sh exited non-zero); skills were still copied.\n' >&2
+  fi
 else
   printf '[skip] live Paseo checks skipped.\n'
 fi
