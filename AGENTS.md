@@ -99,6 +99,15 @@ other skills has no driver side effects.
   it never starts the daemon: the pinned `install.sh` / `_install-rust.sh` only
   resolve/download a release and stop stale daemons
   (https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/).
+- On Windows the helper installs into a private, Paseobility-owned staging bin
+  and then publishes only the executable set (`cua-driver.exe`,
+  `cua-driver-uia.exe`, `cua-cursor-theme.exe`) into the shared bin dir. It does
+  not hand the shared dir to the upstream installer, which requires a free path
+  for its directory junction and refuses an existing non-junction directory. It
+  never overwrites an existing binary (identical content is left alone; a
+  differing collision aborts), rolls back only the files its own run added on
+  failure, restores the process environment, and removes a staged junction as a
+  link rather than recursing through it.
 - `--skip-cua-driver` / `-SkipCuaDriver` installs skills only
   (docs-only/offline).
 - A custom `--target-home` / `-TargetHome` skips the real-host runtime by
@@ -114,6 +123,18 @@ other skills has no driver side effects.
   is not permission readiness.
 - A raw `cp -R` / `Copy-Item` copies documents only and cannot install the
   driver; use the installers for the runtime.
+
+## Diagnostics
+
+`./scripts/paseobility-doctor.sh --root /path/to/project` (macOS/Linux) and
+`.\scripts\paseobility-doctor.ps1 -Root .` (Windows) are thin wrappers over the
+read-only, bounded `scripts/paseobility-doctor.py` (Python 3 stdlib). It reports
+skill source/install integrity, Paseo version/reachability, Cua version,
+permissions, and MCP separately; `--json` is a deterministic, redacted, shareable
+report. `--check-mcp` is explicit-only and probes MCP protocol/tools discovery
+over one stdio connection; it is not a GUI end-to-end test. An absent,
+not-checked, or unknown Cua state is never success, and no GUI probe runs
+implicitly.
 
 ## Supported install target
 

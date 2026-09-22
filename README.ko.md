@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.0-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.1-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -40,6 +40,34 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 기본 Paseo만으로도 내장 도구를 조합하면 비슷한 일을 할 수 있습니다. 다만 매번 에이전트가 그 조합을 새로 판단하게 두면 느리고 결과가 들쭉날쭉할 수 있어서, 자주 쓰는 패턴을 바로 꺼내 쓰기 쉽게 묶었습니다.
 
 이 repo는 **Paseo 내장 도구를 반복 가능하게 조합하기 위한 스킬 패키지**입니다. macOS/Linux용 bootstrap helper와 Windows PowerShell 설치 helper를 함께 제공합니다.
+
+---
+
+## v2.8.1 — Windows Cua 설치 수정, 읽기 전용 doctor, 오프라인 테스트
+
+v2.8.1은 Windows 전용 Cua Driver 설치 충돌을 고치고 읽기 전용 진단 helper와
+오프라인 테스트를 추가합니다. Cua/Paseo 바이너리는 변경하지 않습니다.
+
+- **Windows Cua 스테이징 수정(코드 수준).** `scripts/paseobility-cua-driver.ps1`은
+  사설 스테이징 bin에 설치하고, 게시 전에 바이너리를 검증하며, 실행 파일 집합만
+  게시하고 실패 시 이번 실행이 만든 파일만 롤백합니다. 실제 Windows 신규 설치는
+  **재현하지 않았고** 오프라인으로만 검증됩니다
+  ([플랫폼 검증](docs/cua-platform-validation.md)).
+- **읽기 전용 doctor.** `scripts/paseobility-doctor.py`(Python 3 표준 라이브러리)와
+  얇은 `.sh`/`.ps1` 래퍼가 스킬 소스/설치 무결성, Paseo 버전/도달성, Cua
+  버전/권한/데몬 상태를 서로 다른 상태로 보고합니다. `--json`은 허용 목록 필드만
+  담고 `--target-home`은 격리 검사를 지원합니다. `--check-mcp`는 명시 시에만
+  프로토콜/도구 탐색을 수행하며 GUI 결과가 아닙니다.
+- **오프라인 테스트와 CI.** `tests/test_doctor.py`, `tests/test_e2e_assets.py`,
+  네이티브 `tests/test_cua_driver_runtime.ps1`이 macOS·Windows CI에서 실행되고,
+  installer가 선택한 `--target-home`을 doctor에 전달합니다. 두 doctor 래퍼 모두
+  Python 3가 필요하지만 진단은 설치에 선택 사항입니다.
+- **E2E 자산과 복구 reference.** `e2e/`에 정적 브라우저 fixture와 **수동** runbook용
+  포그라운드 fixture 서버를 둡니다(자동 리포트 검증기 없음).
+  `skills/paseo-cua/references/recovery.md`는 제한적 재시도, 권한 흐름, 그리고
+  `verify_state: unknown`이 통과가 아님을 정리합니다.
+
+[Doctor와 테스트](#doctor와-테스트), [이번 릴리스 테스트](#이번-릴리스v281-테스트--위-기기-행과-별개) 참고.
 
 ---
 
@@ -367,6 +395,43 @@ cd Paseobility
 런타임 설정이 실패했음(설치가 불완전할 수 있음)을 알립니다. 다시 실행하거나
 `--skip-cua-driver` / `-SkipCuaDriver`로 스킬만 설치하세요.
 
+### Doctor와 테스트
+
+doctor는 읽기 전용이고 명령마다 제한 시간이 있으며 크로스플랫폼입니다(Python 3
+표준 라이브러리). 텍스트 모드는 사람용이고, `--json`은 허용 목록 필드(상태, 개수,
+검증된 스킬 이름, 정규화된 시맨틱 버전)만 담는 공유용 산출물이며 원시 명령 출력은
+담지 않습니다. 종료 코드 0은 "리포트가 생성됨"을 뜻하며 "모두 준비됨"이 아닙니다.
+`--source-root`는 스킬 팩을, `--target-home`은 격리된 설치 루트를 지정합니다.
+
+```bash
+python3 scripts/paseobility-doctor.py --root /path/to/project
+python3 scripts/paseobility-doctor.py --root /path/to/project --json
+# 명시 시에만 MCP 프로토콜/도구 탐색 (데몬 실행 중 필요, GUI 테스트 아님):
+python3 scripts/paseobility-doctor.py --root /path/to/project --check-mcp
+# 임시 홈에 대한 격리 설치 검사:
+python3 scripts/paseobility-doctor.py --target-home /tmp/isolated-home --json
+# 같은 인자를 전달하는 얇은 래퍼:
+./scripts/paseobility-doctor.sh --root /path/to/project
+```
+
+```powershell
+.\scripts\paseobility-doctor.ps1 -Root .
+# Python helper와 동일한 플래그(-SourceRoot/-TargetHome/-CuaBin/-CuaBinDir):
+.\scripts\paseobility-doctor.ps1 -SourceRoot . -TargetHome $tmp.FullName -Json
+```
+
+오프라인 테스트 스위트:
+
+```bash
+# macOS/Linux
+python3 -m unittest discover -s tests -p "test_*.py" -v
+```
+
+```powershell
+# Windows (네트워크 없음, fixture installer 주입)
+pwsh -NoProfile -File tests/test_cua_driver_runtime.ps1
+```
+
 installer는 기존 같은 이름의 skill이 있으면 덮어쓰기 전에 백업합니다.
 
 | OS | Backup path |
@@ -433,10 +498,62 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 - 이번 리뷰에서 직접 확인한 것은 Apple Silicon 행 하나뿐이며, Intel Mac과 Windows 행은 **사용자 보고**로 독립 재현되지 않았습니다. MacBook 후속은 upstream PR 빌드를 제품 코드 추가 수정 없이 사용한 것으로, Paseobility가 릴리스·설치한 수정이 **아닙니다** — 0.9 backport는 충돌로 중단했고, 0.3.1 다운그레이드는 권장하지 않습니다.
 - 네이티브 통과는 좁게 시험한 흐름에 한정되며 플랫폼 전체 지원이 아닙니다. 8GiB는 최소 RAM 보장이 아니고, 메모리는 최대 사용량까지 측정하지 않았습니다.
-- 보고된 호스트에서 Windows 자동 런타임 설치는 **미해결**입니다: 기존 비정션(non-junction) `.local/bin`이 upstream installer와 충돌했습니다. 수동 하드링크로 드라이버를 복구했지만, 매끄러운 자동 설치 통과를 입증하지는 **않습니다**. Windows catalog에서 명시 전용 스킬 2개는 여전히 확인되지 않았습니다.
+- 보고된 호스트에서 Windows 자동 런타임 설치는 **코드 수준 충돌**이 있었습니다: 공용 비정션(non-junction) `.local/bin`을 고정 upstream installer보다 먼저 생성해서, 이미 존재하는 비정션 디렉터리를 거부하는 installer와 충돌했습니다. v2.8.1은 사설 스테이징 bin에 설치하고 실행 파일 집합만 게시하며, `tests/test_cua_driver_runtime.ps1`이 충돌·롤백·공용 bin 보존을 오프라인으로 검증합니다. 이번 릴리스에서 실제 Windows 신규 설치는 재현하지 **않았으므로**, 이전 수동 하드링크 복구가 마지막 실기기 근거입니다. Windows catalog에서 명시 전용 스킬 2개는 여전히 확인되지 않았습니다.
 - 테스트 수는 보고 기준이며 이번 README 업데이트에서 재실행하지 **않았습니다**: Intel Mac mini 41개(cleanup 11 + share 15 + scanner 13 + shell 2); Windows 63 passed / 2 failed / 1 skipped, 이전과 동일.
 - PowerShell wrapper는 이 Mac에서 `pwsh`가 없어 소스 검토만 했습니다. 제공된 Windows 보고는 스킬 migration과 런타임 수동 복구를 확인했습니다. 임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다.
 - v2.7 6개 스킬 호환 문서는 7개 전체의 런타임을 증명하지 **않습니다**. 이 문서 업데이트는 Paseo 앱이나 캡처 엔진을 수정하지 않습니다. 바이너리 설치를 권한 준비 완료로 오해하면 안 됩니다. 그 밖의 macOS 버전과 Linux는 **미검증**입니다.
+
+### 이번 릴리스(v2.8.1) 테스트 — 위 기기 행과 별개
+
+위 행들은 이전 기기 근거입니다. v2.8.1 릴리스는 macOS·Windows CI에서 오프라인
+스위트를 실행했고, [CI 실행
+35708474356](https://github.com/wilgon456/Paseobility/actions/runs/35708474356)
+(head `9932ea7590ef137552d8b2b4e065e7fbb1792254`)은 macOS·Windows 두 job 모두
+**SUCCESS**입니다. 정확한 범위:
+
+- **macOS:** Python 테스트 49개 발견, **49 통과, 0 skip**(Cua Driver 런타임 18,
+  doctor 21, E2E 자산 3, 스킬 migration 7), 그리고 Node cleanup **11**, Node share
+  **15**, Python scanner **13**, shell **2** — **자동 테스트 총 90개**.
+- **Windows 공유 Python 스위트:** 49개 발견 중 **14 통과**, 나머지 **35개는
+  POSIX 전용 skip**. Windows job은 Node cleanup **11**, Node share **15**, Python
+  scanner **13**도 실행하며 모두 통과합니다.
+- **네이티브 PowerShell fixture 스위트:** `pwsh`와 Windows PowerShell 5.1 **양쪽**
+  에서 실행되어 각각 **109 assertions, 0 fail, 0 skip**을 보고합니다. 이는 테스트
+  케이스 109개가 아니라 *assertion* 수이며, 실제 다운로드한 Cua GUI 테스트가 아닌
+  fixture 스위트입니다.
+- **여전히 미검증:** 공식 다운로드 경로로 실제 Windows에 Cua를 새로 설치하는 것은
+  **재현하지 않았습니다**. fixture 스위트는 스테이징 설치 / 공용 bin 보존 / 롤백 /
+  스킬 migration 계약을 증명할 뿐, 실제 다운로드를 증명하지 않습니다.
+- `./scripts/paseobility-doctor.sh --root .`를 text와 `--json` 모드로 이 체크아웃에
+  대해 실행했고, JSON은 결정적이며 허용 목록 필드만 담습니다. 라이브 호스트는 Cua
+  0.28.2(권한 부여됨, 데몬 실행 중), Paseo 0.9.0-beta.2 도달 가능으로 보고됩니다.
+- `--check-mcp`를 명시하면 라이브 Cua 0.28.2 MCP 프로브가 프로토콜을 협상하고 한
+  연결에서 **도구 56개**를 나열한 것으로 관측되었습니다. 이 프로브는 자체 stdio 서버
+  자식을 띄우며 **56개 도구**는 그 부모 프로브에서 나온 값입니다. 프로토콜/도구
+  확인일 뿐 GUI 결과가 아니고, Paseo agent 클라이언트의 MCP 설정·도구 탐색을
+  증명하지 **않습니다**.
+- **GUI E2E는 통과가 아니라 차단됨.** 이 호스트에서 `e2e/` 브라우저 fixture를 수동
+  구동하려 했으나 `browser_new_tab http://127.0.0.1:<port>`가 탭 등록을 기다리다
+  timeout, 연결된 탭 없음, fixture 서버 종료 후 포트 리스너 없음으로 실패했습니다.
+  현재 브라우저 호스트가 탭을 등록하지 못해 GUI 통과를 주장하지 않습니다. 위 기기
+  행 기록은 그대로입니다.
+- 이번 릴리스에서 업데이트한 `paseo-cua` 스킬은 Codex/Paseo와 Claude 스킬
+  디렉터리 양쪽에 백업과 함께 로컬 설치했습니다. 소스 7개 트리 모두 일치하고 나머지
+  12개 설치 트리는 그대로였으며, Cua 런타임은 0.28.2로 유지되었습니다.
+
+### 롤백
+
+- 이번 변경은 스크립트·테스트·문서·E2E 자산이며 Cua/Paseo 바이너리를 수정하지
+  않습니다. 이전 helper 동작을 되돌리려면 v2.8.0 트리를 참조할 수 있지만 이는
+  **보장된 태그가 아닙니다**. 가장 안전한 방법은 이전 `main` 커밋
+  `970ea8cab7c3fef757d2bd13f58c8389758aad1d`를 **별도 clone**에서 checkout하여
+  기존 작업을 보존하는 것입니다. 스킬 롤백은 installer 백업을 사용합니다.
+- **자동 런타임 롤백은 없습니다.** Paseobility는 설치된 Cua Driver를 자동
+  업그레이드하지 않으므로 이미 동작하던 드라이버는 그대로 둡니다.
+- `paseobility-doctor.sh`와 `paseobility-doctor.ps1`은 **둘 다** Python 3가
+  필요합니다. 없으면 각 래퍼가 명확한 메시지와 함께 0이 아닌 코드로 종료하고,
+  installer는 이를 "진단 사용 불가"로 처리하고 설치를 끝냅니다. Python 3가
+  없으면 진단을 건너뛰세요.
 
 세부 내용과 선택형 Playwright 대안, 호스트별 프로브는
 [Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)와
@@ -853,15 +970,17 @@ skills/
 ├── paseo-agent-cleanup/       # SKILL.md + CLI helper/tests
 ├── paseo-browser/            # SKILL.md
 ├── paseo-cua/                # SKILL.md + explicit-only policy
-│   └── references/           # setup.md, workflow.md
+│   └── references/           # setup.md, workflow.md, recovery.md
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
 ├── paseo-project/            # SKILL.md
 │   └── references/           # brief.md, setup.md
 ├── paseo-share/              # SKILL.md + CLI helper/tests
 └── paseo-spyware-check/      # SKILL.md + scanners/tests
-scripts/                     # installers, doctor, context helper, cua-driver helper
-tests/                       # test_skill_migration.py, test_cua_driver_runtime.py
+scripts/                     # installers, doctor (.sh/.ps1/.py), context helper, cua-driver helper
+tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
+e2e/                         # browser fixture, fixture server, runbook, report template + validator
+.github/workflows/ci.yml     # macOS + Windows 오프라인 스위트
 docs/compatibility-0.9.0-beta.2.md
 docs/cua-platform-validation.md
 AGENTS.md

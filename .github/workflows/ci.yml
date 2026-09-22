@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  posix:
+    name: macOS (bash + Python + Node suites)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Bash syntax check
+        run: |
+          for f in scripts/*.sh skills/*/scripts/*.sh; do
+            bash -n "$f"
+          done
+
+      - name: Offline Python suites
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Node cleanup suite
+        run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js
+
+      - name: Node share suite
+        run: node skills/paseo-share/scripts/paseo-share.test.js
+
+      - name: Scanner suites
+        run: |
+          python skills/paseo-spyware-check/scripts/spyware-check.test.py
+          bash skills/paseo-spyware-check/scripts/spyware-check-shell.test.sh
+
+  windows:
+    name: Windows (PowerShell + shared Python + Node)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: PowerShell syntax check (pwsh and Windows PowerShell)
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Path scripts, tests -Filter *.ps1 -Recurse | ForEach-Object {
+            $file = $_.FullName
+            try {
+              $null = [scriptblock]::Create((Get-Content -Raw -LiteralPath $file))
+            } catch {
+              Write-Host "syntax error in $file"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: PowerShell 5.1 syntax check
+        shell: powershell
+        run: |
+          $failed = $false
+          Get-ChildItem -Path scripts, tests -Filter *.ps1 -Recurse | ForEach-Object {
+            $file = $_.FullName
+            try {
+              $null = [scriptblock]::Create((Get-Content -Raw -LiteralPath $file))
+            } catch {
+              Write-Host "syntax error in $file"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+
+      # One discover run covers every shared, cross-platform Python test; the
+      # POSIX-only cases self-skip on Windows. A single command cannot mask a
+      # first-command failure the way two commands in one block can.
+      - name: Shared Python suites (cross-platform)
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Node cleanup suite
+        run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js
+
+      - name: Node share suite
+        run: node skills/paseo-share/scripts/paseo-share.test.js
+
+      - name: Scanner suite (cross-platform)
+        run: python skills/paseo-spyware-check/scripts/spyware-check.test.py
+
+      - name: Windows Cua installer runtime tests (pwsh)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File tests/test_cua_driver_runtime.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Windows Cua installer runtime tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_cua_driver_runtime.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

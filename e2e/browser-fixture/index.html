@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Paseobility E2E browser fixture</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 0; }
+    header { padding: 16px; background: #111827; color: #fff; }
+    main { padding: 16px; }
+    .marker { padding: 24px; margin: 12px 0; border: 2px dashed #111827; font-weight: 700; }
+    #spacer-top { height: 900px; background: linear-gradient(#f3f4f6, #e5e7eb); }
+    #spacer-middle { height: 900px; background: linear-gradient(#e5e7eb, #f3f4f6); }
+    #spacer-bottom { height: 900px; background: linear-gradient(#f3f4f6, #d1d5db); }
+    label { display: block; margin: 8px 0 4px; }
+    input { padding: 6px; width: 120px; }
+    button { padding: 8px 16px; margin-top: 12px; }
+    #result { font-size: 1.5rem; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <header><h1>Paseobility E2E browser fixture</h1></header>
+  <main>
+    <section id="marker-top" class="marker">TOP marker</section>
+
+    <section id="calculator">
+      <h2>Adder</h2>
+      <p>Enter two numbers in the A and B fields, then click Compute to set the
+         result.</p>
+      <label for="a">A</label>
+      <input id="a" name="a" type="number" value="0">
+      <label for="b">B</label>
+      <input id="b" name="b" type="number" value="0">
+      <button id="compute" type="button">Compute</button>
+      <p id="result" role="status" aria-live="polite">not computed</p>
+    </section>
+
+    <div id="spacer-top"></div>
+    <section id="marker-middle" class="marker">MIDDLE marker</section>
+    <div id="spacer-middle"></div>
+    <div id="spacer-bottom"></div>
+    <section id="marker-bottom" class="marker">BOTTOM marker</section>
+  </main>
+
+  <script>
+    (function () {
+      var a = document.getElementById('a');
+      var b = document.getElementById('b');
+      var result = document.getElementById('result');
+      document.getElementById('compute').addEventListener('click', function () {
+        var sum = Number(a.value) + Number(b.value);
+        result.textContent = String(sum);
+        document.body.setAttribute('data-result', String(sum));
+      });
+    })();
+  </script>
+</body>
+</html>

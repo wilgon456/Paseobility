@@ -6,8 +6,10 @@ local fake (PASEOBILITY_CUA_INSTALLER_DIR) or by local ``file://`` URLs
 bin dir with PASEOBILITY_CUA_BIN_DIR. ``$HOME`` is never repurposed -- the
 skills target is redirected with ``--target-home`` instead.
 
-PowerShell wrappers are source-reviewed only (no pwsh on this host); that
-limitation is documented in the README rather than asserted from source text.
+Bash-only: this suite drives ``scripts/paseobility-cua-driver.sh`` through a
+POSIX shell, so it skips on Windows rather than faking POSIX execution-bit and
+shebang semantics. The Windows PowerShell installer path is covered by
+``tests/test_cua_driver_runtime.ps1``.
 """
 import hashlib
 import os
@@ -73,6 +75,8 @@ def sanitized_path():
     return os.pathsep.join(keep)
 
 
+@unittest.skipIf(os.name == "nt",
+                 "bash-only: exercises POSIX shell and execution-bit semantics")
 class CuaDriverRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="paseobility-cua-runtime-")

@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.0-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.1-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -40,6 +40,36 @@ Once installed, you can pull frequently used Paseo patterns out like slash comma
 With base Paseo alone you can combine built-in tools to do similar work. But letting the agent re-decide that combination every time is slow and produces inconsistent results, so the pack bundles frequently used patterns for immediate reuse.
 
 This repo is a **skill package for reproducibly composing Paseo's built-in tools**. It ships a macOS/Linux bootstrap helper and a Windows PowerShell install helper.
+
+---
+
+## v2.8.1 — Windows Cua install fix, read-only doctor, offline tests
+
+v2.8.1 fixes a Windows-only Cua Driver install conflict and adds a read-only
+diagnostics helper plus offline tests. It ships no Cua or Paseo binary change.
+
+- **Windows Cua staging fix (code-level).** `scripts/paseobility-cua-driver.ps1`
+  stages into a private bin, validates the staged binary, publishes only the
+  executable set, and rolls back only the files it created on failure. A fresh
+  real-host Windows install was **not** reproduced; the fix is covered offline
+  only ([platform validation](docs/cua-platform-validation.md)).
+- **Read-only doctor.** `scripts/paseobility-doctor.py` (Python 3 stdlib) with
+  thin `.sh`/`.ps1` wrappers reports skill source/install integrity, Paseo
+  version/reachability, and Cua version/permissions/daemon as distinct statuses;
+  `--json` carries only allow-listed fields and `--target-home` isolates a check.
+  `--check-mcp` is explicit-only and reports protocol/tools discovery, not a GUI
+  result.
+- **Offline tests and CI.** `tests/test_doctor.py`, `tests/test_e2e_assets.py`,
+  and native `tests/test_cua_driver_runtime.ps1` run on macOS and Windows CI; the
+  installer passes its selected `--target-home` through to the doctor. Both
+  doctor wrappers need Python 3, but diagnostics stay optional for installation.
+- **E2E assets and recovery reference.** `e2e/` holds a static browser fixture
+  plus a foreground fixture server for a **manual** runbook (no automated report
+  validator). `skills/paseo-cua/references/recovery.md` documents bounded retry,
+  the permission flow, and that `verify_state: unknown` is not a pass.
+
+See [Doctor and tests](#doctor-and-tests) and
+[Current release testing](#current-release-testing-v281--separate-from-the-device-rows-above).
 
 ---
 
@@ -297,6 +327,44 @@ The driver helper can also be run directly:
 
 If the runtime step fails, the installer exits non-zero and reports that skills were copied but the runtime setup failed (installation may be incomplete); re-run or pass `--skip-cua-driver` / `-SkipCuaDriver` to install skills only.
 
+### Doctor and tests
+
+The doctor is read-only, bounded, and cross-platform (Python 3 stdlib). Text mode
+is for a human; `--json` is the shareable artifact carrying only allow-listed
+fields (statuses, counts, validated skill names, sanitized semantic versions) —
+never raw command output. Exit code 0 means "a report was generated", not
+"everything is ready". `--source-root` overrides the skill pack; `--target-home`
+points at an isolated install root.
+
+```bash
+python3 scripts/paseobility-doctor.py --root /path/to/project
+python3 scripts/paseobility-doctor.py --root /path/to/project --json
+# Explicit-only MCP protocol/tools discovery (needs a running daemon; not a GUI test):
+python3 scripts/paseobility-doctor.py --root /path/to/project --check-mcp
+# Isolated install check against a temporary home:
+python3 scripts/paseobility-doctor.py --target-home /tmp/isolated-home --json
+# Thin wrapper with the same passthrough:
+./scripts/paseobility-doctor.sh --root /path/to/project
+```
+
+```powershell
+.\scripts\paseobility-doctor.ps1 -Root .
+# Same flags as the Python helper (-SourceRoot/-TargetHome/-CuaBin/-CuaBinDir):
+.\scripts\paseobility-doctor.ps1 -SourceRoot . -TargetHome $tmp.FullName -Json
+```
+
+Offline test suites:
+
+```bash
+# macOS/Linux
+python3 -m unittest discover -s tests -p "test_*.py" -v
+```
+
+```powershell
+# Windows (no network, injected fixture installer)
+pwsh -NoProfile -File tests/test_cua_driver_runtime.ps1
+```
+
 The installer backs up an existing same-name skill before overwriting.
 
 | OS | Backup path |
@@ -362,10 +430,69 @@ Notes:
 
 - Only the Apple Silicon row was directly verified in this review; the Intel Mac and Windows rows are **user-reported** and were not independently reproduced. The MacBook follow-up used the isolated upstream PR build without additional product edits and is **not** a fix released or installed by Paseobility — the 0.9 backport was aborted on conflicts, and a 0.3.1 downgrade is not recommended.
 - Native passes cover narrow tested flows, not blanket platform support. The 8 GiB sample is not a RAM minimum or guarantee, and memory was not measured at peak.
-- Windows automatic runtime installation remains unresolved on the reported host: an existing non-junction `.local/bin` conflicted with the upstream installer. Manual hardlinks restored the driver; this does not establish a seamless automatic-install pass. Two explicit-only skills remain unconfirmed in the Windows catalog.
+- Windows automatic runtime installation had a code-level conflict: the shared non-junction `.local/bin` was pre-created before the pinned upstream installer, which refuses an existing non-junction directory. v2.8.1 installs into a private staging bin and publishes only the executable set, and `tests/test_cua_driver_runtime.ps1` covers the conflict, rollback, and shared-bin preservation offline. A real-host fresh Windows install was **not** reproduced for this release, so the earlier manual hardlink recovery remains the last real-host evidence. Two explicit-only skills remain unconfirmed in the Windows catalog.
 - Test counts are as reported and were **not** re-run for this README update: 41 automated tests on the Intel Mac mini (cleanup 11 + share 15 + scanner 13 + shell 2); Windows 63 passed / 2 failed / 1 skipped, unchanged.
 - The PowerShell wrappers were source-reviewed only on macOS (`pwsh` unavailable); the supplied Windows report confirms skill migration and manual runtime recovery. Isolated-path install/migration and helper regression tests were confirmed.
 - The v2.7 six-skill compatibility doc does **not** prove all seven skills at runtime. This documentation update does not modify the Paseo app or capture engine. Do not read binary presence as permission readiness. Other macOS versions and Linux remain **unverified**.
+
+### Current release testing (v2.8.1) — separate from the device rows above
+
+The rows above are older device evidence. The v2.8.1 release ran its offline
+suites on macOS and Windows CI; [CI run
+35708474356](https://github.com/wilgon456/Paseobility/actions/runs/35708474356)
+(head `9932ea7590ef137552d8b2b4e065e7fbb1792254`) is **SUCCESS** for both the
+macOS and Windows jobs. Exact scope:
+
+- **macOS:** 49 Python tests discovered, **49 pass, 0 skip** (Cua Driver runtime
+  18, doctor 21, E2E assets 3, skill migration 7), plus Node cleanup **11**, Node
+  share **15**, Python scanner **13**, and shell **2** — **90 automated tests
+  total**.
+- **Windows shared Python suite:** 49 discovered, of which **14 pass** and the
+  other **35 are POSIX-only skips**. The Windows job also runs Node cleanup
+  **11**, Node share **15**, and Python scanner **13**, all passing.
+- **Native PowerShell fixture suite:** runs under **both** `pwsh` and Windows
+  PowerShell 5.1, each reporting **109 assertions, 0 fail, 0 skip**. This counts
+  *assertions*, not 109 test cases, and it is a fixture suite — not a real
+  downloaded-Cua GUI test.
+- **Still unverified:** a fresh native Windows Cua install from the official
+  download path was **not** reproduced. The fixture suite proves the staged
+  install / shared-bin preservation / rollback / skill-migration contract, not a
+  live download.
+- `./scripts/paseobility-doctor.sh --root .` was run in text and `--json` modes
+  against this checkout; the JSON is deterministic, carries only allow-listed
+  fields, and reports the live host as Cua 0.28.2 (permissions granted, daemon
+  running) and Paseo 0.9.0-beta.2 reachable.
+- With an explicit `--check-mcp`, the live Cua 0.28.2 MCP probe was observed
+  negotiating the protocol and listing **56 tools** on one connection. The probe
+  spawns its own stdio server child, and the **56 tools** come from that
+  parent-run probe. This is a protocol/tools check only, never a GUI result, and
+  it does **not** prove a Paseo agent client's MCP config or tool discovery.
+- **GUI end-to-end is blocked, not passed.** A manual attempt to drive the
+  `e2e/` browser fixture on this host failed: `browser_new_tab http://127.0.0.1:<port>`
+  timed out waiting for tab registration, no connected tab appeared, and the
+  fixture server was terminated with no listener left on the port. The current
+  browser host could not register the tab, so no GUI pass is claimed. The
+  historical device rows above are unchanged.
+- The updated `paseo-cua` skill was installed locally for this release into both
+  the Codex/Paseo and Claude skill directories, with backups; all seven source
+  trees match, the other twelve installed trees were untouched, and the Cua
+  runtime stayed at 0.28.2.
+
+### Rollback
+
+- These changes are scripts, tests, docs, and E2E assets; no Cua or Paseo binary
+  is modified. To restore the previous helper behavior, the v2.8.0 tree is
+  referenced but is **not a guaranteed tag**; the safest option is to check out
+  the previous `main` commit `970ea8cab7c3fef757d2bd13f58c8389758aad1d` in a
+  **separate clone**, preserving your existing work. Skill rollback uses the
+  installer backups.
+- There is **no automatic runtime rollback.** Paseobility never auto-upgrades the
+  installed Cua Driver, so a driver that already worked is left as it was.
+- Diagnostics need Python 3, but installation never does: both
+  `paseobility-doctor.sh` and `paseobility-doctor.ps1` require Python 3 and exit
+  non-zero with a clear message when it is absent, and the installer treats that
+  as "diagnostics unavailable" and still completes. Without Python 3, skip
+  diagnostics.
 
 Details, including the optional Playwright fallback and per-host probes, are in the
 [Cua platform validation status](docs/cua-platform-validation.md) and the
@@ -768,15 +895,17 @@ skills/
 ├── paseo-agent-cleanup/       # SKILL.md + CLI helper/tests
 ├── paseo-browser/            # SKILL.md
 ├── paseo-cua/                # SKILL.md + explicit-only policy
-│   └── references/           # setup.md, workflow.md
+│   └── references/           # setup.md, workflow.md, recovery.md
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
 ├── paseo-project/            # SKILL.md
 │   └── references/           # brief.md, setup.md
 ├── paseo-share/              # SKILL.md + CLI helper/tests
 └── paseo-spyware-check/      # SKILL.md + scanners/tests
-scripts/                     # installers, doctor, context helper, cua-driver helper
-tests/                       # test_skill_migration.py, test_cua_driver_runtime.py
+scripts/                     # installers, doctor (.sh/.ps1/.py), context, cua-driver helpers
+tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
+e2e/                         # browser fixture, fixture server, runbook, report template
+.github/workflows/ci.yml     # macOS + Windows offline suites
 docs/compatibility-0.9.0-beta.2.md
 docs/cua-platform-validation.md
 AGENTS.md

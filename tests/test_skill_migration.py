@@ -1,5 +1,11 @@
-"""Exercise installation/migration in isolated homes; never contact Paseo."""
+"""Exercise installation/migration in isolated homes; never contact Paseo.
+
+Bash-only: this suite drives ``scripts/paseobility-init.sh`` through a POSIX
+shell, so it skips on Windows rather than faking POSIX symlink semantics.
+"""
+import errno
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -10,7 +16,23 @@ ROOT = Path(__file__).resolve().parents[1]
 RETIRED = ("paseo-agent-tournament", "paseo-session-brief",
            "paseo-project-bootstrap", "paseo-computer-use", "paseo-skill-save")
 
+# Only symlink failures that mean "this host cannot create a symlink" are
+# skipped; anything else (ENOENT, EIO, ...) is a real regression and re-raised.
+SYMLINK_UNSUPPORTED_ERRNOS = {
+    value for value in (
+        getattr(errno, "EPERM", None),
+        getattr(errno, "EACCES", None),
+        getattr(errno, "ENOSYS", None),
+        getattr(errno, "EINVAL", None),
+        getattr(errno, "ENOTSUP", None),
+        getattr(errno, "EOPNOTSUPP", None),
+    ) if value is not None
+}
+SYMLINK_UNSUPPORTED_WINERRORS = {5, 1314}
 
+
+@unittest.skipIf(os.name == "nt",
+                 "bash-only: exercises POSIX shell and symlink semantics")
 class SkillMigrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="paseobility-migration-")
@@ -101,7 +123,18 @@ class SkillMigrationTests(unittest.TestCase):
         (outside / "marker").write_text("keep")
         skill = self.home / ".agents/skills/paseo-session-brief"
         skill.parent.mkdir(parents=True)
-        skill.symlink_to(outside, target_is_directory=True)
+        try:
+            skill.symlink_to(outside, target_is_directory=True)
+        except OSError as error:
+            # Only skip when the host demonstrably cannot create a symlink;
+            # on a capable host the assertions below must still run. Any other
+            # errno (ENOENT, EIO, ...) is a real regression and re-raised.
+            unsupported = (error.errno in SYMLINK_UNSUPPORTED_ERRNOS
+                           or getattr(error, "winerror", None)
+                           in SYMLINK_UNSUPPORTED_WINERRORS)
+            if not unsupported:
+                raise
+            self.skipTest(f"symlink creation unavailable: {error}")
         self.assertNotEqual(self.install("--migrate-skills").returncode, 0)
         self.assertTrue(skill.is_symlink())
         self.assertEqual((outside / "marker").read_text(), "keep")
