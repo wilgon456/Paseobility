@@ -7,6 +7,10 @@ thread), and serves the expected page. No browser or Cua session is involved.
 """
 import re
 from pathlib import Path
+import functools
+import http.server
+import importlib.util
+import socket
 import subprocess
 import sys
 import threading
@@ -16,6 +20,13 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVE = ROOT / "e2e" / "serve-fixture.py"
+
+
+def load_serve_fixture():
+    spec = importlib.util.spec_from_file_location("serve_fixture", SERVE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def read_first_line(process, timeout):
@@ -44,6 +55,29 @@ class FixtureMarkupTests(unittest.TestCase):
                         "BOTTOM marker must come after the last spacer")
         self.assertLess(html.index('id="marker-bottom"'), html.index("</main>"),
                         "BOTTOM marker must be the last element in main")
+
+
+class FixtureServerBindTests(unittest.TestCase):
+    def test_bind_does_not_require_reverse_dns(self):
+        """Binding must not consult the resolver (getfqdn), which can hang."""
+        module = load_serve_fixture()
+        handler = functools.partial(
+            http.server.SimpleHTTPRequestHandler,
+            directory=str(ROOT / "e2e" / "browser-fixture"))
+
+        def refuse_dns(host):
+            raise AssertionError("reverse DNS must not be required: %r" % (host,))
+
+        original = socket.getfqdn
+        socket.getfqdn = refuse_dns
+        try:
+            with module.FixtureHTTPServer(("127.0.0.1", 0), handler) as httpd:
+                host, port = httpd.server_address[:2]
+                self.assertEqual(host, "127.0.0.1")
+                self.assertEqual(httpd.server_port, port)
+                self.assertEqual(httpd.server_name, host)
+        finally:
+            socket.getfqdn = original
 
 
 class FixtureServerTests(unittest.TestCase):

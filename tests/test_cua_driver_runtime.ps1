@@ -36,6 +36,10 @@ $script:Work = $null
 $script:CanBuildExe = $null
 $script:PowerShellExe = $null
 $script:OriginalPath = $env:PATH
+# Captured output of the most recent child script run, shown once on the first
+# assertion failure of a case so an unexpected exit code is never silent.
+$script:LastOutput = ""
+$script:LastOutputShown = $true
 
 $FixtureInstaller = @'
 $ErrorActionPreference = "Stop"
@@ -84,6 +88,16 @@ function Assert-True([bool]$condition, [string]$message) {
   } else {
     $script:Failed += 1
     Write-Host ("  FAIL: {0}" -f $message) -ForegroundColor Red
+    if ((-not $script:LastOutputShown) -and $script:LastOutput) {
+      $script:LastOutputShown = $true
+      $excerpt = [string]$script:LastOutput
+      if ($excerpt.Length -gt 2000) {
+        $excerpt = $excerpt.Substring(0, 2000) + "`n...[truncated]"
+      }
+      Write-Host "  --- last child output ---" -ForegroundColor DarkGray
+      Write-Host $excerpt
+      Write-Host "  --- end child output ---" -ForegroundColor DarkGray
+    }
   }
 }
 
@@ -122,11 +136,61 @@ function Get-PowerShellExe {
   return $exe
 }
 
+# Quote one argument for a CreateProcess command line (the child is launched via
+# System.Diagnostics.Process, not the `&` operator). Only arguments containing
+# whitespace or quotes need work: runs of backslashes before a quote are doubled
+# and the quote is escaped, and trailing backslashes are doubled.
+function Quote-Argument([string]$value) {
+  if ([string]::IsNullOrEmpty($value)) { return '""' }
+  if ($value -notmatch '[\s"]') { return $value }
+  $escaped = $value -replace '(\\*)"', '$1$1\"'
+  $escaped = $escaped -replace '(\\+)$', '$1$1'
+  return '"' + $escaped + '"'
+}
+
+# Run a child PowerShell script and return its exit code plus combined output.
+# This must not use `& ... 2>&1 | Out-String`: on Windows PowerShell 5.1 a child
+# that writes to stderr raises a NativeCommandError, which is fatal under this
+# script's `$ErrorActionPreference = "Stop"` and aborts the run at the call site
+# instead of returning the exit code under test. Launching the child with
+# System.Diagnostics.Process keeps both streams independent (they are captured
+# and concatenated) and lets the wait be bounded.
 function Invoke-ChildScript {
-  param([string]$Path, [string[]]$Arguments = @())
+  param([string]$Path, [string[]]$Arguments = @(), [int]$TimeoutMs = 120000)
   $exe = Get-PowerShellExe
-  $output = & $exe -NoProfile -NonInteractive -File $Path @Arguments 2>&1 | Out-String
-  return @{ Code = $LASTEXITCODE; Output = $output }
+  $parts = @("-NoProfile", "-NonInteractive", "-File", $Path) + $Arguments
+  $argString = ($parts | ForEach-Object { Quote-Argument ([string]$_) }) -join " "
+
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $exe
+  $psi.Arguments = $argString
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+
+  $proc = New-Object System.Diagnostics.Process
+  $proc.StartInfo = $psi
+  [void]$proc.Start()
+  # Start draining both pipes immediately so a large output cannot deadlock the
+  # child while WaitForExit blocks.
+  $stdout = $proc.StandardOutput.ReadToEndAsync()
+  $stderr = $proc.StandardError.ReadToEndAsync()
+  $exited = $proc.WaitForExit($TimeoutMs)
+  if (-not $exited) {
+    try { $proc.Kill() } catch { }
+    [void]$proc.WaitForExit(10000)
+  }
+  $code = 124
+  if ($exited) { $code = $proc.ExitCode }
+  $output = ($stdout.Result + $stderr.Result)
+  $proc.Dispose()
+  if (-not $exited) {
+    $output = ("child script timed out after {0} ms" -f $TimeoutMs) + "`n" + $output
+  }
+  $script:LastOutput = $output
+  $script:LastOutputShown = $false
+  return @{ Code = $code; Output = $output }
 }
 
 function New-Case {
@@ -384,6 +448,10 @@ try {
     Set-Content -LiteralPath $existingTheme -Value "pre-existing theme" -Encoding ascii
     $result = Invoke-DriverCase -Case $case -Extra @{ FAKE_CUA_MODE = "ok" }
     Assert-Equal 4 $result.Code "collision fails"
+    # Guard against a false pass: exit 4 alone does not prove the collision was
+    # detected (a staged install failure also exits 4), so require the specific
+    # refusal message.
+    Assert-Contains $result.Output "refusing to overwrite existing cua-cursor-theme.exe" "reports the collision"
     Assert-Equal "pre-existing theme" (Get-Content -LiteralPath $existingTheme -Raw).Trim() "existing file preserved"
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $case.Bin "cua-driver.exe"))) "newly added cua-driver.exe rolled back"
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $case.Bin "cua-driver-uia.exe"))) "newly added cua-driver-uia.exe rolled back"

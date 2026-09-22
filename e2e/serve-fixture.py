@@ -10,7 +10,25 @@ import argparse
 import functools
 import http.server
 import os
+import socketserver
 import sys
+
+
+class FixtureHTTPServer(http.server.ThreadingHTTPServer):
+    """ThreadingHTTPServer bound without a reverse-DNS lookup.
+
+    ``http.server.HTTPServer.server_bind`` calls ``socket.getfqdn(host)``, a
+    reverse DNS lookup that is pointless for a local-only static fixture and can
+    block until the resolver times out on hosts without working DNS. Bind the
+    socket directly and derive ``server_name``/``server_port`` from the bound
+    address instead; that is all the request handlers use.
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
 
 
 def main(argv=None):
@@ -33,7 +51,7 @@ def main(argv=None):
     handler = functools.partial(http.server.SimpleHTTPRequestHandler,
                                 directory=args.dir)
     try:
-        with http.server.ThreadingHTTPServer((args.bind, args.port), handler) as httpd:
+        with FixtureHTTPServer((args.bind, args.port), handler) as httpd:
             host, port = httpd.server_address[:2]
             print("[fixture] serving %s at http://%s:%s/" % (args.dir, host, port),
                   flush=True)

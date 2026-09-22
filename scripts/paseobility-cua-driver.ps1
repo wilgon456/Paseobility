@@ -103,14 +103,27 @@ function Get-RequiredDriverFiles([string]$Version) {
 # A broken candidate, an empty output, or a failed launch returns $null.
 function Get-DriverVersion([string]$Path) {
   $global:LASTEXITCODE = 0
+  # Run the probe with a scoped, non-terminating preference and without
+  # `Select-Object -First 1`. On Windows PowerShell 5.1 a native probe piped
+  # into `Select-Object -First 1` can stop the pipeline early, which both
+  # surfaces a NativeCommandError (fatal under the caller's `Stop` preference)
+  # and leaves a non-zero `$LASTEXITCODE` from the aborted process, so a working
+  # driver was misread as broken. Capture the full output and pick the first
+  # non-empty line instead.
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
   try {
-    $out = & $Path --version 2>$null | Select-Object -First 1
+    $raw = & $Path --version 2>$null
+    $code = $LASTEXITCODE
   } catch {
     return $null
+  } finally {
+    $ErrorActionPreference = $previous
   }
-  if ($LASTEXITCODE -ne 0) { return $null }
-  if ([string]::IsNullOrWhiteSpace($out)) { return $null }
-  return ([string]$out).Trim()
+  if ($code -ne 0) { return $null }
+  $lines = @($raw | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+  if ($lines.Count -eq 0) { return $null }
+  return ([string]$lines[0]).Trim()
 }
 
 function Get-FileDigest([string]$Path) {
