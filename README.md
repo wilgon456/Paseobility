@@ -437,38 +437,57 @@ Notes:
 
 ### Current release testing (v2.8.1) — separate from the device rows above
 
-The rows above are older device evidence. This release was validated with offline
-suites on the authoring machine, not with new real-host GUI runs:
+The rows above are older device evidence. The v2.8.1 release ran its offline
+suites on macOS and Windows CI; [CI run
+35708474356](https://github.com/wilgon456/Paseobility/actions/runs/35708474356)
+(head `9932ea7590ef137552d8b2b4e065e7fbb1792254`) is **SUCCESS** for both the
+macOS and Windows jobs. Exact scope:
 
-- `python3 -m unittest discover -s tests -p "test_*.py" -v` → **48 tests, 0
-  failures**: Cua Driver runtime 18, doctor 21, E2E assets 2, skill migration 7.
-- Helper suites also run offline: Node cleanup **11**, Node share **15**, Python
-  scanner **13**, shell **2**.
+- **macOS:** 49 Python tests discovered, **49 pass, 0 skip** (Cua Driver runtime
+  18, doctor 21, E2E assets 3, skill migration 7), plus Node cleanup **11**, Node
+  share **15**, Python scanner **13**, and shell **2** — **90 automated tests
+  total**.
+- **Windows shared Python suite:** 49 discovered, of which **14 pass** and the
+  other **35 are POSIX-only skips**. The Windows job also runs Node cleanup
+  **11**, Node share **15**, and Python scanner **13**, all passing.
+- **Native PowerShell fixture suite:** runs under **both** `pwsh` and Windows
+  PowerShell 5.1, each reporting **109 assertions, 0 fail, 0 skip**. This counts
+  *assertions*, not 109 test cases, and it is a fixture suite — not a real
+  downloaded-Cua GUI test.
+- **Still unverified:** a fresh native Windows Cua install from the official
+  download path was **not** reproduced. The fixture suite proves the staged
+  install / shared-bin preservation / rollback / skill-migration contract, not a
+  live download.
 - `./scripts/paseobility-doctor.sh --root .` was run in text and `--json` modes
   against this checkout; the JSON is deterministic, carries only allow-listed
   fields, and reports the live host as Cua 0.28.2 (permissions granted, daemon
   running) and Paseo 0.9.0-beta.2 reachable.
 - With an explicit `--check-mcp`, the live Cua 0.28.2 MCP probe was observed
-  negotiating the protocol and listing **56 tools** on one connection. This is a
-  protocol/tools check only, never a GUI result.
-- **Not executed on this host:** `tests/test_cua_driver_runtime.ps1` and the
-  Windows CI jobs (no `pwsh`/Windows here). Both job variants — pwsh and Windows
-  PowerShell 5.1 — are kept in CI, so their Windows result is **pending**, not
-  claimed.
+  negotiating the protocol and listing **56 tools** on one connection. The probe
+  spawns its own stdio server child, and the **56 tools** come from that
+  parent-run probe. This is a protocol/tools check only, never a GUI result, and
+  it does **not** prove a Paseo agent client's MCP config or tool discovery.
 - **GUI end-to-end is blocked, not passed.** A manual attempt to drive the
   `e2e/` browser fixture on this host failed: `browser_new_tab http://127.0.0.1:<port>`
   timed out waiting for tab registration, no connected tab appeared, and the
   fixture server was terminated with no listener left on the port. The current
   browser host could not register the tab, so no GUI pass is claimed. The
   historical device rows above are unchanged.
+- The updated `paseo-cua` skill was installed locally for this release into both
+  the Codex/Paseo and Claude skill directories, with backups; all seven source
+  trees match, the other twelve installed trees were untouched, and the Cua
+  runtime stayed at 0.28.2.
 
 ### Rollback
 
 - These changes are scripts, tests, docs, and E2E assets; no Cua or Paseo binary
-  is modified. `git checkout` the v2.8.0 tree to restore the previous helper
-  behavior.
-- Paseobility never auto-upgrades the installed Cua Driver, so no driver
-  rollback is implied; a driver that already worked is left as it was.
+  is modified. To restore the previous helper behavior, the v2.8.0 tree is
+  referenced but is **not a guaranteed tag**; the safest option is to check out
+  the previous `main` commit `970ea8cab7c3fef757d2bd13f58c8389758aad1d` in a
+  **separate clone**, preserving your existing work. Skill rollback uses the
+  installer backups.
+- There is **no automatic runtime rollback.** Paseobility never auto-upgrades the
+  installed Cua Driver, so a driver that already worked is left as it was.
 - Diagnostics need Python 3, but installation never does: both
   `paseobility-doctor.sh` and `paseobility-doctor.ps1` require Python 3 and exit
   non-zero with a clear message when it is absent, and the installer treats that

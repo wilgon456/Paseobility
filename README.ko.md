@@ -505,32 +505,51 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 ### 이번 릴리스(v2.8.1) 테스트 — 위 기기 행과 별개
 
-위 행들은 이전 기기 근거입니다. 이번 릴리스는 새 실기기 GUI 실행이 아니라 작성
-호스트의 오프라인 스위트로 검증했습니다:
+위 행들은 이전 기기 근거입니다. v2.8.1 릴리스는 macOS·Windows CI에서 오프라인
+스위트를 실행했고, [CI 실행
+35708474356](https://github.com/wilgon456/Paseobility/actions/runs/35708474356)
+(head `9932ea7590ef137552d8b2b4e065e7fbb1792254`)은 macOS·Windows 두 job 모두
+**SUCCESS**입니다. 정확한 범위:
 
-- `python3 -m unittest discover -s tests -p "test_*.py" -v` → **48 tests, 0
-  failures**: Cua Driver 런타임 18, doctor 21, E2E 자산 2, 스킬 migration 7.
+- **macOS:** Python 테스트 49개 발견, **49 통과, 0 skip**(Cua Driver 런타임 18,
+  doctor 21, E2E 자산 3, 스킬 migration 7), 그리고 Node cleanup **11**, Node share
+  **15**, Python scanner **13**, shell **2** — **자동 테스트 총 90개**.
+- **Windows 공유 Python 스위트:** 49개 발견 중 **14 통과**, 나머지 **35개는
+  POSIX 전용 skip**. Windows job은 Node cleanup **11**, Node share **15**, Python
+  scanner **13**도 실행하며 모두 통과합니다.
+- **네이티브 PowerShell fixture 스위트:** `pwsh`와 Windows PowerShell 5.1 **양쪽**
+  에서 실행되어 각각 **109 assertions, 0 fail, 0 skip**을 보고합니다. 이는 테스트
+  케이스 109개가 아니라 *assertion* 수이며, 실제 다운로드한 Cua GUI 테스트가 아닌
+  fixture 스위트입니다.
+- **여전히 미검증:** 공식 다운로드 경로로 실제 Windows에 Cua를 새로 설치하는 것은
+  **재현하지 않았습니다**. fixture 스위트는 스테이징 설치 / 공용 bin 보존 / 롤백 /
+  스킬 migration 계약을 증명할 뿐, 실제 다운로드를 증명하지 않습니다.
 - `./scripts/paseobility-doctor.sh --root .`를 text와 `--json` 모드로 이 체크아웃에
-  대해 실행했고, JSON은 결정적이며 마스킹됩니다. 라이브 호스트는 Cua 0.28.2
-  (권한 부여됨, 데몬 실행 중), Paseo 0.9.0-beta.2 도달 가능으로 보고됩니다.
+  대해 실행했고, JSON은 결정적이며 허용 목록 필드만 담습니다. 라이브 호스트는 Cua
+  0.28.2(권한 부여됨, 데몬 실행 중), Paseo 0.9.0-beta.2 도달 가능으로 보고됩니다.
 - `--check-mcp`를 명시하면 라이브 Cua 0.28.2 MCP 프로브가 프로토콜을 협상하고 한
-  연결에서 **도구 56개**를 나열한 것으로 관측되었습니다. 프로토콜/도구 확인일 뿐
-  GUI 결과가 아닙니다.
-- **이 호스트에서 실행하지 않음:** `tests/test_cua_driver_runtime.ps1`과 Windows
-  CI job(작성 머신에 `pwsh`/Windows 없음). pwsh와 Windows PowerShell 5.1 두 job
-  변형 모두 CI에 유지되므로 Windows 결과는 **대기 중**이며 통과로 주장하지 않습니다.
+  연결에서 **도구 56개**를 나열한 것으로 관측되었습니다. 이 프로브는 자체 stdio 서버
+  자식을 띄우며 **56개 도구**는 그 부모 프로브에서 나온 값입니다. 프로토콜/도구
+  확인일 뿐 GUI 결과가 아니고, Paseo agent 클라이언트의 MCP 설정·도구 탐색을
+  증명하지 **않습니다**.
 - **GUI E2E는 통과가 아니라 차단됨.** 이 호스트에서 `e2e/` 브라우저 fixture를 수동
   구동하려 했으나 `browser_new_tab http://127.0.0.1:<port>`가 탭 등록을 기다리다
   timeout, 연결된 탭 없음, fixture 서버 종료 후 포트 리스너 없음으로 실패했습니다.
   현재 브라우저 호스트가 탭을 등록하지 못해 GUI 통과를 주장하지 않습니다. 위 기기
   행 기록은 그대로입니다.
+- 이번 릴리스에서 업데이트한 `paseo-cua` 스킬은 Codex/Paseo와 Claude 스킬
+  디렉터리 양쪽에 백업과 함께 로컬 설치했습니다. 소스 7개 트리 모두 일치하고 나머지
+  12개 설치 트리는 그대로였으며, Cua 런타임은 0.28.2로 유지되었습니다.
 
 ### 롤백
 
 - 이번 변경은 스크립트·테스트·문서·E2E 자산이며 Cua/Paseo 바이너리를 수정하지
-  않습니다. 이전 helper 동작을 되돌리려면 v2.8.0 트리로 `git checkout` 하세요.
-- Paseobility는 설치된 Cua Driver를 자동 업그레이드하지 않으므로 드라이버 롤백은
-  필요하지 않습니다. 이미 동작하던 드라이버는 그대로 둡니다.
+  않습니다. 이전 helper 동작을 되돌리려면 v2.8.0 트리를 참조할 수 있지만 이는
+  **보장된 태그가 아닙니다**. 가장 안전한 방법은 이전 `main` 커밋
+  `970ea8cab7c3fef757d2bd13f58c8389758aad1d`를 **별도 clone**에서 checkout하여
+  기존 작업을 보존하는 것입니다. 스킬 롤백은 installer 백업을 사용합니다.
+- **자동 런타임 롤백은 없습니다.** Paseobility는 설치된 Cua Driver를 자동
+  업그레이드하지 않으므로 이미 동작하던 드라이버는 그대로 둡니다.
 - `paseobility-doctor.sh`와 `paseobility-doctor.ps1`은 **둘 다** Python 3가
   필요합니다. 없으면 각 래퍼가 명확한 메시지와 함께 0이 아닌 코드로 종료하고,
   installer는 이를 "진단 사용 불가"로 처리하고 설치를 끝냅니다. Python 3가
