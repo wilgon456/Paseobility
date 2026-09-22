@@ -80,16 +80,23 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
   지만 런타임 설정이 실패했음(설치가 불완전할 수 있음)을 알립니다.
 - macOS Accessibility·Screen Recording 권한은 사람이 직접 부여합니다.
   바이너리 설치와 권한 준비 완료는 다릅니다.
+- Cua Driver는 제품 텔레메트리가 **기본 활성화**되어 있습니다(installer는 이
+  설정을 바꾸지 않습니다). 직접 확인·해제할 수 있습니다:
+  `cua-driver telemetry status` / `cua-driver telemetry disable`. Paseobility는
+  이 설정을 변경하지 않습니다. 수집 범위는 독립적으로 감사하지 않았습니다 —
+  [플랫폼 검증 상태](docs/cua-platform-validation.md) 참고.
 - `cp -R` / `Copy-Item` 수동 복사는 문서만 복사하며 Cua Driver 런타임을 자동
   설치할 수 없습니다.
 
 현재 패키지는 **7개 스킬**입니다. CLI·MCP 도구 규격 호환성은 기존 6개 스킬에 대해
 v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에
-기록되어 있으며, 이 보고서는 **`paseo-cua`를 포함하지 않습니다**. 신규 `paseo-cua`는
-별도 증거(스킬 설치, 인식(discovery), `cua-driver doctor` 상태)로 확인했습니다.
-GUI 권한·런타임 상호작용은 아직 미검증이므로, 6개 스킬 기록을 7개 전체에 대한
-검증으로 해석하면 안 됩니다. 브라우저 호스트 타임아웃과 Windows 실동작 미검증 등
-범위도 같은 보고서에 구분해 기록합니다.
+기록되어 있으며, 이 보고서는 **`paseo-cua`를 포함하지 않습니다**. 6개 스킬 기록을
+7개 전체에 대한 검증으로 해석하면 안 됩니다. `paseo-cua`는 **preview / 제한 검증**
+단계로, 넓은 범위의 안정적인 Mac·Windows 지원이 아닙니다. 직접 검증된 경계는
+2026-09-21 Apple Silicon macOS 26.6.2 한 대(Cua Driver 0.28.2)이고, Intel macOS와
+Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 날짜별 매트릭스와 함께
+[Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)에 정리되어 있습니다. 2026-09-22
+기준 요약은 아래 [검증 상태](#검증-상태)를 참고하세요.
 
 | 스킬 | 사용 범위 |
 | --- | --- |
@@ -409,17 +416,31 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 기존 6개 스킬의 CLI·MCP 호환성 기록은 v2.7.0 시점
 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에 있으며, **신규 `paseo-cua`는
-포함하지 않습니다**. `paseo-cua`는 문서·설치·인식(discovery) 수준으로 검증했습니다.
-검토한 installer로 Cua Driver 런타임(고정 0.28.2)을 이 호스트에 자동 설치해
-**바이너리 경로·버전과 `cua-driver doctor` 통과는 확인했지만, macOS Accessibility·
-Screen Recording 권한은 검증하지 않았습니다** (`cua-driver permissions status`가 둘 다
-unknown으로 보고했으며, 이는 드라이버 자체 identity의 데몬이 없기 때문입니다). GUI
-상호작용 테스트도 하지 않았습니다. 바이너리 설치를 권한 준비 완료로 오해하면 안 되며,
-7개 스킬 전체가 런타임 호환 검증되었다고 해석해서도 안 됩니다. 임시 경로 설치·이전과
-helper 회귀 테스트는 확인했습니다. PowerShell wrapper는 이 호스트에 `pwsh`가 없어 소스
-검토만 했고, Windows migration 실동작도 확인하지 못했습니다.
-세부 결과와 제한은 [현재 호환성 보고서](docs/compatibility-0.9.0-beta.2.md)를
-참고하세요. 아래는 이전 버전에 기록된 검증이며 현재 버전의 증거로 사용하지 않습니다.
+포함하지 않습니다**. 6개 스킬 기록을 7개 전체에 대한 검증으로 해석하면 안 됩니다.
+
+`paseo-cua`는 **preview / 제한 검증** 단계로, 넓은 범위의 안정적인 Mac·Windows
+지원이 아닙니다. 2026-09-22 기준 현재 상태:
+
+| 환경 | 네이티브 GUI (Cua) | 브라우저 결과와 제한 |
+| --- | --- | --- |
+| Apple Silicon macOS 26.6.2 · Cua 0.28.2 · 직접 로컬 | Calculator 입력/재확인 + PNG 통과; `verify_state` unknown | viewport 통과; 내장 `fullPage` 실패 |
+| Intel Mac mini 16GiB · macOS 15.8 · Paseo 0.8.0 · Cua 0.28.2 | 사용자 보고: 네이티브 GUI + PNG 통과; `verify_state` unknown | 브라우저 입력·viewport 통과; 내장 `fullPage` 실패; 같은 탭 스크롤+이어붙인 전체 PNG는 DPR 1 두 fixture에서만 통과(범용 helper 아님) |
+| Intel MacBook 8GiB · macOS 15.7.9 · Paseo 0.7.2 · Cua 0.17.0(재사용) | 사용자 보고 이전 E2E: 네이티브 GUI/PNG 통과; `verify_state` unknown | 브라우저 입력·viewport 통과; 내장 `fullPage` 실패; 설치된 0.9.0-beta.2는 그대로 두었고 재검증하지 않음 |
+| MacBook 후속 · 격리된 upstream PR `#3197` 빌드(보고 버전 0.3.1) | — | 사용자 보고: 실제 MCP `browser_screenshot(fullPage:true)`가 DPR 2에서 2573px·3511px를 각각 2회 통과, 반복 SHA 동일 |
+| Windows 11 25H2 · Paseo 0.9.0-beta.2 · Cua 0.28.2 | 사용자 보고: MCP 57개 도구 + Calculator 입력/AX/PNG/`verify_state` 통과 | viewport·fullpage PNG 실패(`screenshot_no_frame` 후 15초 timeout, 이미지 없음); DOM fixture 입력·클릭·스크롤 통과; localhost HTTP 실패; 물리적 브라우저 호스트 불명 |
+
+참고:
+
+- 이번 리뷰에서 직접 확인한 것은 Apple Silicon 행 하나뿐이며, Intel Mac과 Windows 행은 **사용자 보고**로 독립 재현되지 않았습니다. MacBook 후속은 upstream PR 빌드를 제품 코드 추가 수정 없이 사용한 것으로, Paseobility가 릴리스·설치한 수정이 **아닙니다** — 0.9 backport는 충돌로 중단했고, 0.3.1 다운그레이드는 권장하지 않습니다.
+- 네이티브 통과는 좁게 시험한 흐름에 한정되며 플랫폼 전체 지원이 아닙니다. 8GiB는 최소 RAM 보장이 아니고, 메모리는 최대 사용량까지 측정하지 않았습니다.
+- 보고된 호스트에서 Windows 자동 런타임 설치는 **미해결**입니다: 기존 비정션(non-junction) `.local/bin`이 upstream installer와 충돌했습니다. 수동 하드링크로 드라이버를 복구했지만, 매끄러운 자동 설치 통과를 입증하지는 **않습니다**. Windows catalog에서 명시 전용 스킬 2개는 여전히 확인되지 않았습니다.
+- 테스트 수는 보고 기준이며 이번 README 업데이트에서 재실행하지 **않았습니다**: Intel Mac mini 41개(cleanup 11 + share 15 + scanner 13 + shell 2); Windows 63 passed / 2 failed / 1 skipped, 이전과 동일.
+- PowerShell wrapper는 이 Mac에서 `pwsh`가 없어 소스 검토만 했습니다. 제공된 Windows 보고는 스킬 migration과 런타임 수동 복구를 확인했습니다. 임시 경로 설치·이전과 helper 회귀 테스트는 확인했습니다.
+- v2.7 6개 스킬 호환 문서는 7개 전체의 런타임을 증명하지 **않습니다**. 이 문서 업데이트는 Paseo 앱이나 캡처 엔진을 수정하지 않습니다. 바이너리 설치를 권한 준비 완료로 오해하면 안 됩니다. 그 밖의 macOS 버전과 Linux는 **미검증**입니다.
+
+세부 내용과 선택형 Playwright 대안, 호스트별 프로브는
+[Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)와
+[호환성 보고서](docs/compatibility-0.9.0-beta.2.md)를 참고하세요. 아래는 이전 버전에 기록된 검증이며 현재 버전의 증거로 사용하지 않습니다.
 
 ### 과거 검증 기록 — 이번 통합본 검증과 별개
 
@@ -759,7 +780,7 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 ## `/paseo-cua`
 
 trycua Cua Driver(`cua-driver` CLI 또는 MCP)로 네이티브 데스크톱 GUI를, 명시
-요청 시에만 구동합니다.
+요청 시에만 구동합니다. **preview / 제한 검증** 단계입니다 — [Cua 플랫폼 검증 상태](docs/cua-platform-validation.md) 참고.
 
 - 사전조건: `cua-driver --version`이 있어야 합니다. 없으면 사전조건만 보고하고
   중단하며, 이 스킬은 아무것도 설치하지 않습니다.
@@ -842,6 +863,7 @@ skills/
 scripts/                     # installers, doctor, context helper, cua-driver helper
 tests/                       # test_skill_migration.py, test_cua_driver_runtime.py
 docs/compatibility-0.9.0-beta.2.md
+docs/cua-platform-validation.md
 AGENTS.md
 CLAUDE.md
 VERSION

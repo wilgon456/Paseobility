@@ -58,9 +58,10 @@ Selecting `paseo-cua`, or installing the full package, also prepares the trycua 
 - The driver step verifies the code signature on macOS, does not modify PATH (`--no-modify-path` / `-NoPathUpdate`), and never touches shell rc or MCP config. The pinned installer only resolves/downloads a release and stops stale daemons; it never starts a daemon ([`install.sh`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/install.sh), [`_install-rust.sh`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/_install-rust.sh)).
 - If the runtime step fails, the installer exits non-zero and reports that skills were copied but the runtime setup failed (installation may be incomplete).
 - macOS Accessibility and Screen Recording permissions are granted by the human. A binary being installed is not the same as permissions being ready.
+- The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
 - A manual `cp -R` / `Copy-Item` copies documents only and cannot auto-install the Cua Driver runtime.
 
-The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`. The new `paseo-cua` has separate evidence: skill install, recognition (discovery), and `cua-driver doctor` status. GUI permission/runtime interaction remains unverified, so the six-skill record must not be read as covering all seven. Browser host timeouts and unverified Windows runtime behavior are also recorded in that report.
+The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua` — the six-skill record must not be read as covering all seven. `paseo-cua` is **preview / limited validation**, not broad stable Mac and Windows support. Its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on Intel macOS and Windows, plus an isolated upstream PR build, are recorded with a dated matrix in the [Cua platform validation status](docs/cua-platform-validation.md). See [Verification status](#verification-status) below for the compact 2026-09-22 summary.
 
 | Skill | Scope |
 | --- | --- |
@@ -342,19 +343,33 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 ## Verification status
 
-The CLI/MCP compatibility record for the existing 6 skills is at the v2.7.0
-[compatibility report](docs/compatibility-0.9.0-beta.2.md), and **does not include the new `paseo-cua`**.
-`paseo-cua` was verified at the document/install/discovery level. The Cua Driver runtime was
-auto-installed on this host through the reviewed installer (pinned 0.28.2): the binary path and
-version are confirmed and `cua-driver doctor` reported all checks ok. However, **macOS
-Accessibility and Screen Recording grants were not verified** (`cua-driver permissions status`
-reported both as unknown, because no daemon runs under the driver's own identity), and no GUI
-interaction test was run. Do not read binary presence as permission readiness, and do not treat
-all 7 skills as runtime-compatibility-verified. Isolated-path install/migration and helper
-regression tests were confirmed. The PowerShell wrappers were source-reviewed only, because
-`pwsh` is unavailable on this host; Windows migration runtime was not verified. See the
-[current compatibility report](docs/compatibility-0.9.0-beta.2.md) for details and limits. The
-entries below are prior-version records and are not evidence for the current version.
+The CLI/MCP compatibility record for the existing six skills is the v2.7.0
+[compatibility report](docs/compatibility-0.9.0-beta.2.md), which **does not cover `paseo-cua`**.
+The six-skill record must not be read as covering all seven skills.
+
+`paseo-cua` is **preview / limited validation** — not broad stable Mac and Windows support.
+Current dated status (**2026-09-22**):
+
+| Environment | Native GUI (Cua) | Browser result and limits |
+| --- | --- | --- |
+| Apple Silicon macOS 26.6.2 · Cua 0.28.2 · direct local | Calculator input/read-back + PNG pass; `verify_state` unknown | viewport pass; built-in `fullPage` fails |
+| Intel Mac mini 16 GiB · macOS 15.8 · Paseo 0.8.0 · Cua 0.28.2 | user-reported: native GUI + PNG pass; `verify_state` unknown | browser input/viewport pass; built-in `fullPage` fails; same-tab scroll+stitch whole-PNG passed for two DPR-1 fixtures only (not a general helper) |
+| Intel MacBook 8 GiB · macOS 15.7.9 · Paseo 0.7.2 · Cua 0.17.0 (reused) | user-reported prior E2E: native GUI/PNG pass; `verify_state` unknown | browser input/viewport pass; built-in `fullPage` fails; installed 0.9.0-beta.2 left unchanged and not revalidated |
+| MacBook follow-up · isolated upstream PR `#3197` build (reported 0.3.1) | — | user-reported: real MCP `browser_screenshot(fullPage:true)` passed 2573px/3511px at DPR 2 twice each, repeat SHA identical |
+| Windows 11 25H2 · Paseo 0.9.0-beta.2 · Cua 0.28.2 | user-reported: MCP 57 tools + Calculator input/AX/PNG/`verify_state` pass | viewport/full-page PNG failed (`screenshot_no_frame` then 15s timeout, no image); DOM-fixture input/click/scroll pass; localhost HTTP failed; physical browser host unknown |
+
+Notes:
+
+- Only the Apple Silicon row was directly verified in this review; the Intel Mac and Windows rows are **user-reported** and were not independently reproduced. The MacBook follow-up used the isolated upstream PR build without additional product edits and is **not** a fix released or installed by Paseobility — the 0.9 backport was aborted on conflicts, and a 0.3.1 downgrade is not recommended.
+- Native passes cover narrow tested flows, not blanket platform support. The 8 GiB sample is not a RAM minimum or guarantee, and memory was not measured at peak.
+- Windows automatic runtime installation remains unresolved on the reported host: an existing non-junction `.local/bin` conflicted with the upstream installer. Manual hardlinks restored the driver; this does not establish a seamless automatic-install pass. Two explicit-only skills remain unconfirmed in the Windows catalog.
+- Test counts are as reported and were **not** re-run for this README update: 41 automated tests on the Intel Mac mini (cleanup 11 + share 15 + scanner 13 + shell 2); Windows 63 passed / 2 failed / 1 skipped, unchanged.
+- The PowerShell wrappers were source-reviewed only on macOS (`pwsh` unavailable); the supplied Windows report confirms skill migration and manual runtime recovery. Isolated-path install/migration and helper regression tests were confirmed.
+- The v2.7 six-skill compatibility doc does **not** prove all seven skills at runtime. This documentation update does not modify the Paseo app or capture engine. Do not read binary presence as permission readiness. Other macOS versions and Linux remain **unverified**.
+
+Details, including the optional Playwright fallback and per-host probes, are in the
+[Cua platform validation status](docs/cua-platform-validation.md) and the
+[compatibility report](docs/compatibility-0.9.0-beta.2.md). The entries below are prior-version records and are not evidence for the current version.
 
 ### Past verification record — separate from this consolidation
 
@@ -686,7 +701,7 @@ Key rules:
 
 ## `/paseo-cua`
 
-Drives a native desktop GUI through the trycua Cua Driver (`cua-driver` CLI or MCP), explicitly only.
+Drives a native desktop GUI through the trycua Cua Driver (`cua-driver` CLI or MCP), explicitly only. **Preview / limited validation** — see the [Cua platform validation status](docs/cua-platform-validation.md).
 
 - Preconditions: `cua-driver --version` must be present. If missing, report the prerequisite and stop; the skill installs nothing.
 - Read the installed contract first: `cua-driver list-tools`, `cua-driver describe <tool>`.
@@ -763,6 +778,7 @@ skills/
 scripts/                     # installers, doctor, context helper, cua-driver helper
 tests/                       # test_skill_migration.py, test_cua_driver_runtime.py
 docs/compatibility-0.9.0-beta.2.md
+docs/cua-platform-validation.md
 AGENTS.md
 CLAUDE.md
 VERSION
