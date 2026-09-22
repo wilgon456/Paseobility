@@ -90,6 +90,10 @@ Snapshot again after any action that can rerender the page.
 `browser_screenshot` returns PNG output. Set `fullPage: true` only when content
 below the fold matters. Use `browser_resize` for responsive checks.
 
+When a screenshot fails with `screenshot_no_frame` or a capture timeout, or a
+`fullPage` image shows repeated/duplicated edges, read
+[references/screenshots.md](references/screenshots.md) before retrying.
+
 `browser_logs` returns recent console and performance-network entries;
 `maxEntries` defaults to 50 and is capped at 200. Logs are evidence, not proof
 that a flow succeeded, so confirm page state too.
@@ -149,6 +153,9 @@ fresh snapshot -> browser_logs -> narrow read-only evaluate -> screenshot
 - `browser_stale_ref`: take a new snapshot and retry with the new ref.
 - `browser_timeout`: verify host connection and page readiness, then retry once
   with a bounded wait.
+- Screenshot failure (`screenshot_no_frame`, capture timeout) or duplicated
+  `fullPage` output: read [references/screenshots.md](references/screenshots.md)
+  and follow it instead of blindly retrying.
 - `browser_unsupported`: report the active app/runtime limitation.
 
 ## Safety

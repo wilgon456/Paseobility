@@ -52,6 +52,39 @@ the `driver-daemon` identity. The earlier daemon attribution was **not
 independently established**, so do not treat the earlier `unknown` as proof the
 grants were absent, and do not attribute it to a specific cause.
 
+## 2026-09-22 recheck: unlocked Calculator and browser screenshot recovery
+
+Same host and baseline as above: macOS 26.6.2 (Apple Silicon), Paseo
+0.9.0-beta.2, Cua Driver 0.28.2.
+
+- **Unlocked Calculator result.** With the OS session unlocked, accessibility
+  input `7 + 5 =` on a background Calculator instance produced `12` in the
+  window tree markdown **and** in an inspected screenshot. The driver's
+  `verify_state` (`AXStaticText`, `value_equals 12`) still returned `unknown`;
+  that predicate is **not** confirmed and must not be reported as passed.
+- **Permission status is not readiness.** Granted Accessibility and Screen
+  Recording still do not by themselves prove the driver can act on a target;
+  confirm it with a snapshot and one action.
+- **Browser capture recovered by restoring the host window.** With the Paseo
+  host window not on screen, `browser_screenshot` returned
+  `screenshot_no_frame` reproducibly while the session was unlocked; resizing
+  alone did not repair it. Bringing the exact existing Paseo window to the front
+  restored immediate valid PNG captures (a second fresh background tab captured
+  too). No tab reload, app restart, or daemon restart was involved. This
+  supports restoring/showing the host window as a recovery step; it does not
+  prove universal background capture, and ordinary default-viewport screenshots
+  succeeded. See
+  [`skills/paseo-browser/references/screenshots.md`](../skills/paseo-browser/references/screenshots.md).
+- **`fullPage` duplication unresolved.** At a fractional device pixel ratio,
+  `fullPage: true` returned an image with repeated right/bottom edges while a
+  default-viewport capture of the same page was valid. This remains an
+  unresolved native product defect; do not claim visually correct full-page
+  stitching.
+- **Windows not re-tested.** The native Windows runtime remains unverified.
+
+These results are measured on this one Apple Silicon macOS host. They are not
+evidence for other macOS hardware, other OS versions, Windows, or Linux.
+
 ## Dated matrix
 
 | Target | Status | Basis / limits |
@@ -120,4 +153,5 @@ the driver's own commands are authoritative:
 ## Related
 
 - Reproducible macOS onboarding: [`skills/paseo-cua/references/setup.md`](../skills/paseo-cua/references/setup.md).
+- Browser screenshot failure and `fullPage` recovery: [`skills/paseo-browser/references/screenshots.md`](../skills/paseo-browser/references/screenshots.md).
 - Prior-version skill compatibility (does **not** cover `paseo-cua`): [`compatibility-0.9.0-beta.2.md`](./compatibility-0.9.0-beta.2.md).
