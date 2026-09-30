@@ -330,7 +330,7 @@ try {
       Assert-Equal 2 $lines.Count "fixture logged staging + version once"
       if ($lines.Count -ge 2) {
         Assert-Contains $lines[0] "staging=" "fixture recorded the staging dir"
-        Assert-Contains $lines[1] "version=0.28.2" "fixture recorded the pinned version"
+        Assert-Contains $lines[1] "version=0.30.4" "fixture recorded the pinned version"
       }
       Assert-True (Test-Path -LiteralPath (Join-Path $case.Release "cua-cursor-theme.exe")) "staged junction target untouched"
     } else {

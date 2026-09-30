@@ -74,8 +74,11 @@ The package contains seven skills. `paseo-agent-tournament` is comparison mode
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver and is explicit-only;
-ordinary web page work stays with `paseo-browser`. No duplicate alias skills
-are installed.
+ordinary web page work stays with `paseo-browser`, whose default backend is
+CloakBrowser (stealth Chromium via the pinned `cloakbrowser` package's
+Playwright API). Paseo `browser_*` and the Microsoft Playwright CLI are optional
+compatibility backends for `paseo-browser`, not the default and never silently
+substituted on failure. No duplicate alias skills are installed.
 
 For an authorized update, use `--migrate-skills` (PowerShell: `-MigrateSkills`)
 to move selected predecessors to backup after installing replacements. This
@@ -94,11 +97,15 @@ broken and left untouched (non-zero exit), never overwritten. Selecting only
 other skills has no driver side effects.
 
 - The helper fetches the pinned installer scripts (commit
-  `9bbfa7dd3e27ca7f1861ede70aaca390174493f9`, Cua Driver `0.28.2`) and runs
+  `bf6c76786d938070f4ecf1e44004752f69f518b8`, Cua Driver `0.30.4`) and runs
   them from a temp directory. It never edits PATH or registers MCP config, and
   it never starts the daemon: the pinned `install.sh` / `_install-rust.sh` only
   resolve/download a release and stop stale daemons
-  (https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/).
+  (https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/).
+  An explicit `CUA_DRIVER_RS_VERSION` pin outranks the installer's baked
+  version, and the pinned installer refuses withdrawn releases. The pin is a
+  source/schema-reviewed contract; `0.28.2` remains the last version exercised
+  end-to-end.
 - On Windows the helper installs into a private, Paseobility-owned staging bin
   and then publishes only the executable set (`cua-driver.exe`,
   `cua-driver-uia.exe`, `cua-cursor-theme.exe`) into the shared bin dir. It does
@@ -228,8 +235,9 @@ unless `-NoBackup` is passed.
 ## Paseo CLI detection
 
 Paseo CLI is useful for diagnosis but not required for copying skills.
-The current local compatibility baseline is Paseo 0.9.0-beta.2; see
-`docs/compatibility-0.9.0-beta.2.md` for verified layers and limitations. When a CLI is found, run
+The current local compatibility baseline is Paseo 0.10.2; see
+`docs/compatibility-0.10.2.md` for verified layers and limitations (the
+`docs/compatibility-0.9.0-beta.2.md` record is retained as history). When a CLI is found, run
 `paseo --version` and report the detected version; do not downgrade, update, or
 restart Paseo as part of skill installation. A future version is not by itself
 an install failure, but behavior-sensitive validation should use the tool names

@@ -43,6 +43,66 @@ This repo is a **skill package for reproducibly composing Paseo's built-in tools
 
 ---
 
+## 2026-09-30 update — CloakBrowser browser default, Paseo 0.10.2, Cua pin 0.30.4
+
+This is the current update section. It records cumulative changes to the same
+**7-skill** package; earlier sections below are historical and unchanged.
+
+### `/paseo-browser` now defaults to CloakBrowser
+
+- Default backend is **CloakBrowser** — a stealth Chromium wrapped by the pinned
+  `cloakbrowser` package's Playwright API (`cloakbrowser@0.5.11`,
+  `playwright-core@1.63.0`, Node >= 20). Ordinary navigation, reading, click/fill,
+  bounded waits, read-only JS, screenshots, and console/network diagnostics are
+  directly executable; recipes close the browser in `finally` so failures do not
+  leak it.
+- The pinned wrapper loads via dynamic `import()` from a Paseobility-owned
+  runtime. Paseo `browser_*` and the Microsoft Playwright CLI remain **optional,
+  explicit** backends (each reference file carries its backend label) and are
+  never silently substituted when CloakBrowser fails.
+- Skill copying stays **docs-only**: the installers (including a temp
+  `--target-home`) do not install Node packages or download a browser. The
+  runtime is set up explicitly:
+  `npm install --save-exact cloakbrowser@0.5.11 playwright-core@1.63.0` under a
+  runtime dir, with `CLOAKBROWSER_CACHE_DIR` scoped to it.
+- Tested locally (headless, keyless free binary): the fixture adder page was read,
+  `#a=7`, `#b=5`, `#compute` produced `12`, a fresh semantic snapshot confirmed
+  it, and desktop (1280×720) plus mobile (375×812) screenshots were captured.
+  Error paths (failed navigation; post-launch screenshot failure) exit non-zero
+  and still close the browser. The binary launched on macOS was **Chromium
+  145.0.7632.109** (keyless free build); the latest keyed build (macOS 151,
+  Linux/Windows 152) is **free for one concurrent session with a GitHub-issued
+  key** or paid for scaling, and was **not** tested here.
+- Limits: no verified external anti-bot/stealth result, no headed run, and no
+  Windows/Linux runtime check in this update. macOS only.
+
+### Paseo 0.10.2 contract check (app/source), live daemon unchanged
+
+- Installed app/CLI `0.10.2` matches the latest official `v0.10.2` release; the
+  running daemon was **not restarted** and still reports `0.9.0-beta.2`.
+- `0.10.2` is verified at the release-notes plus installed-app `app.asar`
+  `TOOL_SPECS` layer (61 tools, `AGENT_FIELDS` without a `profile` argument), not
+  by a fresh `0.10.2` daemon handshake. See
+  [`docs/compatibility-0.10.2.md`](docs/compatibility-0.10.2.md).
+
+### Cua Driver source pin 0.30.4 (host stays 0.28.2)
+
+- The Paseobility updater now pins Cua Driver **0.30.4** (immutable commit
+  `bf6c76786d938070f4ecf1e44004752f69f518b8`), while the **host keeps its working
+  0.28.2** — an existing working driver is reused and never auto-upgraded.
+- Source-reviewed installer behavior changes only: baked version, a
+  withdrawn-release guard (`0.28.3`), and an autostart report fix;
+  `--no-modify-path` / `-NoPathUpdate`, no-daemon-start, and Windows staging/
+  rollback behavior are preserved. No new 0.30.4 GUI validation is claimed.
+- The prior Cua preview records and tests are unchanged (offline suites still
+  pass; no invented success).
+
+Validation for this update is local and offline: skill frontmatter, diff checks,
+offline scanner/shell suites, and a temp-home single-skill install. Windows runs
+in GitHub Actions.
+
+---
+
 ## v2.8.1 — Windows Cua install fix, read-only doctor, offline tests
 
 v2.8.1 fixes a Windows-only Cua Driver install conflict and adds a read-only
@@ -81,11 +141,11 @@ v2.8.0 adds `paseo-cua`. It is used only when the user **explicitly asks to driv
 
 Selecting `paseo-cua`, or installing the full package, also prepares the trycua Cua Driver runtime. If a working driver already exists, the installer reuses it and never auto-upgrades it.
 
-- Pinned source: trycua/cua commit `9bbfa7dd3e27ca7f1861ede70aaca390174493f9`, Cua Driver version `0.28.2`.
-- The installer downloads the upstream install scripts at the pinned commit and runs them from a temporary directory (never `curl | bash`). The pinned `_install-rust.sh` and `_install-common.sh` are fetched too, so the delegated script cannot silently fall back to a rolling URL.
+- Pinned source: trycua/cua commit `bf6c76786d938070f4ecf1e44004752f69f518b8` (the `cua-driver-rs-v0.30.4` release tag), Cua Driver version `0.30.4`. This pin is a source/schema-reviewed contract; the last runtime exercised end-to-end in the validation records below remains `0.28.2`, and an existing working driver is reused, never auto-upgraded.
+- The installer downloads the upstream install scripts at the pinned commit and runs them from a temporary directory (never `curl | bash`). The pinned `_install-rust.sh` and `_install-common.sh` (and the Windows `install.ps1` / `_install-common.psm1`) are fetched too, so the delegated script cannot silently fall back to a rolling URL.
 - `--skip-cua-driver` / `-SkipCuaDriver`: skip the runtime and copy skills only (docs-only / offline).
 - A custom `--target-home` / `-TargetHome` skips the real-host runtime by default and logs why. `--allow-host-runtime` / `-AllowHostRuntime` instead allows real host runtime installation even when the skills `--target-home` is custom. The driver is always installed at its normal host location; on macOS that still writes `/Applications/CuaDriver.app` and `~/.cua-driver`, so this is not a sandbox.
-- The driver step verifies the code signature on macOS, does not modify PATH (`--no-modify-path` / `-NoPathUpdate`), and never touches shell rc or MCP config. The pinned installer only resolves/downloads a release and stops stale daemons; it never starts a daemon ([`install.sh`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/install.sh), [`_install-rust.sh`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/_install-rust.sh)).
+- The driver step verifies the code signature on macOS, does not modify PATH (`--no-modify-path` / `-NoPathUpdate`), and never touches shell rc or MCP config. The pinned installer only resolves/downloads a release and stops stale daemons; it never starts a daemon ([`install.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/install.sh), [`_install-rust.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/_install-rust.sh)). An explicit `CUA_DRIVER_RS_VERSION=0.30.4` pin outranks the installer's baked version, and the pinned installer refuses withdrawn releases (`0.28.3`).
 - If the runtime step fails, the installer exits non-zero and reports that skills were copied but the runtime setup failed (installation may be incomplete).
 - macOS Accessibility and Screen Recording permissions are granted by the human. A binary being installed is not the same as permissions being ready.
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
@@ -97,7 +157,7 @@ The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked 
 | --- | --- |
 | `/paseo-orchestration` | Explicitly requested multi-agent coordination or compare/tournament |
 | `/paseo-project` | Requested project summary/handoff or initial setup/environment changes |
-| `/paseo-browser` | Web UI manipulation/verification in the Paseo browser |
+| `/paseo-browser` | Web UI manipulation/verification via CloakBrowser (Paseo browser + Playwright CLI optional) |
 | `/paseo-cua` | Explicitly requested native app GUI driven by the trycua Cua Driver |
 | `/paseo-agent-cleanup` | Cleaning up selected test agents/workspaces |
 | `/paseo-share` | Artifact sharing between personal devices |
@@ -227,7 +287,7 @@ When you explicitly request these tasks, you can use the following capabilities:
 
 | Skill | Role | Strong at requests like |
 | --- | --- | --- |
-| `/paseo-browser` | Browser manipulation workflow | Filling login forms, reading search results, clicking UI, responsive screenshots, checking web app state |
+| `/paseo-browser` | Browser manipulation workflow (CloakBrowser default) | Filling login forms, reading search results, clicking UI, responsive screenshots, checking web app state; CloakBrowser stealth Chromium via Playwright API, with optional Paseo `browser_*` and Microsoft Playwright CLI backends |
 | `/paseo-cua` | Native desktop GUI driving | App window manipulation/snapshot/verification with the trycua Cua Driver, only on explicit request |
 | `/paseo-orchestration` | Multi-agent coordination and comparison | Explicitly requested coordination or tournament, mode-specific guidance |
 | `/paseo-project` | Project summary and setup | Requested read-only brief or environment/context setup |
@@ -413,7 +473,9 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 The CLI/MCP compatibility record for the existing six skills is the v2.7.0
 [compatibility report](docs/compatibility-0.9.0-beta.2.md), which **does not cover `paseo-cua`**.
-The six-skill record must not be read as covering all seven skills.
+The six-skill record must not be read as covering all seven skills. The current
+package compatibility baseline is Paseo **0.10.2**; its re-verification record
+is [`docs/compatibility-0.10.2.md`](docs/compatibility-0.10.2.md).
 
 `paseo-cua` is **preview / limited validation** — not broad stable Mac and Windows support.
 Current dated status (**2026-09-22**):
@@ -804,25 +866,84 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 ## `/paseo-browser`
 
-Provides a workflow that actually manipulates the browser, not just "views" it.
+Drives a web page with **CloakBrowser** (stealth Chromium via the `cloakbrowser`
+package's Playwright API) as the default backend — executable, not just advisory.
 
-| To do | Flow to use |
+| To do | Call |
 | --- | --- |
-| Read a page | `browser_new_tab` -> `browser_snapshot` |
-| Click a button | `browser_snapshot` -> find ref -> `browser_click` |
-| Fill a form | `browser_snapshot` -> find ref -> `browser_fill` / `browser_type` |
-| Select a dropdown | `browser_snapshot` -> find ref -> `browser_select` |
-| Verify a screen | `browser_screenshot` / `browser_snapshot` |
-| Check responsiveness | `browser_resize` -> `browser_screenshot` |
-| Debug | `browser_logs` / `browser_evaluate` |
+| Read a page | `page.goto(url)` -> `page.locator('body').ariaSnapshot()` |
+| Click a button | `page.getByRole('button', { name }).click()` |
+| Fill a form | `page.locator('#id').fill('...')` |
+| Select a dropdown | `page.selectOption('#id', 'value')` |
+| Verify a screen | `page.screenshot({ path })` + fresh `ariaSnapshot()` |
+| Check responsiveness | `page.setViewportSize({ width, height })` -> screenshot |
+| Debug | `page.on('console'/'requestfailed'/'response', ...)` |
+
+The skill requires a Paseobility-owned runtime (below) and a signed
+(`Ed25519` + `SHA-256` verified) stealth-Chromium binary in its runtime cache.
 
 Key rules:
 
-- Always take a fresh snapshot before an action. When the page changes, refs change too.
-- The canonical tool names are `browser_*`, and the agent must belong to a Paseo workspace with a connected desktop browser automation host.
-- Use snapshots to understand text and screenshots for visual verification.
-- Take user confirmation first for hard-to-reverse actions such as payment, submission, or account changes.
+- Act with locators/roles, then re-read state (fresh snapshot) after navigation or a DOM change; a click alone is not proof.
+- Default is headless and isolated; sessions never share the user's Chrome/Paseo profile, cookies, login, or refs. Close the browser in `finally` so failed runs do not leak it.
+- Prefer the keyless free binary (macOS: Chromium 145; Linux/Windows: Chromium 146). The latest keyed build (macOS 151 / Linux+Windows 152) is free for one concurrent session with a GitHub-issued key, or paid for scaling — a paid plan is not mandatory to use a current build. Never run `cloakbrowser login` or store a license key; the wrapper's latest release is not the latest browser binary.
+- Do not add a confirmation prompt for reversible steps the current browser task already authorizes; do verify payment/submission/account changes.
 - Do not read sensitive information such as cookies, tokens, or localStorage with `evaluate`.
+
+### Setup — Paseobility-owned CloakBrowser runtime (no global install)
+
+```bash
+RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
+mkdir -p "$RUNTIME" && cd "$RUNTIME" && npm init -y >/dev/null
+npm install --save-exact --no-audit --no-fund cloakbrowser@0.5.11 playwright-core@1.63.0
+export PASEOBILITY_CLOAK_RUNTIME="$RUNTIME"
+export CLOAKBROWSER_CACHE_DIR="${CLOAKBROWSER_CACHE_DIR:-$RUNTIME/cache}"  # runtime-scoped binary cache
+export CLOAKBROWSER_AUTO_UPDATE=false            # reproducible pin
+```
+
+The package is ESM: load it with dynamic `import()` (Node >= 20, the package engine minimum; verified on Node 22.23.2). See [`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md).
+
+Skill copying stays docs-only: the convenience installers do **not** install
+Node packages or download the browser binary, including for a temp `--target-home`.
+
+### Optional compatibility backends (not the default)
+
+The Paseo `browser_*` tools (live Paseo workspace tabs; needs a connected desktop
+host; operational guidance in
+[`skills/paseo-browser/references/paseo.md`](skills/paseo-browser/references/paseo.md))
+and the pinned Microsoft Playwright CLI remain available when the user opts in.
+They are never silently substituted when CloakBrowser fails. Playwright CLI
+recipe (`@playwright/cli@0.1.22` via `npx`, Node >=18, no global install),
+isolated headless runs with tracing/PDF/console/network. Replace `S` with a
+task-unique value and keep `-s=...` quoted:
+
+```bash
+TASK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/paseo-pw-XXXXXX")"
+cd "$TASK_DIR"
+export PLAYWRIGHT_BROWSERS_PATH="$TASK_DIR/browsers"
+S='task-browser-demo-20260930'
+# one-time for this task dir if no usable system Chrome:
+npx --yes --package @playwright/cli@0.1.22 playwright-cli install-browser chromium
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" open 'https://example.com/' --browser chromium
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" snapshot
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" tracing-start
+# ... bounded step to evidence ...
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" tracing-stop
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" close
+```
+
+This runs from the task dir so default `.playwright-cli/` artifacts stay there.
+On Windows, create the task dir and session with PowerShell (`$TaskDir =
+Join-Path $env:TEMP ...`, then `Set-Location -LiteralPath $TaskDir`,
+`$env:PLAYWRIGHT_BROWSERS_PATH`, `$Session`) and pass `"-s=$Session"`; the `npx`
+lines are otherwise the same. Playwright refs (`e12`)
+are a separate namespace from Paseo refs (`@e12`); pick one backend per flow. The
+mode never attaches to the user's existing Chrome profile, cookies, or tabs,
+closes only its own named session (never `close-all`/`kill-all`), and adds no
+installer, global-package, or MCP side effects. CloakBrowser recipes are in
+[`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md);
+Playwright CLI recipes are in
+[`skills/paseo-browser/references/playwright.md`](skills/paseo-browser/references/playwright.md).
 
 ---
 
@@ -893,7 +1014,7 @@ In Paseo 0.6, the agent profiles configured in the app are the basis for provide
 ```text
 skills/
 ├── paseo-agent-cleanup/       # SKILL.md + CLI helper/tests
-├── paseo-browser/            # SKILL.md
+├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
@@ -906,7 +1027,8 @@ scripts/                     # installers, doctor (.sh/.ps1/.py), context, cua-d
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template
 .github/workflows/ci.yml     # macOS + Windows offline suites
-docs/compatibility-0.9.0-beta.2.md
+docs/compatibility-0.10.2.md
+docs/compatibility-0.9.0-beta.2.md   # historical (0.9.0-beta.2)
 docs/cua-platform-validation.md
 AGENTS.md
 CLAUDE.md

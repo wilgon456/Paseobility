@@ -25,7 +25,7 @@ Reuse current discovery and verified task context within a run.
 ## Launch contract
 
 Read the installed base **paseo** skill for the active tool schemas. The local
-compatibility baseline is Paseo 0.9.0-beta.2; discover capabilities instead of
+compatibility baseline is Paseo 0.10.2; discover capabilities instead of
 assuming a model, provider, setting, or tool from the version alone.
 
 1. Read `list_profiles` and profile notes. Follow a user-named profile or choose

@@ -1,5 +1,9 @@
 # Browser screenshot recovery
 
+Backend label: **Paseo `browser_*`** (this recovery reference is specific to the
+Paseo browser host; the default CloakBrowser backend uses Playwright's own
+`page.screenshot()` and is documented in [cloakbrowser.md](cloakbrowser.md)).
+
 Read this when `browser_screenshot` fails, times out, or returns a visually
 duplicated image. A successful `browser_snapshot` or `browser_evaluate` is
 semantic proof only; it does not prove the page painted, so a screenshot is

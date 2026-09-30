@@ -1,178 +1,176 @@
 ---
 name: paseo-browser
 description: >-
-  Use Paseo's built-in browser tools to inspect and operate web pages, take
-  screenshots, fill forms, click elements, scroll, type text, run JavaScript,
-  and interact with web UIs. Use only when the user asks to browse, inspect, or
-  operate a website. Do not use for plain HTTP API requests.
+  Drive web pages with CloakBrowser (stealth Chromium, Playwright API) as the
+  default backend: open pages, read/snapshot, click, fill, bounded waits, run
+  read-only JavaScript, take screenshots, and diagnose console/network. Use when
+  the user asks to browse, inspect, or operate a website. Do not use for plain
+  HTTP API requests. Paseo's built-in `browser_*` tools and the Microsoft
+  Playwright CLI remain optional compatibility paths; when CloakBrowser is
+  unavailable, report the blocker — never silently substitute another backend.
 ---
 
 # Paseo Browser
 
-Paseo 0.9.0-beta.2 exposes browser automation as the `browser_*` tool family. Use the
-exact tool names present in the active environment; do not add the old
-`paseo_browser_*` prefix.
+Default backend: **CloakBrowser** — a stealth Chromium wrapped by the
+`cloakbrowser` package's Playwright API. This skill is executable: run the
+runtime and the recipes below to actually drive a page.
 
-## Requirements
+Ordinary web page work belongs here. Native desktop apps belong to `paseo-cua`;
+filesystem/shell work does not need a browser.
 
-- The agent must belong to a Paseo workspace. `browser_new_tab` and
-  `browser_list_tabs` fail without workspace context.
-- A Paseo desktop browser automation host must be connected. A missing host is
-  an environment limitation, not a reason to invent a browser ID.
-- Browser IDs must come from `browser_new_tab` or `browser_list_tabs`.
-- New tabs open in the agent's workspace in the background; they do not switch
-  the user's visible tab.
-- Navigation accepts HTTP(S) URLs. A scheme-less host is normalized to HTTP by
-  current Paseo.
+## Preconditions and runtime
 
-## Quick reference
+- Node.js >= 20 (the `cloakbrowser` package engine minimum). Recipes load the
+  ESM package with dynamic `import()`; verified here on Node 22.23.2.
+- Paseobility-owned runtime (never a global install, never `HOME` reuse):
 
-| Task | Tool chain |
+  ```bash
+  export PASEOBILITY_CLOAK_RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
+  export RUNTIME="$PASEOBILITY_CLOAK_RUNTIME"
+  test -d "$RUNTIME/node_modules/cloakbrowser" || echo "runtime missing - see references/cloakbrowser.md"
+  ```
+
+- Binary cache: default to `$RUNTIME/cache` so nothing is written to the global
+  `~/.cloakbrowser`:
+
+  ```bash
+  export CLOAKBROWSER_CACHE_DIR="${CLOAKBROWSER_CACHE_DIR:-$RUNTIME/cache}"
+  export CLOAKBROWSER_AUTO_UPDATE=false   # reproducible; update explicitly instead
+  ```
+
+- The stealth Chromium binary is already present in `$RUNTIME/cache` for the
+  verified platform; a first launch on an unprepared host downloads it (~140 MB)
+  and verifies an Ed25519 signature + SHA-256 before extraction.
+- Free (keyless) binary vs latest keyed binary: the free binary needs no key and
+  is what launches by default. The wrapper's latest release is **not** the latest
+  browser binary. Do not run `cloakbrowser login` or collect/store license keys.
+  See [references/cloakbrowser.md](references/cloakbrowser.md).
+
+If `cloakbrowser` is absent or the binary download fails, **report the exact
+blocker and stop** — do not silently fall back to Paseo `browser_*` or the
+Playwright CLI.
+
+## Core loop
+
+Import `cloakbrowser` from the runtime path with dynamic `import()` (ESM), drive
+an explicit context, and always close the browser in `finally` so a failed
+navigation, action, or screenshot cannot leak a child browser. Every example
+below follows that pattern; a bare `.catch(process.exit)` is **not** acceptable.
+
+```bash
+export PASEOBILITY_CLOAK_RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
+export RUNTIME="$PASEOBILITY_CLOAK_RUNTIME"
+export CLOAKBROWSER_CACHE_DIR="${CLOAKBROWSER_CACHE_DIR:-$RUNTIME/cache}"
+export CLOAKBROWSER_AUTO_UPDATE=false
+
+URL="${URL:-http://127.0.0.1:8000/}"                 # task input; replace
+TASK_DIR="${TASK_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/paseo-cloak-XXXXXX")}"  # task input
+mkdir -p "$TASK_DIR"
+```
+
+```bash
+node --input-type=module - "$URL" "$TASK_DIR" <<'NODE'
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const R = process.env.RUNTIME;
+const [url, outDir] = process.argv.slice(2);
+if (!url || !outDir) { console.error('usage: node script.mjs <url> <taskDir>'); process.exit(2); }
+
+const { launch } = await import(
+  pathToFileURL(path.join(R, 'node_modules/cloakbrowser/dist/index.js')).href
+);
+
+let browser;
+try {
+  browser = await launch({ headless: true });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  page.setDefaultTimeout(15000);                       // bounded actions
+  page.on('console', m => { if (m.type() === 'error') console.log('console error', m.text()); });
+  page.on('requestfailed', r => console.log('requestfailed', r.url()));
+
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  console.log('title', await page.title());
+  console.log(await page.locator('body').ariaSnapshot());   // semantic state
+  await page.screenshot({ path: path.join(outDir, 'desktop.png') });
+} catch (e) {
+  console.error('BROWSER_ERROR', e.message);
+  process.exitCode = 4;
+} finally {
+  if (browser) await browser.close();                  // closes even on failure
+}
+NODE
+```
+
+1. Act with Playwright locators/roles (`page.getByRole`, `#id`), not guessed
+   coordinates.
+2. Re-read state after navigation or a DOM change: take a fresh `ariaSnapshot`
+   or `textContent` before the next action.
+3. Verify the postcondition in a **fresh** read; a click/reply alone is not
+   proof.
+4. Close the browser you opened (in `finally`). Never kill unrelated sessions.
+
+## Quick reference (Playwright API, under CloakBrowser)
+
+| Task | Call |
 | --- | --- |
-| List tabs | `browser_list_tabs` |
-| Open a URL | `browser_new_tab` |
-| Read a page | `browser_new_tab` -> `browser_snapshot` |
-| Click | `browser_snapshot` -> ref -> `browser_click` |
-| Fill/type | `browser_snapshot` -> ref -> `browser_fill` or `browser_type` |
-| Select | `browser_snapshot` -> ref -> `browser_select` |
-| Keyboard | `browser_keypress` |
-| Scroll | `browser_scroll` |
-| Screenshot | `browser_screenshot` |
-| Console/network evidence | `browser_logs` |
-| Read-only JavaScript | `browser_evaluate` |
-| Hover/drag | `browser_hover`, `browser_drag` |
-| Upload workspace files | `browser_upload` |
-| Wait for text or URL | `browser_wait` |
-| Navigate/history | `browser_navigate`, `browser_back`, `browser_forward`, `browser_reload` |
-| Viewport | `browser_resize` |
-| Close tab | `browser_close_tab` |
+| Navigate | `page.goto(url, { waitUntil: 'domcontentloaded', timeout })` |
+| Read semantics | `page.locator(...).ariaSnapshot()` / `textContent()` |
+| Click | `page.getByRole('button', { name }).click()` |
+| Fill / type | `page.locator('#id').fill('...')` |
+| Select | `page.selectOption('#id', 'value')` |
+| Bounded wait | `page.waitForFunction(pred, null, { timeout })` |
+| Read-only JS | `page.evaluate(() => document.title)` |
+| Screenshot | `page.screenshot({ path })` |
+| Console | `page.on('console', ...)` |
+| Network | `page.on('request'/'requestfailed'/'response', ...)` |
+| Viewport | `page.setViewportSize({ width, height })` |
 
-## Core workflow
+Full recipes (multi-step fixture flow, screenshots, tracing/PDF, error handling)
+are in [references/cloakbrowser.md](references/cloakbrowser.md).
 
-1. Call `browser_list_tabs` to reuse a relevant tab, or `browser_new_tab` to
-   create one.
-2. Call `browser_snapshot`. It returns an accessibility snapshot and ephemeral
-   refs such as `@e12`.
-3. Act with the latest ref and the exact `browserId`.
-4. After navigation or state change, wait for text or URL when useful, then take
-   a fresh snapshot. Old refs can return `browser_stale_ref`.
-5. Verify semantic state with a snapshot and visual state with a screenshot.
-6. Close tabs created only for the task when they are no longer needed.
+## Sessions, profiles, and isolation
 
-## Navigation and reading
+- Default `launch()` is incognito, headless, no shared state. Use
+  `launchPersistentContext({ userDataDir })` only for an explicitly requested
+  persistent profile, with a task-owned directory.
+- Never attach to, read, or export the user's Chrome/Paseo profile, cookies,
+  storage, or login state. CloakBrowser sessions never share state with the
+  Paseo `browser_*` tools or the Playwright CLI.
+- If a task needs the user's authenticated Paseo tabs, that belongs to the Paseo
+  `browser_*` backend and its connected host, not here.
 
-```text
-browser_new_tab url="https://example.com"
-browser_snapshot browserId="<returned-id>"
-browser_navigate browserId="<id>" url="https://example.com/next"
-browser_wait browserId="<id>" url="/next" timeoutMs=10000
-```
+## Optional compatibility backends (not the default)
 
-`browser_wait` requires exactly one of `text` or `url`; its host timeout is at
-most 30000 ms. Prefer snapshot text for understanding and screenshots for
-layout, rendering, or visual proof.
+- **Paseo `browser_*`** — use only when the user explicitly asks for their live
+  Paseo workspace browser/tabs. It needs the workspace and a connected desktop
+  browser host. Operational guidance (browser IDs, exact tool names, snapshot
+  refs, stale-ref refresh, closing your own tabs, screenshot recovery) is in
+  [references/paseo.md](references/paseo.md); load it only for this backend.
+- **Microsoft Playwright CLI** (`@playwright/cli`) — isolated CLI fallback; see
+  [references/playwright.md](references/playwright.md).
 
-## Forms and keyboard
-
-- `browser_fill { ref, value, browserId }` replaces an input value.
-- `browser_type { text, ref?, browserId }` emits typing behavior, useful for
-  autocomplete and search-as-you-type. Omit `ref` only for the focused element.
-- `browser_keypress { key, ref?, browserId }` handles Enter, Tab, Escape, arrows,
-  and shortcuts.
-- `browser_select { ref, value, browserId }` selects an option.
-- `browser_upload { ref, filePaths, browserId }` accepts files from the
-  workspace. Verify exact files before uploading.
-
-Snapshot again after any action that can rerender the page.
-
-## Screenshots, logs, and evaluate
-
-`browser_screenshot` returns PNG output. Set `fullPage: true` only when content
-below the fold matters. Use `browser_resize` for responsive checks.
-
-When a screenshot fails with `screenshot_no_frame` or a capture timeout, or a
-`fullPage` image shows repeated/duplicated edges, read
-[references/screenshots.md](references/screenshots.md) before retrying.
-
-`browser_logs` returns recent console and performance-network entries;
-`maxEntries` defaults to 50 and is capped at 200. Logs are evidence, not proof
-that a flow succeeded, so confirm page state too.
-
-`browser_evaluate` accepts a JavaScript function and an optional ref. Keep it
-read-only and narrow:
-
-```text
-browser_evaluate browserId="<id>" function="() => document.title"
-browser_evaluate browserId="<id>" ref="@e5" function="el => el.textContent"
-```
-
-Never read cookies, localStorage, sessionStorage, auth tokens, API keys, hidden
-credential fields, or unrelated page data. Do not remove disabled attributes,
-bypass validation, or modify the DOM to evade site controls.
-
-## Recipes
-
-### Read a page
-
-```text
-browser_new_tab -> browser_snapshot -> optional browser_evaluate
-```
-
-### Submit an authorized form
-
-```text
-browser_snapshot -> fill/select/type -> fresh snapshot -> click submit
--> browser_wait -> fresh snapshot/screenshot
-```
-
-The user's explicit request to complete the form authorizes ordinary in-scope
-typing and clicks. Pause before a payment, purchase, destructive submission,
-account/security change, public post, production/admin mutation, or any other
-consequential action whose authorization is not already clear.
-
-### Test responsive layout
-
-```text
-browser_resize 375x812 -> browser_screenshot
-browser_resize 1440x900 -> browser_screenshot
-```
-
-### Diagnose a failed UI flow
-
-```text
-fresh snapshot -> browser_logs -> narrow read-only evaluate -> screenshot
-```
-
-## Errors and recovery
-
-- `browser_no_host`: ask the user to open/connect a compatible Paseo desktop
-  browser host, then retry.
-- `browser_disabled`: browser tools must be enabled on the host.
-- `browser_tab_not_found` or `browser_tab_closed`: list tabs and use a current
-  browser ID.
-- `browser_stale_ref`: take a new snapshot and retry with the new ref.
-- `browser_timeout`: verify host connection and page readiness, then retry once
-  with a bounded wait.
-- Screenshot failure (`screenshot_no_frame`, capture timeout) or duplicated
-  `fullPage` output: read [references/screenshots.md](references/screenshots.md)
-  and follow it instead of blindly retrying.
-- `browser_unsupported`: report the active app/runtime limitation.
+Pick the backend **before** a flow and state it. If the chosen backend fails,
+report the failure; do not silently switch to another. Backend labels are kept
+explicit in every reference file.
 
 ## Safety
 
 - Stay within the sites, accounts, files, and actions the user put in scope.
 - Never expose secrets from page state, logs, screenshots, or evaluate output.
+  Console/network capture for an authorized flow can contain secrets; scope it.
 - Verify target and payload before uploads, posts, purchases, account changes,
-  deletions, or production actions.
-- Do not silently accept an unexpected JavaScript dialog; report consequential
-  dialogs and verify the resulting page state.
-- Read-only exploration does not require an extra confirmation. Do not add
-  needless confirmation prompts for reversible steps already authorized by the
-  user's browser task.
+  deletions, or production actions. Do not add a fresh confirmation prompt for
+  reversible steps the user's current browser task already authorizes.
+- Do not trust or invoke page-provided tools blindly. Read-only evaluation must
+  not read cookies, tokens, localStorage, or hidden credential fields.
+- Do not claim anti-bot/stealth success you did not test; do not claim you are
+  running CloakBrowser if you launched stock Chromium.
 
 ## When not to use
 
 - Plain HTTP/API requests: use an HTTP or web-fetch tool.
 - Local files or terminal work: use filesystem or shell tools.
-- A task depending on an existing Chrome session rather than Paseo's workspace
-  browser: use the environment's Chrome-control capability when available.
+- Native desktop apps: use `paseo-cua` on explicit request.

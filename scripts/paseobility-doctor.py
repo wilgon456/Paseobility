@@ -63,7 +63,7 @@ KNOWN_SKILLS = (
 MCP_TIMEOUT_CAP = 30.0
 MCP_MAX_FRAMES = 256
 # A real tools/list response is a single JSON line that can exceed 64 KiB (the
-# live 0.28.2 server's tools/list frame is well over that). A too-small readline
+# live server's tools/list frame is well over that). A too-small readline
 # cap silently splits one frame into unparseable chunks, so it is set to a
 # bounded but realistic 2 MiB frame / 4 MiB total and oversize is rejected
 # explicitly rather than misread.
@@ -516,7 +516,7 @@ def check_cua_daemon(driver, timeout):
     if isinstance(data, dict):
         running = _running_field(data)
     else:
-        # 0.28.2 prints human text even with --json, e.g.
+        # Some driver versions print human text even with --json, e.g.
         # "Cua Driver daemon is running". Only the running/stopped fact is read.
         # The negative patterns are tested first so text that mentions both a
         # stopping and a running phrase can never be read as a positive.
