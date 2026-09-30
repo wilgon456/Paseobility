@@ -14,7 +14,7 @@ user-reported Intel macOS and Windows results are recorded below.
 | Field | Verified value |
 | --- | --- |
 | Host | one Apple Silicon macOS machine, macOS 26.6.2 |
-| Cua Driver | 0.28.2 (pinned by the Paseobility installer) |
+| Cua Driver | 0.28.2 (the version exercised on this target; the current installer pin targets 0.30.4 as a source/schema-reviewed contract, not an E2E result here) |
 | Binary / self-check | installer prepared the binary; `cua-driver doctor` reported every probe ok |
 | MCP integration | registered with the OpenCode client and connected; handshake ok and `tools/list` returned 56 tools |
 | macOS permissions | Accessibility and Screen Recording reported `true` under the driver-daemon identity (`com.trycua.driver`) |
@@ -490,13 +490,14 @@ Per the pinned upstream source, events are described as content-free and bounded
 independently audited here and is not a privacy guarantee. The pinned source and
 the driver's own commands are authoritative:
 
-- Pinned upstream: [`trycua/cua` @ `9bbfa7dd3e27ca7f1861ede70aaca390174493f9`](https://github.com/trycua/cua/tree/9bbfa7dd3e27ca7f1861ede70aaca390174493f9),
-  telemetry module
-  [`crates/cua-driver/src/telemetry.rs`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/rust/crates/cua-driver/src/telemetry.rs).
+- Pinned upstream: [`trycua/cua` @ `bf6c76786d938070f4ecf1e44004752f69f518b8`](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8)
+  (the `cua-driver-rs-v0.30.4` release tag), telemetry module
+  [`crates/cua-driver/src/telemetry.rs`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/crates/cua-driver/src/telemetry.rs).
 - Driver docs: [cua.ai/docs/cua-driver](https://cua.ai/docs/cua-driver).
 
 ## Related
 
 - Reproducible macOS onboarding: [`skills/paseo-cua/references/setup.md`](../skills/paseo-cua/references/setup.md).
 - Browser screenshot failure and `fullPage` recovery: [`skills/paseo-browser/references/screenshots.md`](../skills/paseo-browser/references/screenshots.md).
+- Current Paseo compatibility record: [`compatibility-0.10.2.md`](./compatibility-0.10.2.md).
 - Prior-version skill compatibility (does **not** cover `paseo-cua`): [`compatibility-0.9.0-beta.2.md`](./compatibility-0.9.0-beta.2.md).

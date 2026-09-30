@@ -55,8 +55,11 @@ The Paseobility installer only prepares the pinned binary. It does not start the
 daemon and does not grant permissions. On a Mac:
 
 1. Record the installed version: `cua-driver --version`. The Paseobility
-   installer defaults to the pinned `0.28.2`, but a working existing driver is
-   reused as-is — do not downgrade or replace it just to match the pin.
+   installer now pins `0.30.4` (the latest upstream stable release) for a fresh
+   install, but a working existing driver is reused as-is — do not downgrade or
+   replace it just to match the pin. The pin is a source/schema-reviewed
+   contract; `0.28.2` remains the last version exercised end-to-end in the
+   [platform validation record](https://github.com/wilgon456/Paseobility/blob/main/docs/cua-platform-validation.md).
 2. Start the driver app so it runs under its own app identity, not the terminal:
    `open -n -g -a CuaDriver --args serve`
 3. Grant permissions as the human (cannot be scripted):
@@ -109,10 +112,12 @@ source is authoritative.
 ## Source
 
 Pinned upstream: [`trycua/cua`](https://github.com/trycua/cua) @
-[`9bbfa7dd3e27ca7f1861ede70aaca390174493f9`](https://github.com/trycua/cua/tree/9bbfa7dd3e27ca7f1861ede70aaca390174493f9),
-skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/rust/Skills/cua-driver),
-Cua Driver version 0.28.2. Reviewed implementation:
-[`src/cli.rs`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
+[`bf6c76786d938070f4ecf1e44004752f69f518b8`](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8)
+(the `cua-driver-rs-v0.30.4` release tag),
+skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/Skills/cua-driver),
+Cua Driver version 0.30.4. The pinned installers resolve/download a release and
+stop stale daemons; they never start one. Reviewed implementation:
+[`src/cli.rs`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
 (`run_mcp_config` prints a snippet; it writes no config).
 Upstream source files are MIT licensed (Copyright (c) 2025 Cua AI, Inc.).
 Docs: [cua.ai/docs/cua-driver](https://cua.ai/docs/cua-driver)

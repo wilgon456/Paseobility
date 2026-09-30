@@ -43,6 +43,64 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
+## 2026-09-30 업데이트 — CloakBrowser 브라우저 기본, Paseo 0.10.2, Cua 핀 0.30.4
+
+현재 업데이트 섹션입니다. 동일한 **7개 스킬** 패키지의 누적 변경을 기록하며,
+아래 이전 섹션들은 역사 기록으로 그대로 둡니다.
+
+### `/paseo-browser` 기본 백엔드가 CloakBrowser로
+
+- 기본 백엔드는 **CloakBrowser** — 고정된 `cloakbrowser` 패키지의 Playwright
+  API로 감싼 stealth Chromium(`cloakbrowser@0.5.11`, `playwright-core@1.63.0`,
+  Node >= 20)입니다. 일반 내비게이션, 읽기, 클릭/입력, 제한 대기, 읽기 전용 JS,
+  스크린샷, 콘솔/네트워크 진단을 바로 실행할 수 있고, 레시피는 `finally`에서
+  브라우저를 닫아 실패 시 누수를 막습니다.
+- 고정 래퍼는 Paseobility 소유 런타임에서 동적 `import()`로 로드합니다. Paseo
+  `browser_*`와 Microsoft Playwright CLI는 **선택형·명시적** 백엔드이며(각
+  reference 파일에 백엔드 라벨 표기), CloakBrowser 실패 시 자동 대체하지 않습니다.
+- 스킬 복사는 **문서 전용**: installer(임시 `--target-home` 포함)는 Node 패키지
+  설치나 브라우저 다운로드를 하지 않습니다. 런타임은 명시적으로 설정합니다:
+  런타임 디렉터리에서
+  `npm install --save-exact cloakbrowser@0.5.11 playwright-core@1.63.0`,
+  `CLOAKBROWSER_CACHE_DIR`는 그 안으로 한정.
+- 로컬 검증(headless, 키리스 무료 바이너리): fixture 덧셈 페이지를 읽고
+  `#a=7`, `#b=5`, `#compute`로 `12`를 만들었으며, 새 semantic snapshot으로
+  확인하고 desktop(1280×720)·mobile(375×812) 스크린샷을 캡처했습니다. 오류
+  경로(내비 실패, launch 이후 스크린샷 실패)는 0이 아닌 코드로 종료하면서도
+  브라우저를 닫습니다. macOS에서 실행된 실제 바이너리는 **Chromium
+  145.0.7632.109**(키리스 무료)이며, 최신 키드 빌드(macOS 151,
+  Linux/Windows 152)는 **GitHub 발급 키로 1 동시 세션 무료**, 대규모는 유료이며
+  이번에는 테스트하지 않았습니다.
+- 한계: 외부 anti-bot/stealth 실측, headed 실행, Windows/Linux 런타임 확인은
+  이번 업데이트에 없습니다. macOS만 해당.
+
+### Paseo 0.10.2 계약 확인(앱/소스), 라이브 데몬은 그대로
+
+- 설치된 앱/CLI `0.10.2`는 최신 공식 `v0.10.2` 릴리스와 일치하며, 실행 중 데몬은
+  **재시작하지 않았고** 여전히 `0.9.0-beta.2`를 보고합니다.
+- `0.10.2`는 릴리스 노트 + 설치 앱 `app.asar`의 `TOOL_SPECS`(도구 61개,
+  `profile` 인자 없는 `AGENT_FIELDS`) 계층에서 확인했으며, 새 `0.10.2` 데몬
+  핸드셰이크로 확인한 것은 아닙니다. 자세한 내용은
+  [`docs/compatibility-0.10.2.md`](docs/compatibility-0.10.2.md).
+
+### Cua Driver 소스 핀 0.30.4(호스트는 0.28.2 유지)
+
+- Paseobility updater는 이제 Cua Driver **0.30.4**(immutable commit
+  `bf6c76786d938070f4ecf1e44004752f69f518b8`)를 핀하며, **호스트는 동작 중인
+  0.28.2를 유지**합니다 — 동작하는 기존 드라이버는 재사용하고 자동 업그레이드하지
+  않습니다.
+- 소스 검토된 installer 변경은 baked 버전, 철회 릴리스 가드(`0.28.3`), autostart
+  보고 수정뿐이며, `--no-modify-path` / `-NoPathUpdate`, 데몬 미시작, Windows
+  스테이징/롤백 동작은 유지됩니다. 새 0.30.4 GUI 검증은 주장하지 않습니다.
+- 기존 Cua preview 기록과 테스트는 그대로이며(오프라인 스위트 여전히 통과),
+  없는 성공을 만들어내지 않습니다.
+
+이번 업데이트 검증은 로컬·오프라인입니다: 스킬 frontmatter, diff 검사, 오프라인
+scanner/shell 스위트, 임시 홈 단일 스킬 설치. Windows는 GitHub Actions에서
+실행됩니다.
+
+---
+
 ## v2.8.1 — Windows Cua 설치 수정, 읽기 전용 doctor, 오프라인 테스트
 
 v2.8.1은 Windows 전용 Cua Driver 설치 충돌을 고치고 읽기 전용 진단 helper와
@@ -87,11 +145,15 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 이미 동작하는 드라이버가 있으면 다시 설치하지 않고 재사용하며 자동
 업그레이드하지 않습니다.
 
-- 고정 소스: trycua/cua `9bbfa7dd3e27ca7f1861ede70aaca390174493f9` 커밋,
-  Cua Driver `0.28.2`.
+- 고정 소스: trycua/cua `bf6c76786d938070f4ecf1e44004752f69f518b8` 커밋
+  (`cua-driver-rs-v0.30.4` 릴리스 태그), Cua Driver `0.30.4`. 이 고정값은
+  소스/스키마 검토 계층이며, 아래 검증 기록에서 E2E로 실행된 마지막 버전은
+  여전히 `0.28.2`입니다. 동작하는 기존 드라이버는 재사용하고 자동 업그레이드하지
+  않습니다.
 - 설치 스크립트는 고정 커밋에서 내려받아 임시 디렉터리에서 실행합니다
-  (`curl | bash` 금지). 위임 대상인 `_install-rust.sh`, `_install-common.sh`도
-  함께 받아 롤링 URL을 실행하지 않게 합니다.
+  (`curl | bash` 금지). 위임 대상인 `_install-rust.sh`, `_install-common.sh`(및
+  Windows `install.ps1`, `_install-common.psm1`)도 함께 받아 롤링 URL을 실행하지
+  않게 합니다.
 - `--skip-cua-driver` / `-SkipCuaDriver`: 런타임을 건너뛰고 스킬만 복사합니다
   (문서 전용·오프라인).
 - 사용자 지정 `--target-home` / `-TargetHome`이면 실제 호스트 런타임은 기본적으로
@@ -102,8 +164,10 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 - 드라이버 단계는 macOS에서 코드 서명을 검증하고, PATH를 수정하지 않으며
   (`--no-modify-path` / `-NoPathUpdate`), 셸 rc와 MCP 설정을 건드리지 않습니다.
   고정 installer는 릴리스 해석·다운로드와 오래된 데몬 중지만 하며 데몬을 시작하지
-  않습니다([`install.sh`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/install.sh),
-  [`_install-rust.sh`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/scripts/_install-rust.sh)).
+  않습니다([`install.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/install.sh),
+  [`_install-rust.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/_install-rust.sh)).
+  명시적 `CUA_DRIVER_RS_VERSION=0.30.4` 고정은 installer의 baked 버전보다
+  우선하며, 고정 installer는 철회된 릴리스(`0.28.3`)를 거부합니다.
 - 런타임 단계가 실패하면 installer는 0이 아닌 코드로 종료하고, 스킬은 복사되었
   지만 런타임 설정이 실패했음(설치가 불완전할 수 있음)을 알립니다.
 - macOS Accessibility·Screen Recording 권한은 사람이 직접 부여합니다.
@@ -130,7 +194,7 @@ Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 �
 | --- | --- |
 | `/paseo-orchestration` | 명시 요청한 다중 에이전트 조율 또는 비교·토너먼트 |
 | `/paseo-project` | 요청한 프로젝트 요약·인수인계 또는 초기 설정·환경 수정 |
-| `/paseo-browser` | Paseo 브라우저의 웹 UI 조작·검증 |
+| `/paseo-browser` | CloakBrowser 기반 웹 UI 조작·검증(Paseo 브라우저·Playwright CLI는 선택) |
 | `/paseo-cua` | 명시 요청한 네이티브 앱 GUI를 trycua Cua Driver로 구동 |
 | `/paseo-agent-cleanup` | 선택한 테스트 에이전트·workspace 정리 |
 | `/paseo-share` | 개인 기기 간 산출물 공유 |
@@ -290,7 +354,7 @@ https://github.com/wilgon456/Paseobility
 
 | Skill | 역할 | 이런 요청에 강함 |
 | --- | --- | --- |
-| `/paseo-browser` | 브라우저 조작 워크플로우 | 로그인 폼 채우기, 검색 결과 읽기, UI 클릭, 반응형 스크린샷, 웹앱 상태 확인 |
+| `/paseo-browser` | 브라우저 조작 워크플로우(CloakBrowser 기본) | 로그인 폼 채우기, 검색 결과 읽기, UI 클릭, 반응형 스크린샷, 웹앱 상태 확인; CloakBrowser stealth Chromium을 Playwright API로 구동, Paseo `browser_*`·Microsoft Playwright CLI는 선택형 백엔드 |
 | `/paseo-cua` | 네이티브 데스크톱 GUI 구동 | trycua Cua Driver로 앱 창 조작·스냅샷·검증, 명시 요청 시에만 동작 |
 | `/paseo-orchestration` | 다중 에이전트 조율과 비교 | 명시 요청한 조율 또는 토너먼트, 모드별 지침 |
 | `/paseo-project` | 프로젝트 요약과 설정 | 요청한 읽기 전용 brief 또는 환경·context 설정 |
@@ -482,6 +546,8 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 기존 6개 스킬의 CLI·MCP 호환성 기록은 v2.7.0 시점
 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에 있으며, **신규 `paseo-cua`는
 포함하지 않습니다**. 6개 스킬 기록을 7개 전체에 대한 검증으로 해석하면 안 됩니다.
+현재 패키지 호환성 기준선은 Paseo **0.10.2**이며, 재검증 기록은
+[`docs/compatibility-0.10.2.md`](docs/compatibility-0.10.2.md)입니다.
 
 `paseo-cua`는 **preview / 제한 검증** 단계로, 넓은 범위의 안정적인 Mac·Windows
 지원이 아닙니다. 2026-09-22 기준 현재 상태:
@@ -557,7 +623,9 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 
 세부 내용과 선택형 Playwright 대안, 호스트별 프로브는
 [Cua 플랫폼 검증 상태](docs/cua-platform-validation.md)와
-[호환성 보고서](docs/compatibility-0.9.0-beta.2.md)를 참고하세요. 아래는 이전 버전에 기록된 검증이며 현재 버전의 증거로 사용하지 않습니다.
+[호환성 보고서](docs/compatibility-0.9.0-beta.2.md), 현재 기준선 재검증 기록
+[docs/compatibility-0.10.2.md](docs/compatibility-0.10.2.md)를 참고하세요. 아래는
+이전 버전에 기록된 검증이며 현재 버전의 증거로 사용하지 않습니다.
 
 ### 과거 검증 기록 — 이번 통합본 검증과 별개
 
@@ -871,26 +939,81 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 ## `/paseo-browser`
 
-브라우저를 "보는" 수준이 아니라 실제로 조작하는 워크플로우를 제공합니다.
+**CloakBrowser**(stealth Chromium, `cloakbrowser` 패키지의 Playwright API)를
+기본 백엔드로 사용해 실제로 페이지를 조작합니다 — 단순 안내가 아니라 실행형입니다.
 
-| 할 일 | 사용하는 흐름 |
+| 할 일 | 호출 |
 | --- | --- |
-| 페이지 읽기 | `browser_new_tab` -> `browser_snapshot` |
-| 버튼 클릭 | `browser_snapshot` -> ref 찾기 -> `browser_click` |
-| 폼 입력 | `browser_snapshot` -> ref 찾기 -> `browser_fill` / `browser_type` |
-| 드롭다운 선택 | `browser_snapshot` -> ref 찾기 -> `browser_select` |
-| 화면 검증 | `browser_screenshot` / `browser_snapshot` |
-| 반응형 확인 | `browser_resize` -> `browser_screenshot` |
-| 디버깅 | `browser_logs` / `browser_evaluate` |
+| 페이지 읽기 | `page.goto(url)` -> `page.locator('body').ariaSnapshot()` |
+| 버튼 클릭 | `page.getByRole('button', { name }).click()` |
+| 폼 입력 | `page.locator('#id').fill('...')` |
+| 드롭다운 선택 | `page.selectOption('#id', 'value')` |
+| 화면 검증 | `page.screenshot({ path })` + 새 `ariaSnapshot()` |
+| 반응형 확인 | `page.setViewportSize({ width, height })` -> screenshot |
+| 디버깅 | `page.on('console'/'requestfailed'/'response', ...)` |
+
+스킬은 Paseobility 소유 런타임(아래)과, 서명 검증(`Ed25519`+`SHA-256`)된
+stealth Chromium 바이너리(런타임 캐시)를 필요로 합니다.
 
 핵심 규칙:
 
-- 액션 전에 항상 최신 snapshot을 뜹니다. 페이지가 바뀌면 ref도 바뀝니다.
-- 정식 도구명은 `browser_*`이며 agent가 Paseo workspace에 속하고 desktop
-  browser automation host가 연결되어 있어야 합니다.
-- 텍스트 이해에는 snapshot, 시각 검증에는 screenshot을 씁니다.
-- 결제, 제출, 계정 변경처럼 되돌리기 어려운 액션은 사용자 확인을 먼저 받습니다.
+- 로케이터/롤로 액션하고, 네비게이션·DOM 변경 후 상태를 새로 읽습니다(클릭만으로 증명 불가).
+- 기본은 headless·격리이며, 사용자의 Chrome/Paseo 프로필·쿠키·로그인·ref를 공유하지 않습니다. 실패 시에도 `finally`에서 브라우저를 닫아 누수를 막습니다.
+- 키 없는 무료 바이너리를 우선합니다(macOS: Chromium 145, Linux/Windows: Chromium 146). 최신 키드 빌드(macOS 151 / Linux·Windows 152)는 GitHub 발급 키로 1 동시 세션까지 무료이며, 대규모는 유료입니다 — 최신 빌드 사용에 유료가 필수는 아닙니다. `cloakbrowser login`이나 라이선스 키 저장은 하지 않으며, 래퍼 최신 릴리스가 최신 브라우저 바이너리는 아닙니다.
+- 현재 브라우저 작업이 이미 허용한 가역 단계에 확인 프롬프트를 추가하지 않고, 결제·제출·계정 변경은 검증합니다.
 - `evaluate`로 쿠키, 토큰, localStorage 같은 민감 정보를 읽지 않습니다.
+
+### 설정 — Paseobility 소유 CloakBrowser 런타임(전역 설치 아님)
+
+```bash
+RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
+mkdir -p "$RUNTIME" && cd "$RUNTIME" && npm init -y >/dev/null
+npm install --save-exact --no-audit --no-fund cloakbrowser@0.5.11 playwright-core@1.63.0
+export PASEOBILITY_CLOAK_RUNTIME="$RUNTIME"
+export CLOAKBROWSER_CACHE_DIR="${CLOAKBROWSER_CACHE_DIR:-$RUNTIME/cache}"  # 런타임 범위 바이너리 캐시
+export CLOAKBROWSER_AUTO_UPDATE=false            # 재현 가능한 고정
+```
+
+패키지는 ESM입니다: 동적 `import()`으로 로드합니다(Node >= 20, 패키지 엔진 최소값; Node 22.23.2에서 검증). 자세한 내용은 [`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md).
+
+스킬 복사는 문서 전용입니다: convenience installer(임시 `--target-home` 포함)는
+Node 패키지 설치나 브라우저 바이너리 다운로드를 하지 않습니다.
+
+### 선택형 호환 백엔드(기본 아님)
+
+Paseo `browser_*` 도구(라이브 Paseo workspace 탭, 연결된 desktop host 필요)와
+Pin된 Microsoft Playwright CLI는 사용자가 명시 선택할 때만 사용하며, CloakBrowser
+실패 시 자동 대체하지 않습니다. 아래는 Playwright CLI 레시피
+(`@playwright/cli@0.1.22`, `npx`, Node >=18, 전역 설치 불필요), 격리 headless 실행
++ trace/PDF/콘솔/네트워크입니다:
+
+```bash
+TASK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/paseo-pw-XXXXXX")"
+cd "$TASK_DIR"
+export PLAYWRIGHT_BROWSERS_PATH="$TASK_DIR/browsers"
+S='task-browser-demo-20260930'
+# 이 작업 디렉터리에서 1회(사용 가능한 시스템 Chrome이 없을 때):
+npx --yes --package @playwright/cli@0.1.22 playwright-cli install-browser chromium
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" open 'https://example.com/' --browser chromium
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" snapshot
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" tracing-start
+# ... 근거로 남길 제한된 단계 ...
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" tracing-stop
+npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" close
+```
+
+작업 디렉터리에서 실행하므로 기본 `.playwright-cli/` 산출물이 그 안에 남습니다.
+Windows에서는 PowerShell로 작업 디렉터리·세션을 만들고(`$TaskDir = Join-Path
+$env:TEMP ...`, `Set-Location -LiteralPath $TaskDir`, `$env:PLAYWRIGHT_BROWSERS_PATH`,
+`$Session`) `"-s=$Session"`을 전달합니다. Playwright ref(`e12`)는 Paseo ref(`@e12`)와
+별개 네임스페이스이므로 흐름마다 백엔드 하나만 선택합니다. 이 모드는 기존 Chrome
+프로필·쿠키·탭에 붙지 않고, 자신의 이름 있는 세션만 닫으며(`close-all`/`kill-all`
+금지), installer·전역 패키지·MCP 부수 효과를 추가하지 않습니다. CloakBrowser
+레시피는
+[`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md),
+Playwright CLI 레시피는
+[`skills/paseo-browser/references/playwright.md`](skills/paseo-browser/references/playwright.md)에
+있습니다.
 
 ---
 
@@ -968,7 +1091,7 @@ feature 선택의 기준입니다. 아래 legacy 파일은 provider source가 �
 ```text
 skills/
 ├── paseo-agent-cleanup/       # SKILL.md + CLI helper/tests
-├── paseo-browser/            # SKILL.md
+├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
@@ -981,7 +1104,8 @@ scripts/                     # installers, doctor (.sh/.ps1/.py), context helper
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template + validator
 .github/workflows/ci.yml     # macOS + Windows 오프라인 스위트
-docs/compatibility-0.9.0-beta.2.md
+docs/compatibility-0.10.2.md
+docs/compatibility-0.9.0-beta.2.md   # 과거 기록(0.9.0-beta.2)
 docs/cua-platform-validation.md
 AGENTS.md
 CLAUDE.md

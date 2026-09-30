@@ -46,8 +46,12 @@ Report what was operated, the evidence, and any refusal. Never log secrets.
 ## Source
 
 Pinned upstream: [`trycua/cua`](https://github.com/trycua/cua) @
-[`9bbfa7dd3e27ca7f1861ede70aaca390174493f9`](https://github.com/trycua/cua/tree/9bbfa7dd3e27ca7f1861ede70aaca390174493f9).
+[`bf6c76786d938070f4ecf1e44004752f69f518b8`](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8).
 Reviewed contract:
-[`Skills/cua-driver/SKILL.md`](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/rust/Skills/cua-driver/SKILL.md)
-(0.28.2), with [BROWSER.md](https://github.com/trycua/cua/blob/9bbfa7dd3e27ca7f1861ede70aaca390174493f9/libs/cua-driver/rust/Skills/cua-driver/BROWSER.md)
-for page content. MIT licensed.
+[`Skills/cua-driver/SKILL.md`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/Skills/cua-driver/SKILL.md)
+(0.30.4, which still supports `element_token` and the `element_index` +
+`snapshot_id` alternative; the token-only change in upstream PR `#3873` is not
+in this release), with
+[BROWSER.md](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/Skills/cua-driver/BROWSER.md)
+for page content. MIT licensed. The last version exercised end-to-end remains
+`0.28.2`; `0.30.4` here is a source/schema-reviewed contract.
