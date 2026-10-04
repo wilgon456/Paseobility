@@ -64,7 +64,48 @@ const HINTS = {
   'ai-big-numbers': '큰 숫자 띠는 실제 근거 있는 수치일 때만, 한 번만 쓴다.',
   'ai-arrow-cta': '단추 글에 화살표를 붙이지 않는다. 무엇이 일어나는지 동사로 쓴다.',
   'ai-icon-topper': '카드마다 아이콘을 얹지 말고, 아이콘이 정말 구분에 도움이 될 때만 제목 옆에 작게 둔다.',
+  'image-distorted': 'img에 object-fit: cover(또는 contain)를 주거나 width·height 중 하나만 정해 원본 비율을 지킨다.',
+  'img-alt': '뜻이 있는 그림은 내용을 alt에 쓰고, 장식 그림은 alt=""로 비운다.',
+  'control-text-center': '단추의 위아래 padding을 같게 하고 line-height를 글자 크기에 맞춘다. 가장 확실한 것은 display:inline-flex; align-items:center에 height만 정하는 것이다.',
+  'control-heights': '단추·입력칸 높이를 토큰 하나(폰 44px, 데스크톱 40px)로 통일하고, 작은 보조 단추만 둘째 값으로 둔다.',
+  'icon-size-mix': '한 줄의 아이콘은 같은 크기(보통 16 또는 20px)와 같은 선 굵기로 맞춘다.',
+  'text-colors': '글자색을 토큰 넷(먹색·흐린색·강조색·상태색)으로 줄이고 나머지는 토큰을 참조하게 한다.',
+  'infinite-animation': '@media (prefers-reduced-motion: reduce) 안에서 animation을 끄거나, 로딩 표시처럼 꼭 필요한 것만 남긴다.',
+  'focus-invisible': 'outline:none을 지우거나 :focus-visible에 보이는 테두리(outline 2px + offset 2px)나 ring을 넣는다.',
+  'contrast-unmeasured': '그림·그라데이션 위 글자는 반투명한 어두운 막(scrim)을 깔거나 글자에 배경판을 주고, 가장 밝은 자리에서 대비를 눈으로 확인한다.',
+  'screenshot-cut': '--max-height 값을 올리거나 긴 쪽을 구역별 주소로 나눠 돌린다.',
+  'tool-error': '주소·서버 상태·로그인 여부를 확인하고 다시 돌린다. 검사 자체가 돌지 않은 것이지 통과한 것이 아니다.',
 };
+
+const LABEL = { error: '오류', warn: '경고', info: '참고' };
+const ORDER = { error: 0, warn: 1, info: 2 };
+
+// Keyboard-focus probe. Runs after the screenshots because focusing can open menus or move the page.
+const FOCUS_JS = `(() => {
+  const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=tab],[tabindex]:not([tabindex="-1"])';
+  const out = []; let checked = 0, skipped = 0;
+  // transitions would make the ring invisible at the instant we look, so switch them off for the probe
+  const st = document.createElement('style'); st.id = '__dc_notrans'; st.textContent = '*,*::before,*::after{transition:none!important;animation-duration:0s!important}'; document.head.appendChild(st);
+  const vis = (el) => el.checkVisibility ? el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : true;
+  const snap = (el) => { const s = getComputedStyle(el); return [s.outlineStyle, s.outlineWidth, s.outlineColor, s.boxShadow, s.borderColor, s.backgroundColor, s.color, s.textDecorationLine].join('|'); };
+  const path = (el) => { let p = el.tagName.toLowerCase(); if (el.id) p += '#' + el.id; else if (el.classList.length) p += '.' + [...el.classList].slice(0, 2).join('.'); return p; };
+  for (const el of document.querySelectorAll(SEL)) {
+    if (checked >= 24) break;
+    if (!vis(el) || el.disabled) continue;
+    const r = el.getBoundingClientRect(); if (r.width < 4 || r.height < 4) continue;
+    const before = snap(el);
+    try { el.focus({ preventScroll: true }); } catch (e) { continue; }
+    if (document.activeElement !== el) continue;
+    if (!el.matches(':focus-visible')) { skipped++; el.blur(); continue; }
+    const s = getComputedStyle(el);
+    const ring = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || snap(el) !== before;
+    checked++;
+    if (!ring) out.push({ sel: path(el), text: (el.innerText || el.getAttribute('aria-label') || '').trim().slice(0, 30), rect: { x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), w: Math.round(r.width), h: Math.round(r.height) } });
+    el.blur();
+  }
+  st.remove();
+  return { checked, skipped, invisible: out };
+})()`;
 
 // ---------------- browser discovery ----------------
 function exists(p) { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } }
@@ -188,6 +229,7 @@ async function checkOne(b, url, width, cfg) {
     await idle(400, 5000);
     if (cfg.wait) await new Promise((r) => setTimeout(r, cfg.wait));
     const res = await evaluate(`(${MEASURE})(${JSON.stringify({ ignore: cfg.ignore, disable: cfg.disable, deviceWidth: width })})`, 120000);
+    if (res.meta.docHeight > cfg.maxHeight) res.findings.push({ level: 'info', rule: 'screenshot-cut', msg: `화면 그림은 ${cfg.maxHeight}px까지만 담았다(문서 ${res.meta.docHeight}px). --max-height로 늘릴 수 있다.`, targets: [], data: {} });
     // number findings and draw marks
     res.findings.forEach((f, i) => { f.n = i + 1; f.hint = HINTS[f.rule] || ''; });
     const shot = async (file) => {
@@ -198,9 +240,10 @@ async function checkOne(b, url, width, cfg) {
       fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
       return file;
     };
-    const base = path.join(cfg.dir, `${cfg.slug}-${width}`);
+    const suffix = cfg.scheme && cfg.scheme !== 'light' ? '-' + cfg.scheme : '';
+    const base = path.join(cfg.dir, `${cfg.slug}-${width}${suffix}`);
     const clean = await shot(base + '.png');
-    const marks = res.findings.filter((f) => f.targets.length).slice(0, 80).map((f) => ({ n: f.n, level: f.level, rects: f.targets.map((t) => t.rect) }));
+    const marks = res.findings.filter((f) => f.targets.length && f.level !== 'info').slice(0, 80).map((f) => ({ n: f.n, level: f.level, rects: f.targets.map((t) => t.rect) }));
     await evaluate(`(() => { const L = ${JSON.stringify(marks)}; const o = document.createElement('div'); o.id = '__dc_overlay';
       o.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none';
       for (const f of L) f.rects.forEach((r, k) => { const c = f.level === 'error' ? '#e11d48' : '#d97706';
@@ -210,7 +253,11 @@ async function checkOne(b, url, width, cfg) {
       document.documentElement.appendChild(o); return true; })()`);
     const marked = await shot(base + '-marked.png');
     await evaluate(`(() => { const o = document.getElementById('__dc_overlay'); if (o) o.remove(); return true; })()`);
-    return { width, clean, marked, ...res };
+    try {
+      const fz = await evaluate(FOCUS_JS, 30000);
+      if (fz && fz.invisible && fz.invisible.length) res.findings.push({ n: res.findings.length + 1, level: 'warn', rule: 'focus-invisible', msg: `키보드 초점이 보이지 않는 요소가 ${fz.invisible.length}개다(초점 검사 ${fz.checked}개 중).`, targets: fz.invisible.slice(0, 6), data: { checked: fz.checked, skipped: fz.skipped }, hint: HINTS['focus-invisible'] });
+    } catch (e) { /* focus probing is best effort */ }
+    return { width, scheme: cfg.scheme, clean, marked, ...res };
   } finally {
     await tab.close();
   }
@@ -221,7 +268,7 @@ async function contactSheet(b, cfg, pages) {
     const view = p.width <= 480 ? 844 * 1.6 : p.width <= 900 ? 1024 * 1.3 : 900 * 1.3;
     const colW = 520;
     const scale = colW / p.width;
-    return `<figure><figcaption>${p.width}px · 오류 ${p.findings.filter((f) => f.level === 'error').length} · 경고 ${p.findings.filter((f) => f.level === 'warn').length}</figcaption>
+    return `<figure><figcaption>${p.width}px${p.scheme && p.scheme !== 'light' ? ' ' + p.scheme : ''} · 오류 ${p.findings.filter((f) => f.level === 'error').length} · 경고 ${p.findings.filter((f) => f.level === 'warn').length}</figcaption>
       <div style="width:${colW}px;height:${Math.round(view * scale)}px;overflow:hidden;border:1px solid #d4d4d8;background:#fff"><img src="${pathToFileURL(p.marked).href}" style="width:${colW}px;display:block"></div></figure>`;
   }).join('');
   const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;padding:24px;background:#f4f4f5;font:14px system-ui,sans-serif;display:flex;gap:24px;align-items:flex-start}figure{margin:0}figcaption{margin:0 0 8px;font-weight:600;color:#18181b}</style>${cols}`;
@@ -255,7 +302,8 @@ function slugOf(url) {
   s = s.split(/[\\/]/).filter(Boolean).slice(-3).join('-').replace(/[^\w.-]+/g, '_').replace(/\.html?$/i, '');
   return (s || 'page').slice(0, 60);
 }
-function counts(pages) { const c = {}; for (const p of pages) { c[p.width] = {}; for (const f of p.findings) c[p.width][f.rule] = (c[p.width][f.rule] || 0) + 1; } return c; }
+const pageKey = (p) => `${p.width}${p.scheme && p.scheme !== 'light' ? '-' + p.scheme : ''}`;
+function counts(pages) { const c = {}; for (const p of pages) { const k = pageKey(p); c[k] = {}; for (const f of p.findings) if (f.level !== 'info') c[k][f.rule] = (c[k][f.rule] || 0) + 1; } return c; }
 function writeReport(cfg, url, pages, sheet) {
   const L = [];
   const errs = pages.reduce((a, p) => a + p.findings.filter((f) => f.level === 'error').length, 0);
@@ -263,11 +311,11 @@ function writeReport(cfg, url, pages, sheet) {
   L.push(`# design-check: ${url}`, '', `오류 ${errs} · 경고 ${warns} · ${new Date().toISOString()}`, '');
   if (sheet) L.push(`한눈에 보기: ${sheet}`, '');
   for (const p of pages) {
-    L.push(`## ${p.width}px`, '', `- 깨끗한 화면: ${p.clean}`, `- 표시한 화면: ${p.marked}`,
+    L.push(`## ${p.width}px${p.scheme && p.scheme !== 'light' ? ' · ' + p.scheme : ''}`, '', `- 깨끗한 화면: ${p.clean}`, `- 표시한 화면: ${p.marked}`,
       `- 글자 크기 ${p.stats.fontSizes.length}종: ${p.stats.fontSizes.join(', ')} · 첫 글꼴: ${p.stats.firstFont} · 모서리: ${p.stats.radii.join(', ') || '-'}`, '');
     if (!p.findings.length) { L.push('걸린 것 없음.', ''); continue; }
-    for (const f of [...p.findings].sort((a, b) => (a.level === b.level ? a.n - b.n : a.level === 'error' ? -1 : 1))) {
-      L.push(`${f.n}. **${f.level === 'error' ? '오류' : '경고'} ${f.rule}**: ${f.msg}`);
+    for (const f of [...p.findings].sort((a, b) => (ORDER[a.level] - ORDER[b.level]) || (a.n - b.n))) {
+      L.push(`${f.n}. **${LABEL[f.level] || f.level} ${f.rule}**: ${f.msg}`);
       for (const t of f.targets.slice(0, 3)) L.push(`   - \`${t.sel}\`${t.text ? ` "${t.text}"` : ''} @ ${t.rect.x},${t.rect.y} ${t.rect.w}×${t.rect.h}`);
       if (f.hint) L.push(`   - 고치는 법: ${f.hint}`);
     }
@@ -275,7 +323,7 @@ function writeReport(cfg, url, pages, sheet) {
   }
   const file = path.join(cfg.dir, `${cfg.slug}-report.md`);
   fs.writeFileSync(file, L.join('\n'));
-  fs.writeFileSync(path.join(cfg.dir, `${cfg.slug}-report.json`), JSON.stringify({ url, pages: pages.map(({ clean, marked, width, meta, stats, findings }) => ({ width, clean, marked, meta, stats, findings })), sheet }, null, 1));
+  fs.writeFileSync(path.join(cfg.dir, `${cfg.slug}-report.json`), JSON.stringify({ url, pages: pages.map(({ clean, marked, width, scheme, meta, stats, findings }) => ({ width, scheme, clean, marked, meta, stats, findings })), sheet }, null, 1));
   return { file, errs, warns };
 }
 
@@ -308,6 +356,8 @@ export async function run(args, opts = {}) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
   const b = new Browser(exe);
   const results = [];
+  const toolErrors = [];
+  const schemes = String(cfg.scheme).split(',').map((s) => s.trim()).filter(Boolean);
   try {
     for (const t of targets) {
       const url = toUrl(t);
@@ -316,7 +366,11 @@ export async function run(args, opts = {}) {
       fs.mkdirSync(dir, { recursive: true });
       const c = { ...cfg, dir, slug };
       const pages = [];
-      for (const w of cfg.widths) pages.push(await checkOne(b, url, w, c));
+      for (const sch of schemes) for (const w of cfg.widths) {
+        try { pages.push(await checkOne(b, url, w, { ...c, scheme: sch })); }
+        catch (e) { toolErrors.push({ url, width: w, scheme: sch, error: e.message }); }
+      }
+      if (!pages.length) { results.push({ url, dir, pages, sheet: null, report: null, errors: 0, warnings: 0, counts: {} }); continue; }
       const sheet = cfg.sheet ? await contactSheet(b, c, pages) : null;
       const rep = writeReport(c, url, pages, sheet);
       results.push({ url, dir, pages, sheet, report: rep.file, errors: rep.errs, warnings: rep.warns, counts: counts(pages) });
@@ -334,8 +388,8 @@ export async function run(args, opts = {}) {
     if (cfg.updateBaseline) { const next = { ...prev }; for (const r of results) next[r.url] = r.counts; fs.writeFileSync(cfg.baseline, JSON.stringify(next, null, 1)); regressions = []; }
   }
   const failing = cfg.baseline ? regressions.length > 0
-    : results.some((r) => r.pages.some((p) => p.findings.some((f) => cfg.failOn === 'warn' ? true : cfg.failOn === 'error' ? f.level === 'error' : false)));
-  return { results, regressions, failing, browser: exe };
+    : results.some((r) => r.pages.some((p) => p.findings.some((f) => cfg.failOn === 'none' ? false : f.level === 'error' || (cfg.failOn === 'warn' && f.level === 'warn'))));
+  return { results, regressions, failing, browser: exe, toolErrors };
 }
 
 function printSummary(out) {
@@ -343,13 +397,15 @@ function printSummary(out) {
     console.log(`\n${r.url}`);
     for (const p of r.pages) {
       const e = p.findings.filter((f) => f.level === 'error'), w = p.findings.filter((f) => f.level === 'warn');
-      console.log(`  ${String(p.width).padStart(4)}px  오류 ${e.length}  경고 ${w.length}${e.length ? '  ← ' + [...new Set(e.map((f) => f.rule))].join(', ') : ''}`);
+      const ai = new Set(p.findings.filter((f) => f.rule.startsWith('ai-')).map((f) => f.rule)).size;
+      console.log(`  ${String(p.width).padStart(4)}px${p.scheme && p.scheme !== 'light' ? ' ' + p.scheme : ''}  오류 ${e.length}  경고 ${w.length}  AI 티 ${ai}종${e.length ? '  ← ' + [...new Set(e.map((f) => f.rule))].join(', ') : ''}`);
     }
-    console.log(`  보고서: ${r.report}`);
+    if (r.report) console.log(`  보고서: ${r.report}`);
     if (r.sheet) console.log(`  한눈에: ${r.sheet}`);
   }
   if (out.regressions.length) { console.log('\n기준보다 늘어난 것:'); for (const x of out.regressions) console.log('  ' + x); }
-  console.log(out.failing ? '\n결과: 고칠 것이 남았다 (exit 1)' : '\n결과: 통과 (exit 0)');
+  if (out.toolErrors.length) { console.log('\n검사가 돌지 않은 쪽:'); for (const t of out.toolErrors) console.log(`  ${t.url} ${t.width}px${t.scheme !== 'light' ? ' ' + t.scheme : ''}: ${t.error}`); }
+  console.log(out.toolErrors.length ? '\n결과: 일부 쪽은 검사하지 못했다 (exit 2)' : out.failing ? '\n결과: 고칠 것이 남았다 (exit 1)' : '\n결과: 통과 (exit 0)');
 }
 
 const isMain = process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
@@ -359,6 +415,6 @@ if (isMain) {
     const r = spawnSync(process.execPath, [path.join(HERE, 'design-check.test.mjs')], { stdio: 'inherit' });
     process.exit(r.status ?? 1);
   }
-  run(args).then((out) => { printSummary(out); process.exit(out.failing ? 1 : 0); })
+  run(args).then((out) => { printSummary(out); process.exit(out.toolErrors.length ? 2 : out.failing ? 1 : 0); })
     .catch((e) => { console.error('design-check: ' + e.message); process.exit(2); });
 }

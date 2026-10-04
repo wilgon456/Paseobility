@@ -7,7 +7,7 @@ description: Use when building, changing, or reviewing an interface, layout, sty
 
 Web and app frontend work. Leave tasks that do not change the interface alone.
 
-Paths are relative to this skill's directory. Scripts need Node 20+ and, for step 4, a Chromium-family browser on the machine (Chrome, Edge, Chromium, or a Playwright download). Nothing is installed by this skill.
+Paths are relative to this skill's directory. When your working directory is the project, prefix them with the skill's absolute location (Claude Code: `~/.claude/skills/paseo-design/`; Codex and OpenCode: `~/.agents/skills/paseo-design/`). Scripts need Node 20+ and, for step 4, a Chromium-family browser on the machine (Chrome, Edge, Chromium, or a Playwright download). Nothing is installed by this skill.
 
 ## 0. The project's own rules win
 
@@ -56,6 +56,7 @@ Write production code in the repo's framework. A standalone HTML artifact only w
 - Spacing from the scale only. One `gap` per row or column instead of per-item margins. One container (max-width and side padding) for every section.
 - Controls on one row share one height token (40px; 44px on phones) and sit on `align-items: center`.
 - Contrast 4.5:1 (3:1 at 24px or bold 19px and up); tap targets 44px on phones; nothing under 12px.
+- Images keep their aspect ratio (`object-fit: cover` or one fixed dimension) and carry `alt`. Keyboard focus stays visible (`:focus-visible` ring; never bare `outline: none`). Buttons and inputs use one or two height tokens across the page; icons in a row share one size. Animations stop under `prefers-reduced-motion: reduce`.
 - No gradients, glows, glass, left accent rails, tracked uppercase eyebrows, emoji as icons, icon toppers, arrows in button text, or centered multi-line paragraphs unless the brief asks for them.
 
 ## 4. Prove it with design-check (required)
@@ -69,13 +70,17 @@ Per page and width it writes a clean screenshot, a marked screenshot with number
 - Open the sheet and the marked screenshots and look at them. The machine finds overflow, clipping, overlap, misalignment, uneven rhythm, contrast, Hangul mid-word breaks, scale sprawl and the common AI tells. You judge hierarchy, composition, copy and whether one thing is memorable: go through `references/review-checklist.md` and answer each line in the report.
 - Fix every error. Fix each warning or write one line why it stays. Rerun until errors are 0.
 - Also read `vendor/web-design-guidelines/command.md` (Vercel's Web Interface Guidelines, pinned snapshot) and check the changed code for the accessibility, form, keyboard and motion rules a renderer cannot see.
-- Running app: use its dev or staging URL. Never exercise production data. Pages behind a login: a staging server with a test account, or a saved copy of the rendered HTML.
+- Changing an existing screen: run design-check once before you edit and keep that `--out` folder, so the report can compare the before and after sheets and error counts.
+- Running app: use its dev or staging URL. If nothing is serving, start the project's dev server in the background (its `package.json` scripts or run skill), wait for the port, check, then stop it. Never exercise production data. Pages behind a login: a staging server with a test account, or a saved copy of the rendered HTML.
+- A project with a dark theme: add `--scheme light,dark`.
+- Findings marked 참고 (info) do not fail the run but tell you what the machine could not measure (text over images, a screenshot cut at `--max-height`); check those by eye.
+- If you cannot view images in this runtime, say so in the report and rely on the findings and hints. Do not claim you looked at a screenshot you could not open.
 - Legacy pages with old findings: `--baseline <file>` fails only when a rule count grows; `--update-baseline` after you fixed some. `--ignore <selectors>` for third-party embeds; `--disable <rules>` only with the reason written in the report.
-- `node scripts/design-check.mjs --selftest` proves the checker works on this machine (about 15 seconds).
+- `node scripts/design-check.mjs --selftest` proves the checker works on this machine (about 20 seconds).
 
 ## 5. Report
 
-What changed, the design-check result (errors 0, warnings N with their reasons), the screenshot paths, the checklist answers, and what was not verified. Never claim a screen was checked if it was not rendered.
+What changed, the design-check result (errors 0, warnings N with their reasons, AI tells 0, before and after counts when a screen was modified), the screenshot paths, the checklist answers, and what was not verified. Never claim a screen was checked if it was not rendered.
 
 ## Exercising the running app
 

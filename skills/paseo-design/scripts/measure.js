@@ -19,6 +19,7 @@
   const styles = new Map();
   const S = (el) => { let s = styles.get(el); if (!s) { s = getComputedStyle(el); styles.set(el, s); } return s; };
   const num = (v, d = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+  const parentOf = (e) => e.parentElement || (e.parentNode && e.parentNode.host) || null; // climbs out of open shadow roots
   const R = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height, r: r.right + scrollX, b: r.bottom + scrollY }; };
   const rr = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
   const ignored = (el) => IGNORE.length > 0 && IGNORE.some((s) => { try { return el.closest(s); } catch (e) { return false; } });
@@ -42,12 +43,12 @@
   function opacity(el) {
     if (!el || el.nodeType !== 1) return 1;
     if (opCache.has(el)) return opCache.get(el);
-    const v = num(S(el).opacity, 1) * opacity(el.parentElement);
+    const v = num(S(el).opacity, 1) * opacity(parentOf(el));
     opCache.set(el, v);
     return v;
   }
   function pinned(el) { // fixed or sticky self/ancestor
-    for (let e = el; e && e.nodeType === 1; e = e.parentElement) { const p = S(e).position; if (p === 'fixed' || p === 'sticky') return true; }
+    for (let e = el; e && e.nodeType === 1; e = parentOf(e)) { const p = S(e).position; if (p === 'fixed' || p === 'sticky') return true; }
     return false;
   }
   function absolute(el) { const p = S(el).position; return p === 'absolute' || p === 'fixed'; }
@@ -94,7 +95,7 @@
   const sat = (c) => { const mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b); return mx === 0 ? 0 : (mx - mn) / mx; };
   function background(el) { // composite solid background behind el; {unknown:true} over images/gradients
     const layers = [];
-    for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
+    for (let e = el; e && e.nodeType === 1; e = parentOf(e)) {
       const s = S(e);
       if (s.backgroundImage && s.backgroundImage !== 'none') return { unknown: true };
       const c = color(s.backgroundColor);
@@ -120,7 +121,7 @@
   const SECTION = 'section,header,footer,nav,aside,article,main,dialog,[role=dialog],[role=region]';
   const groupCache = new Map();
   function groupOf(el) { // nearest visual box or section ancestor (not el itself)
-    for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) {
+    for (let e = parentOf(el); e && e !== document.body; e = parentOf(e)) {
       if (groupCache.has(e)) { if (groupCache.get(e)) return e; continue; }
       const g = cardLike(e) || e.matches(SECTION);
       groupCache.set(e, g);
@@ -138,19 +139,30 @@
   const leftish = (a) => ['start', 'left', 'justify', '-webkit-left', 'match-parent'].includes(a);
   const centerish = (a) => a === 'center' || a === '-webkit-center';
 
-  // ---------- collect ----------
+  // ---------- collect (open shadow roots included) ----------
   const all = [];
-  for (const el of document.body.querySelectorAll('*')) {
-    if (SKIP.has(el.tagName) || el.closest('svg') && el.tagName.toLowerCase() !== 'svg') continue;
-    if (el.id === '__dc_overlay' || el.closest('#__dc_overlay')) continue;
-    if (visible(el)) all.push(el);
+  const roots = [];
+  function collect(root) {
+    if (!root || roots.includes(root)) return;
+    roots.push(root);
+    for (const el of root.querySelectorAll('*')) {
+      if (el.shadowRoot) collect(el.shadowRoot);
+      if (SKIP.has(el.tagName) || (el.closest('svg') && el.tagName.toLowerCase() !== 'svg')) continue;
+      if (el.id === '__dc_overlay' || el.closest('#__dc_overlay')) continue;
+      if (visible(el)) all.push(el);
+    }
   }
+  collect(document.body);
+  const idx = new WeakMap(); all.forEach((e, i) => idx.set(e, i));
   const INLINE = new Set(['inline', 'contents']);
   const blockOf = (node) => { let e = node.nodeType === 1 ? node : node.parentElement; while (e && e !== document.body && INLINE.has(S(e).display)) e = e.parentElement; return e; };
   const blockMap = new Map();
-  const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
-  while (tw.nextNode()) {
-    const n = tw.currentNode;
+  const textNodes = [];
+  for (const root of roots) {
+    const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT) });
+    while (tw.nextNode()) textNodes.push(tw.currentNode);
+  }
+  for (const n of textNodes) {
     const p = n.parentElement;
     if (!p || SKIP.has(p.tagName) || p.closest('svg,canvas,noscript,template,textarea,select,[aria-hidden="true"],#__dc_overlay')) continue;
     if (!visible(p)) continue;
@@ -326,6 +338,7 @@
     }
   }
   for (const g of contrastGroups.values()) add('error', 'contrast', `글자색 ${g.fg} / 배경 ${g.bg} 대비가 ${g.cr.toFixed(2)}:1이라 기준 ${g.need}:1보다 낮다(${g.els.length}곳).`, g.els.slice(0, 4).map((e) => target(e)), { count: g.els.length });
+  if (unknownBg) add('info', 'contrast-unmeasured', `배경이 그림이나 그라데이션이라 대비를 재지 못한 글자가 ${unknownBg}곳이다. 눈으로 확인한다.`, [], { count: unknownBg });
 
   // ---------- E/W: tap targets, tiny text ----------
   if (MOBILE) {
@@ -433,7 +446,7 @@
   const rowParents = new Map();
   for (const el of [...cards, ...media]) { if (absolute(el) || pinned(el) || !el.parentElement) continue; const p = el.parentElement; if (!rowParents.has(p)) rowParents.set(p, []); rowParents.get(p).push(el); }
   const reportedPairs = new Set();
-  const pairKey = (a, b) => { const ia = all.indexOf(a), ib = all.indexOf(b); return Math.min(ia, ib) + ':' + Math.max(ia, ib); };
+  const pairKey = (a, b) => { const ia = idx.has(a) ? idx.get(a) : -1, ib = idx.has(b) ? idx.get(b) : -1; return Math.min(ia, ib) + ':' + Math.max(ia, ib); };
   let topMiss = 0;
   for (const [p, kids] of rowParents) {
     if (kids.length < 2 || topMiss >= 6) continue;
@@ -659,6 +672,75 @@
   if (arrows.length >= 2) add('warn', 'ai-arrow-cta', `단추·링크 글 끝에 화살표를 붙인 곳이 ${arrows.length}곳이다.`, arrows.slice(0, 3).map((b) => target(b.el)));
   const toppers = cards.filter((c) => { const first = [...c.children].find((k) => visible(k)); if (!first || !first.matches('svg,img,span,div,i')) return false; const q = R(first), cq = R(c); if (q.w > 72 || q.h > 72 || q.w < 16) return false; const head = c.querySelector('h1,h2,h3,h4,h5,h6,[role=heading],strong,b'); return head && R(head).y > q.b - 2 && Math.abs((q.x + q.w / 2) - (cq.x + cq.w / 2)) < 3; });
   if (toppers.length >= 3) add('warn', 'ai-icon-topper', `카드마다 제목 위 가운데에 아이콘을 얹었다(${toppers.length}곳).`, toppers.slice(0, 3).map((e) => target(e)));
+
+  // ---------- E/W: images ----------
+  const distorted = [], noAlt = [];
+  for (const el of all) {
+    if (el.tagName !== 'IMG') continue;
+    const q = el.getBoundingClientRect();
+    if (q.width < 24 || q.height < 24) continue;
+    if (!el.hasAttribute('alt')) noAlt.push(el);
+    if (el.naturalWidth > 0 && el.naturalHeight > 0 && S(el).objectFit === 'fill') {
+      const rn = el.naturalWidth / el.naturalHeight, rd = q.width / q.height;
+      if (Math.abs(rn / rd - 1) > 0.03) distorted.push({ el, rn, rd });
+    }
+  }
+  if (distorted.length) add('error', 'image-distorted', `그림이 눌리거나 늘어났다(${distorted.length}장). 원본 비율과 그려진 비율이 다른데 object-fit이 없다.`, distorted.slice(0, 4).map((d) => target(d.el)), { samples: distorted.slice(0, 4).map((d) => ({ natural: +d.rn.toFixed(3), rendered: +d.rd.toFixed(3) })) });
+  if (noAlt.length) add('warn', 'img-alt', `alt가 없는 그림이 ${noAlt.length}장이다(장식이면 alt=""를 준다).`, noAlt.slice(0, 4).map((e) => target(e)), { count: noAlt.length });
+
+  // ---------- W: text sitting off-center inside buttons ----------
+  let offCenter = 0;
+  for (const el of controls) {
+    if (offCenter >= 6 || !el.matches('button,[role=button],a[class*=btn],a[class*=button],a[class*=Button],.btn')) continue;
+    if (el.querySelector('img,svg,i,[class*=icon]') || !(el.textContent || '').trim()) continue;
+    const rs = [];
+    const tw2 = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (tw2.nextNode()) {
+      const n = tw2.currentNode; if (!n.nodeValue.trim()) continue;
+      const pe = n.parentElement; if (!pe || !visible(pe)) continue; // skips screen-reader-only labels (clip rect(0,0,0,0), 1px boxes)
+      const pr = pe.getBoundingClientRect(); if (pr.width <= 1 || pr.height <= 1) continue;
+      range.selectNodeContents(n);
+      for (const q of range.getClientRects()) if (q.width > 0.5 && q.height > 0.5) rs.push(q);
+    }
+    if (!rs.length) continue;
+    const top = Math.min(...rs.map((q) => q.top)), bottom = Math.max(...rs.map((q) => q.bottom));
+    if (bottom - top > num(S(el).fontSize) * 1.9) continue; // wrapped onto two lines
+    const q = el.getBoundingClientRect();
+    const d = (top + bottom) / 2 - (q.top + q.height / 2);
+    if (Math.abs(d) >= 1.5) { offCenter++; add('warn', 'control-text-center', `단추 안 글자가 세로 가운데에서 ${d > 0 ? '아래' : '위'}로 ${Math.abs(d).toFixed(1)}px 치우쳤다.`, [target(el)], { dy: +d.toFixed(1) }); }
+  }
+
+  // ---------- W: control heights across the page ----------
+  const heights = new Map();
+  for (const c of ctl) { if (!c.boxed || c.q.h > 64 || c.el.tagName === 'TEXTAREA') continue; const h = Math.round(c.q.h); heights.set(h, (heights.get(h) || 0) + 1); }
+  if (heights.size > 3) add('warn', 'control-heights', `단추·입력칸 높이가 ${heights.size}종이다(${[...heights.keys()].sort((a, b) => a - b).join('/')}px). 한두 가지 높이 토큰으로 맞춘다.`, [], { heights: [...heights.entries()].sort((a, b) => a[0] - b[0]) });
+
+  // ---------- W: icon sizes mixed in one row ----------
+  const iconsByParent = new Map();
+  for (const el of all) {
+    if (!(el.tagName.toLowerCase() === 'svg' || el.tagName === 'IMG')) continue;
+    const q = el.getBoundingClientRect();
+    if (q.width > 32 || q.height > 32 || q.width < 8) continue;
+    const p = el.parentElement; if (!p) continue;
+    if (!iconsByParent.has(p)) iconsByParent.set(p, []);
+    iconsByParent.get(p).push({ el, h: Math.round(q.height) });
+  }
+  let iconMix = 0;
+  for (const [p, list] of iconsByParent) {
+    if (iconMix >= 4 || list.length < 2) continue;
+    const sizes = [...new Set(list.map((i) => i.h))].sort((a, b) => a - b);
+    if (sizes.length > 1 && sizes[sizes.length - 1] - sizes[0] >= 2) { iconMix++; add('warn', 'icon-size-mix', `한 줄의 아이콘 크기가 섞여 있다(${sizes.join('/')}px).`, [target(p), ...list.slice(0, 2).map((i) => target(i.el))], { sizes }); }
+  }
+
+  // ---------- W: too many text colors ----------
+  const textColorSet = new Set(blocks.filter((b) => !b.faint).map((b) => b.s.color));
+  if (textColorSet.size > 12) add('warn', 'text-colors', `글자색이 ${textColorSet.size}종이다. 먹색·흐린색·강조색·상태색 정도로 줄인다.`, [], { count: textColorSet.size });
+
+  // ---------- W: animations still running although reduced motion is requested ----------
+  try {
+    const anims = (document.getAnimations ? document.getAnimations() : []).filter((a) => a.playState === 'running' && a.effect && a.effect.getTiming && a.effect.getTiming().iterations === Infinity);
+    if (anims.length) add('warn', 'infinite-animation', `끝없이 도는 애니메이션이 ${anims.length}개다(움직임 줄이기 설정에서도 돈다).`, anims.slice(0, 4).map((a) => a.effect.target).filter((t) => t && t.nodeType === 1).map((t) => target(t)), { count: anims.length });
+  } catch (e) { /* getAnimations is best effort */ }
 
   const firstFont = (S(document.body).fontFamily.split(',')[0] || '').replace(/["']/g, '').trim();
   return {

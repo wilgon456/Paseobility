@@ -34,15 +34,19 @@ try {
   const [phone, desktop] = bad.results[0].pages;
   check('bad.html at 375 reports the planted errors', () => {
     const e = rules(phone, 'error');
-    for (const r of ['overflow-x', 'hangul-break', 'contrast', 'tap-target', 'tiny-text', 'align-x', 'row-height', 'text-overlap']) {
+    for (const r of ['overflow-x', 'hangul-break', 'contrast', 'tap-target', 'tiny-text', 'align-x', 'row-height', 'text-overlap', 'image-distorted']) {
       assert.ok(e.has(r), `missing error ${r}; got: ${[...e].join(', ')}`);
     }
   });
   check('bad.html at 375 reports the planted warnings', () => {
     const w = rules(phone, 'warn');
-    for (const r of ['type-twins', 'ai-eyebrow', 'ai-gradient', 'ai-accent-rail', 'hangul-tracking', 'hangul-font']) {
+    for (const r of ['type-twins', 'ai-eyebrow', 'ai-gradient', 'ai-accent-rail', 'hangul-tracking', 'hangul-font', 'img-alt', 'control-text-center', 'control-heights', 'icon-size-mix', 'infinite-animation', 'focus-invisible']) {
       assert.ok(w.has(r), `missing warn ${r}; got: ${[...w].join(', ')}`);
     }
+  });
+  check('text inside an open shadow root is measured', () => {
+    const tiny = phone.findings.find((f) => f.rule === 'tiny-text');
+    assert.ok(tiny && tiny.data.sizes.includes(8), `tiny-text sizes: ${tiny && JSON.stringify(tiny.data.sizes)}`);
   });
   check('bad.html at 1440 drops the phone-only overflow but keeps alignment and contrast', () => {
     const e = rules(desktop, 'error');
@@ -78,6 +82,22 @@ try {
   const nometa = await run([path.join(FIX, 'nometa.html'), '--out', out, '--widths', '375', '--no-sheet']);
   check('a page without viewport meta is flagged on the phone width', () => {
     assert.ok(rules(nometa.results[0].pages[0], 'error').has('viewport-meta'));
+  });
+
+  const dark = await run([path.join(FIX, 'good.html'), '--out', out, '--widths', '375', '--scheme', 'light,dark', '--no-sheet']);
+  check('--scheme light,dark renders both schemes and names the dark files', () => {
+    const pages = dark.results[0].pages;
+    assert.equal(pages.length, 2);
+    assert.deepEqual(pages.map((p) => p.scheme), ['light', 'dark']);
+    assert.ok(pages[1].clean.endsWith('-375-dark.png') && fs.existsSync(pages[1].clean));
+    for (const p of pages) assert.deepEqual(p.findings, [], 'good.html must stay clean in both schemes');
+  });
+
+  const dead = await run(['http://127.0.0.1:9/', '--out', out, '--widths', '375', '--no-sheet']);
+  check('a page that cannot load is reported as a tool error, not as a pass', () => {
+    assert.equal(dead.toolErrors.length, 1);
+    assert.equal(dead.results[0].pages.length, 0);
+    assert.equal(dead.failing, false);
   });
 
   const base = path.join(out, 'baseline.json');

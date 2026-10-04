@@ -58,7 +58,11 @@ it around proof instead of prose:
   WCAG contrast, tap targets, Hangul words split at line ends, Korean typography
   (font order, tracking, line length), spacing and type-scale sprawl, and the
   common AI tells (gradients, glass, accent rails, eyebrows, icon toppers,
-  centered stacks). It writes clean and marked screenshots, a contact sheet, a
+  centered stacks), plus image aspect ratios, keyboard focus rings, animations
+  that keep running under reduced motion, text sitting off-center in buttons,
+  mixed icon sizes and control heights; open shadow roots are measured too, and
+  `--scheme light,dark` renders both themes. It writes clean and marked
+  screenshots, a contact sheet, a
   Markdown report with a fix hint per finding, and JSON; exit 1 while errors
   remain. `--baseline` ratchets legacy pages; `--selftest` proves the checker on
   the host.
