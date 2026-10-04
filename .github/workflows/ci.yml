@@ -44,6 +44,11 @@ jobs:
           python skills/paseo-spyware-check/scripts/spyware-check.test.py
           bash skills/paseo-spyware-check/scripts/spyware-check-shell.test.sh
 
+      - name: design-check selftest (headless Chrome)
+        env:
+          DESIGN_CHECK_REQUIRE_BROWSER: "1"
+        run: node skills/paseo-design/scripts/design-check.mjs --selftest
+
   windows:
     name: Windows (PowerShell + shared Python + Node)
     runs-on: windows-latest
@@ -103,6 +108,11 @@ jobs:
 
       - name: Scanner suite (cross-platform)
         run: python skills/paseo-spyware-check/scripts/spyware-check.test.py
+
+      - name: design-check selftest (headless Chrome)
+        env:
+          DESIGN_CHECK_REQUIRE_BROWSER: "1"
+        run: node skills/paseo-design/scripts/design-check.mjs --selftest
 
       - name: Windows Cua installer runtime tests (pwsh)
         shell: pwsh

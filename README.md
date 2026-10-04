@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.2-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.3-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -43,10 +43,36 @@ This repo is a **skill package for reproducibly composing Paseo's built-in tools
 
 ---
 
-## 2026-10-05 update — `/paseo-design`
+## 2026-10-05 update — `/paseo-design` with design-check (v2.8.3)
 
-v2.8.2 adds `/paseo-design`, the web and app frontend workflow. It reads a
-project `DESIGN.md` first, then vendored direction, pattern, and review skills.
+v2.8.2 added `/paseo-design`, the web and app frontend workflow. v2.8.3 reworks
+it around proof instead of prose:
+
+- **Project rules first.** A repo with its own design skill, design document,
+  token file, or UI checks is followed as-is; the skill never writes a second
+  `DESIGN.md` or palette next to them.
+- **`scripts/design-check.mjs`** renders a URL or HTML file at 375, 768 and
+  1440 px in headless Chrome (Chrome, Edge, Chromium, or a Playwright download;
+  no npm dependencies) and measures the page: overflow, clipped or overlapping
+  text, left-edge and row misalignment down to 1 px, uneven gaps, card heights,
+  WCAG contrast, tap targets, Hangul words split at line ends, Korean typography
+  (font order, tracking, line length), spacing and type-scale sprawl, and the
+  common AI tells (gradients, glass, accent rails, eyebrows, icon toppers,
+  centered stacks). It writes clean and marked screenshots, a contact sheet, a
+  Markdown report with a fix hint per finding, and JSON; exit 1 while errors
+  remain. `--baseline` ratchets legacy pages; `--selftest` proves the checker on
+  the host.
+- **Compose, then check.** The agent names one of seven surfaces before choosing
+  a layout, follows `references/design-digest.md` (Anthropic frontend-design and
+  Hermes claude-design condensed), reviews the screenshots against
+  `references/review-checklist.md`, and reports errors 0 before calling UI work
+  done.
+- `templates/DESIGN.md` passes `designmd lint` (the dotted `design.md` bin is a
+  silent no-op on Windows; the skill pins the working form). Vendored guides keep
+  their upstream text and licenses (`vendor/SOURCES.md`, now with pinned
+  commits); Vercel's Web Interface Guidelines ship as an offline snapshot.
+- CI runs the design-check selftest on macOS and Windows.
+
 The 2026-09-30 CloakBrowser notes below stay as the previous update. Older
 sections are historical and unchanged.
 
@@ -165,7 +191,7 @@ The package now has **8 skills**. `/paseo-design` is the eighth. CLI/MCP tool-sc
 | `/paseo-project` | Requested project summary/handoff or initial setup/environment changes |
 | `/paseo-browser` | Web UI manipulation/verification via CloakBrowser (Paseo browser + Playwright CLI optional) |
 | `/paseo-cua` | Explicitly requested native app GUI driven by the trycua Cua Driver |
-| `/paseo-design` | Web or app frontend: lock `DESIGN.md`, reuse components, then review |
+| `/paseo-design` | Web or app frontend: project rules first, compose surface-first, then prove it with `design-check` (screenshots plus measured findings, errors 0) |
 | `/paseo-agent-cleanup` | Cleaning up selected test agents/workspaces |
 | `/paseo-share` | Artifact sharing between personal devices |
 | `/paseo-spyware-check` | Pre-install static security inspection of a repo |
@@ -1024,7 +1050,7 @@ skills/
 ├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
-├── paseo-design/             # SKILL.md + vendored frontend skills
+├── paseo-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
 ├── paseo-project/            # SKILL.md

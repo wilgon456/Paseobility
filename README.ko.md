@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.2-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.3-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -43,11 +43,37 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
-## 2026-10-05 업데이트 — `/paseo-design`
+## 2026-10-05 업데이트 — `/paseo-design`에 design-check (v2.8.3)
 
-v2.8.2는 웹·앱 프론트 워크플로 `/paseo-design`을 더합니다. 프로젝트
-`DESIGN.md`를 먼저 읽고, 이어서 방향·패턴·검수 스킬을 읽습니다. 아래
-2026-09-30 CloakBrowser 기록은 이전 업데이트입니다. 더 아래 섹션은 역사
+v2.8.2에서 더한 웹·앱 프론트 워크플로 `/paseo-design`을 v2.8.3에서 글 대신
+증거 중심으로 다시 짰습니다.
+
+- **프로젝트 규칙이 먼저입니다.** 저장소에 디자인 스킬·디자인 문서·토큰
+  파일·UI 검사가 이미 있으면 그대로 따르고, 그 옆에 두 번째 `DESIGN.md`나
+  팔레트를 만들지 않습니다.
+- **`scripts/design-check.mjs`**가 주소나 HTML 파일을 375·768·1440px 폭으로
+  헤드리스 크롬(Chrome·Edge·Chromium·Playwright가 내려받은 것 중 있는 것, npm
+  의존성 없음)에 그려 놓고 잽니다. 넘침, 잘리거나 겹친 글자, 1px 단위의 왼쪽
+  선·한 줄 컨트롤 어긋남, 들쭉날쭉한 간격, 카드 높이, WCAG 대비, 누름 크기,
+  줄 끝에서 쪼개진 한글 단어, 한글 타이포그래피(글꼴 순서·자간·줄 길이),
+  여백·글자 크기 가짓수, 흔한 AI 티(그라데이션·유리·왼쪽 색 막대·대문자
+  꼬리표·아이콘 얹기·가운데 쌓기)를 봅니다. 깨끗한 화면과 표시한 화면, 한눈에
+  보는 판, 고치는 법이 달린 보고서(Markdown·JSON)를 남기고 오류가 남아 있으면
+  exit 1입니다. `--baseline`은 옛 페이지의 기존 결함을 동결해 늘어날 때만
+  막고, `--selftest`는 검사기 자체를 그 기계에서 증명합니다.
+- **먼저 짜고, 그다음 잽니다.** 에이전트는 배치를 고르기 전에 화면의 일곱
+  갈래 중 하나를 이름 짓고, `references/design-digest.md`(Anthropic
+  frontend-design과 Hermes claude-design 요약)를 따르며, 찍힌 화면을
+  `references/review-checklist.md`에 대어 보고, 오류 0을 보고한 뒤에야 UI
+  작업을 끝냈다고 말합니다.
+- `templates/DESIGN.md`는 `designmd lint`를 통과합니다(점 붙은 `design.md`
+  실행 이름은 Windows에서 아무 일 없이 성공으로 끝나므로, 되는 형태를
+  스킬에 고정했습니다). 묶어 둔 가이드는 원문과 라이선스를 그대로 두고
+  (`vendor/SOURCES.md`에 원본 커밋을 적음), Vercel Web Interface Guidelines는
+  오프라인 스냅샷으로 넣었습니다.
+- CI가 macOS와 Windows에서 design-check 셀프테스트를 돌립니다.
+
+아래 2026-09-30 CloakBrowser 기록은 이전 업데이트입니다. 더 아래 섹션은 역사
 기록으로 그대로 둡니다.
 
 ## 2026-09-30 업데이트 — CloakBrowser 브라우저 기본, Paseo 0.10.2, Cua 핀 0.30.4
@@ -202,7 +228,7 @@ Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 �
 | `/paseo-project` | 요청한 프로젝트 요약·인수인계 또는 초기 설정·환경 수정 |
 | `/paseo-browser` | CloakBrowser 기반 웹 UI 조작·검증(Paseo 브라우저·Playwright CLI는 선택) |
 | `/paseo-cua` | 명시 요청한 네이티브 앱 GUI를 trycua Cua Driver로 구동 |
-| `/paseo-design` | 웹·앱 프론트: `DESIGN.md`를 고정하고, 기존 컴포넌트를 재사용한 뒤 검수 |
+| `/paseo-design` | 웹·앱 프론트: 프로젝트 규칙 먼저, 화면 갈래부터 짜고, `design-check`로 찍어 재서 오류 0을 증명 |
 | `/paseo-agent-cleanup` | 선택한 테스트 에이전트·workspace 정리 |
 | `/paseo-share` | 개인 기기 간 산출물 공유 |
 | `/paseo-spyware-check` | 설치 전 저장소 정적 보안 검사 |
@@ -1101,7 +1127,7 @@ skills/
 ├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
-├── paseo-design/             # SKILL.md + vendored frontend skills
+├── paseo-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
 ├── paseo-project/            # SKILL.md

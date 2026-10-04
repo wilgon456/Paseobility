@@ -70,7 +70,7 @@ require a package build.
 
 ## Consolidated skill migration
 
-The package contains eight skills. `paseo-design` is the web and app frontend workflow. `paseo-agent-tournament` is comparison mode
+The package contains eight skills. `paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Chrome and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver and is explicit-only;
