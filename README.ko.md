@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.1-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.2-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -43,10 +43,16 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
+## 2026-10-05 업데이트 — `/paseo-design`
+
+v2.8.2는 웹·앱 프론트 워크플로 `/paseo-design`을 더합니다. 프로젝트
+`DESIGN.md`를 먼저 읽고, 이어서 방향·패턴·검수 스킬을 읽습니다. 아래
+2026-09-30 CloakBrowser 기록은 이전 업데이트입니다. 더 아래 섹션은 역사
+기록으로 그대로 둡니다.
+
 ## 2026-09-30 업데이트 — CloakBrowser 브라우저 기본, Paseo 0.10.2, Cua 핀 0.30.4
 
-현재 업데이트 섹션입니다. 동일한 **7개 스킬** 패키지의 누적 변경을 기록하며,
-아래 이전 섹션들은 역사 기록으로 그대로 둡니다.
+이 섹션은 당시 **7개 스킬** 패키지의 누적 변경을 기록합니다.
 
 ### `/paseo-browser` 기본 백엔드가 CloakBrowser로
 
@@ -180,10 +186,10 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 - `cp -R` / `Copy-Item` 수동 복사는 문서만 복사하며 Cua Driver 런타임을 자동
   설치할 수 없습니다.
 
-현재 패키지는 **7개 스킬**입니다. CLI·MCP 도구 규격 호환성은 기존 6개 스킬에 대해
+현재 패키지는 **8개 스킬**입니다. 여덟 번째는 `/paseo-design`입니다. CLI·MCP 도구 규격 호환성은 기존 6개 스킬에 대해
 v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에
-기록되어 있으며, 이 보고서는 **`paseo-cua`를 포함하지 않습니다**. 6개 스킬 기록을
-7개 전체에 대한 검증으로 해석하면 안 됩니다. `paseo-cua`는 **preview / 제한 검증**
+기록되어 있으며, 이 보고서는 **`paseo-cua`와 `paseo-design`을 포함하지 않습니다**. 6개 스킬 기록을
+그 뒤에 추가된 스킬까지 검증한 것으로 해석하면 안 됩니다. `paseo-cua`는 **preview / 제한 검증**
 단계로, 넓은 범위의 안정적인 Mac·Windows 지원이 아닙니다. 직접 검증된 경계는
 2026-09-21 Apple Silicon macOS 26.6.2 한 대(Cua Driver 0.28.2)이고, Intel macOS와
 Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 날짜별 매트릭스와 함께
@@ -196,6 +202,7 @@ Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 �
 | `/paseo-project` | 요청한 프로젝트 요약·인수인계 또는 초기 설정·환경 수정 |
 | `/paseo-browser` | CloakBrowser 기반 웹 UI 조작·검증(Paseo 브라우저·Playwright CLI는 선택) |
 | `/paseo-cua` | 명시 요청한 네이티브 앱 GUI를 trycua Cua Driver로 구동 |
+| `/paseo-design` | 웹·앱 프론트: `DESIGN.md`를 고정하고, 기존 컴포넌트를 재사용한 뒤 검수 |
 | `/paseo-agent-cleanup` | 선택한 테스트 에이전트·workspace 정리 |
 | `/paseo-share` | 개인 기기 간 산출물 공유 |
 | `/paseo-spyware-check` | 설치 전 저장소 정적 보안 검사 |
@@ -1094,6 +1101,7 @@ skills/
 ├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
+├── paseo-design/             # SKILL.md + vendored frontend skills
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
 ├── paseo-project/            # SKILL.md

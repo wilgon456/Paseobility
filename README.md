@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.1-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.2-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -43,10 +43,16 @@ This repo is a **skill package for reproducibly composing Paseo's built-in tools
 
 ---
 
+## 2026-10-05 update — `/paseo-design`
+
+v2.8.2 adds `/paseo-design`, the web and app frontend workflow. It reads a
+project `DESIGN.md` first, then vendored direction, pattern, and review skills.
+The 2026-09-30 CloakBrowser notes below stay as the previous update. Older
+sections are historical and unchanged.
+
 ## 2026-09-30 update — CloakBrowser browser default, Paseo 0.10.2, Cua pin 0.30.4
 
-This is the current update section. It records cumulative changes to the same
-**7-skill** package; earlier sections below are historical and unchanged.
+This section records cumulative changes to the then **7-skill** package.
 
 ### `/paseo-browser` now defaults to CloakBrowser
 
@@ -151,7 +157,7 @@ Selecting `paseo-cua`, or installing the full package, also prepares the trycua 
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
 - A manual `cp -R` / `Copy-Item` copies documents only and cannot auto-install the Cua Driver runtime.
 
-The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua` — the six-skill record must not be read as covering all seven. `paseo-cua` is **preview / limited validation**, not broad stable Mac and Windows support. Its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on Intel macOS and Windows, plus an isolated upstream PR build, are recorded with a dated matrix in the [Cua platform validation status](docs/cua-platform-validation.md). See [Verification status](#verification-status) below for the compact 2026-09-22 summary.
+The package now has **8 skills**. `/paseo-design` is the eighth. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua` or `paseo-design` — the six-skill record must not be read as covering the later skills. `paseo-cua` is **preview / limited validation**, not broad stable Mac and Windows support. Its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on Intel macOS and Windows, plus an isolated upstream PR build, are recorded with a dated matrix in the [Cua platform validation status](docs/cua-platform-validation.md). See [Verification status](#verification-status) below for the compact 2026-09-22 summary.
 
 | Skill | Scope |
 | --- | --- |
@@ -159,6 +165,7 @@ The package now has **7 skills**. CLI/MCP tool-schema compatibility was checked 
 | `/paseo-project` | Requested project summary/handoff or initial setup/environment changes |
 | `/paseo-browser` | Web UI manipulation/verification via CloakBrowser (Paseo browser + Playwright CLI optional) |
 | `/paseo-cua` | Explicitly requested native app GUI driven by the trycua Cua Driver |
+| `/paseo-design` | Web or app frontend: lock `DESIGN.md`, reuse components, then review |
 | `/paseo-agent-cleanup` | Cleaning up selected test agents/workspaces |
 | `/paseo-share` | Artifact sharing between personal devices |
 | `/paseo-spyware-check` | Pre-install static security inspection of a repo |
@@ -1017,6 +1024,7 @@ skills/
 ├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
+├── paseo-design/             # SKILL.md + vendored frontend skills
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
 ├── paseo-project/            # SKILL.md
