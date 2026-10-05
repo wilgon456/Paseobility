@@ -420,12 +420,14 @@
   // the last item of a run is a right-edge witness only when the run reaches the container's right wall; otherwise its end is ragged like a text line
   const runRight = (el, nf, nl, r) => (nl ? null : nf && !hugsRight(el) ? null : r);
   const runNeighbour = (el, dir) => { const s = dir < 0 ? el.previousElementSibling : el.nextElementSibling; return s && s.tagName === el.tagName && visible(s) && (dir < 0 ? sameLine(s, el) : sameLine(el, s)); };
+  const rotated = (el) => { for (let e = el; e && e !== document.body; e = e.parentElement) { const t = S(e).transform; if (t && t !== 'none') { const m = t.match(/matrix\(([^,]+),\s*([^,]+)/); if (m && Math.abs(parseFloat(m[2])) > 0.001) return true; } } return false; };
   const items = [];
   for (const b of blocks) {
     if (b.faint || b.pinned || b.abs || b.centeredBox) continue;
     if (b.s.transform && b.s.transform !== 'none') continue;
     if (b.el.tagName === 'SUMMARY') continue; // its disclosure marker is UA-drawn; the text start is not a design decision
     if (b.ownBox) { // a chip, button or callout aligns by its own edge, not by the glyphs inside
+      if (rotated(b.el)) continue;
       if (b.box.w > W * 0.96) continue;
       const nf = runNeighbour(b.el, -1), nl = runNeighbour(b.el, 1);
       if (!(nf && nl)) items.push({ el: b.el, g: groupOf(b.el), x: nf ? null : b.box.x, r: runRight(b.el, nf, nl, b.box.r), y: b.box.y, b: b.box.b, kind: 'box', label: clip(b.text, 18) });
@@ -435,7 +437,7 @@
     items.push({ el: b.el, g: groupOf(b.el), x: b.ink.x, r: null, y: b.ink.y, b: b.ink.b, kind: 'text', label: clip(b.text, 18) });
   }
   for (const el of [...media, ...controls, ...cards]) {
-    if (absolute(el) || pinned(el)) continue;
+    if (absolute(el) || pinned(el) || rotated(el)) continue; // a deliberately tilted object has no straight edge to align
     const notFirst = runNeighbour(el, -1), notLast = runNeighbour(el, 1);
     if (notFirst && notLast) continue;
     const q = R(el);
