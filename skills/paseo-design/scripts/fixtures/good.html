@@ -26,6 +26,16 @@
   form { display: flex; align-items: center; gap: 8px; margin: 0; }
   label { font-size: 14px; flex: none; }
   input { height: 44px; flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; font: inherit; color: var(--ink); background: var(--bg); }
+  .units { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+  .units svg { display: block; width: 28px; height: 18px; fill: var(--ink); }
+  .units.small { gap: 4px; }
+  .units.small svg { width: 20px; height: 13px; }
+  .head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+  .head-row span, .legend span:last-child { font-size: 14px; color: var(--muted); }
+  .legend { display: flex; justify-content: space-between; gap: 16px; margin: 0 0 16px; }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin: 0 0 16px; background: #f6f8fa; border-top: 1px solid var(--line); }
+  .bar p { margin: 0; font-size: 14px; }
+  .ghost { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   table.list { border-collapse: collapse; width: 100%; }
   table.list td { padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -51,6 +61,13 @@
       <article class="card"><h3>경고</h3><p>고치거나 이유를 한 줄 적어야 하는 것입니다.</p></article>
       <article class="card"><h3>통계</h3><p>글자 크기와 여백의 가짓수를 함께 적습니다.</p></article>
     </div>
+  </section>
+  <section id="e">
+    <div class="head-row"><h2>남은 표</h2><span>잔여 / 전체</span></div>
+    <div class="units" role="img" aria-label="8장 중 8장"><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg></div>
+    <div class="units small" role="img" aria-label="24장 중 24장"><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg><svg viewBox="0 0 28 18" aria-hidden="true"><rect width="28" height="18" rx="3"/></svg></div>
+    <div class="legend"><span>7% 입고</span><span>93% 입고 전</span></div>
+    <div class="bar"><p>안내 문구가 여기에 놓입니다.</p><button type="button" class="ghost">닫기</button></div>
   </section>
   <section id="d">
     <h2>요약 표</h2>

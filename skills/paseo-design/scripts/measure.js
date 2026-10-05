@@ -223,13 +223,14 @@
     const hangul = (text.match(HANGUL_G) || []).length;
     const letters = (text.match(/[\p{L}]/gu) || []).length;
     const box = R(el);
-    let centeredBox = false;
+    let centeredBox = false, rightAnchored = false;
     const par = el.parentElement;
     if (par && par !== document.body) {
       const ps = S(par); const pr = R(par);
       const cl = pr.x + num(ps.borderLeftWidth) + num(ps.paddingLeft);
       const crr = pr.r - num(ps.borderRightWidth) - num(ps.paddingRight);
       const lg = box.x - cl, rg = crr - box.r;
+      if (Math.abs(rg) <= 1 && lg > 8) rightAnchored = true; // pushed to the right end (space-between, margin-left:auto, float): it aligns by its right edge
       if (lg > 0.75 && Math.abs(lg - rg) <= 1.5) centeredBox = true; // symmetric side gaps = centered by construction, whatever text-align says
       if (centerish(ps.textAlign) && /inline/.test(s.display)) centeredBox = true;
       if ((ps.display.includes('flex') && (ps.justifyContent === 'center' || ps.alignItems === 'center' && ps.flexDirection.startsWith('column'))) || (ps.display.includes('grid') && (ps.justifyItems === 'center' || s.justifySelf === 'center'))) {
@@ -241,7 +242,7 @@
     const selfCentered = (s.display.includes('flex') && ((!s.flexDirection.startsWith('column') && s.justifyContent === 'center') || (s.flexDirection.startsWith('column') && s.alignItems === 'center')))
       || (s.display.includes('grid') && (s.justifyItems === 'center' || s.justifyContent === 'center'));
     blocks.push({
-      el, s, nodes, rects, lines, text, box, centeredBox, ownBox, selfCentered,
+      el, s, nodes, rects, lines, text, box, centeredBox, rightAnchored, ownBox, selfCentered,
       fs, lh: lineHeightPx(s), weight: num(s.fontWeight, 400),
       align: s.textAlign, heading: isHeading(el, s),
       hangulRatio: letters ? hangul / letters : 0, hangul: hangul > 0,
@@ -422,11 +423,18 @@
       items.push({ el: b.el, g: groupOf(b.el), x: b.box.x, r: b.box.r, y: b.box.y, b: b.box.b, kind: 'box', label: clip(b.text, 18) });
       continue;
     }
-    if (b.selfCentered || !leftish(b.align)) continue;
+    if (b.selfCentered || b.rightAnchored || !leftish(b.align)) continue;
     items.push({ el: b.el, g: groupOf(b.el), x: b.ink.x, r: null, y: b.ink.y, b: b.ink.b, kind: 'text', label: clip(b.text, 18) });
   }
+  const interiorOfRun = (el) => { // a glyph inside a unit chart or icon row: its neighbour of the same tag sits on the same line
+    const prev = el.previousElementSibling;
+    if (!prev || prev.tagName !== el.tagName || !visible(prev)) return false;
+    const a = prev.getBoundingClientRect(), b = el.getBoundingClientRect();
+    return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > Math.min(a.height, b.height) * 0.5 && b.left >= a.right - 1;
+  };
   for (const el of [...media, ...controls, ...cards]) {
     if (absolute(el) || pinned(el)) continue;
+    if (media.includes(el) && interiorOfRun(el)) continue;
     const q = R(el);
     if (q.w < 8 || q.w > W * 0.96) continue;
     items.push({ el, g: groupOf(el), x: q.x, r: q.r, y: q.y, b: q.b, kind: 'box', label: clip(textOf(el), 18) || el.tagName.toLowerCase() });
@@ -668,7 +676,7 @@
   if (eyebrows.length >= 2) add('warn', 'ai-eyebrow', `자간을 벌린 대문자 꼬리표가 ${eyebrows.length}곳이다(예: "${clip(eyebrows[0].text, 24)}").`, eyebrows.slice(0, 3).map((b) => target(b.el)));
   const rails = cards.filter((el) => { const s = S(el); const l = num(s.borderLeftWidth); return l >= 3 && num(s.borderTopWidth) <= 1 && num(s.borderRightWidth) <= 1 && sat(color(s.borderLeftColor)) > 0.3; });
   if (rails.length >= 2) add('warn', 'ai-accent-rail', `왼쪽에 색 막대를 단 상자가 ${rails.length}곳이다.`, rails.slice(0, 3).map((e) => target(e)));
-  const nested = cards.filter((el) => { for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) if (cards.includes(e) && (num(S(e).borderTopWidth) > 0 || S(e).boxShadow !== 'none') && (num(S(el).borderTopWidth) > 0 || S(el).boxShadow !== 'none')) return true; return false; });
+  const nested = cards.filter((el) => { if (el.matches(CONTROL_SEL)) return false; for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) if (cards.includes(e) && (num(S(e).borderTopWidth) > 0 || S(e).boxShadow !== 'none') && (num(S(el).borderTopWidth) > 0 || S(el).boxShadow !== 'none')) return true; return false; });
   if (nested.length >= 2) add('warn', 'ai-nested-cards', `카드 안에 테두리·그림자 카드를 또 넣은 곳이 ${nested.length}곳이다.`, nested.slice(0, 3).map((e) => target(e)));
   const emojiHeads = blocks.filter((b) => (b.heading || b.el.matches('button,a,label,li,dt,th')) && EMOJI.test(b.text.slice(0, 3)));
   if (emojiHeads.length >= 2) add('warn', 'ai-emoji-icons', `이모지를 아이콘처럼 쓴 제목·단추가 ${emojiHeads.length}곳이다.`, emojiHeads.slice(0, 3).map((b) => target(b.el)));
