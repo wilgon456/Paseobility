@@ -672,30 +672,30 @@
   const docArea = Math.max(1, document.documentElement.scrollWidth * document.documentElement.scrollHeight);
   const grads = all.filter((el) => /gradient\(/.test(S(el).backgroundImage) && !el.matches('img,svg'));
   const gradArea = grads.reduce((a, el) => { const q = el.getBoundingClientRect(); return a + q.width * q.height; }, 0);
-  if (grads.length >= 3 || gradArea / docArea > 0.08) add('warn', 'ai-gradient', `장식용 그라데이션 배경이 ${grads.length}곳(화면의 ${Math.round(100 * gradArea / docArea)}%)이다.`, grads.slice(0, 3).map((e) => target(e)));
+  if (grads.length >= 3 || gradArea / docArea > 0.08) add('info', 'ai-gradient', `장식용 그라데이션 배경이 ${grads.length}곳(화면의 ${Math.round(100 * gradArea / docArea)}%)이다.`, grads.slice(0, 3).map((e) => target(e)));
   const glows = all.filter((el) => { const s = S(el); const m = (s.boxShadow || '').match(/(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(\d+(?:\.\d+)?)px/); if (m && +m[3] >= 32) { const c = color((s.boxShadow.match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}|oklch\([^)]*\)/i) || ['#000'])[0]); if (sat(c) > 0.35 && c.a > 0.15) return true; } return /blur\((\d+)px\)/.test(s.filter) && +s.filter.match(/blur\((\d+)px\)/)[1] >= 20; });
-  if (glows.length) add('warn', 'ai-glow', `빛이 번지는 장식(색 그림자·흐림 덩어리)이 ${glows.length}곳이다.`, glows.slice(0, 3).map((e) => target(e)));
+  if (glows.length) add('info', 'ai-glow', `빛이 번지는 장식(색 그림자·흐림 덩어리)이 ${glows.length}곳이다.`, glows.slice(0, 3).map((e) => target(e)));
   const glass = all.filter((el) => { const f = S(el).backdropFilter; return f && f !== 'none'; });
-  if (glass.length >= 2) add('warn', 'ai-glass', `유리 효과(배경 흐림)가 ${glass.length}곳이다.`, glass.slice(0, 3).map((e) => target(e)));
+  if (glass.length >= 2) add('info', 'ai-glass', `유리 효과(배경 흐림)가 ${glass.length}곳이다.`, glass.slice(0, 3).map((e) => target(e)));
   const eyebrows = blocks.filter((b) => b.fs <= 14 && num(b.s.letterSpacing) / b.fs >= 0.05 && (b.s.textTransform === 'uppercase' || (/[A-Z]{3,}/.test(b.text) && b.text === b.text.toUpperCase())));
-  if (eyebrows.length >= 2) add('warn', 'ai-eyebrow', `자간을 벌린 대문자 꼬리표가 ${eyebrows.length}곳이다(예: "${clip(eyebrows[0].text, 24)}").`, eyebrows.slice(0, 3).map((b) => target(b.el)));
+  if (eyebrows.length >= 2) add('info', 'ai-eyebrow', `자간을 벌린 대문자 꼬리표가 ${eyebrows.length}곳이다(예: "${clip(eyebrows[0].text, 24)}").`, eyebrows.slice(0, 3).map((b) => target(b.el)));
   const rails = cards.filter((el) => { const s = S(el); const l = num(s.borderLeftWidth); return l >= 3 && num(s.borderTopWidth) <= 1 && num(s.borderRightWidth) <= 1 && sat(color(s.borderLeftColor)) > 0.3; });
-  if (rails.length >= 2) add('warn', 'ai-accent-rail', `왼쪽에 색 막대를 단 상자가 ${rails.length}곳이다.`, rails.slice(0, 3).map((e) => target(e)));
+  if (rails.length >= 2) add('info', 'ai-accent-rail', `왼쪽에 색 막대를 단 상자가 ${rails.length}곳이다.`, rails.slice(0, 3).map((e) => target(e)));
   const nested = cards.filter((el) => { if (el.matches(CONTROL_SEL)) return false; for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) if (cards.includes(e) && (num(S(e).borderTopWidth) > 0 || S(e).boxShadow !== 'none') && (num(S(el).borderTopWidth) > 0 || S(el).boxShadow !== 'none')) return true; return false; });
-  if (nested.length >= 2) add('warn', 'ai-nested-cards', `카드 안에 테두리·그림자 카드를 또 넣은 곳이 ${nested.length}곳이다.`, nested.slice(0, 3).map((e) => target(e)));
+  if (nested.length >= 2) add('info', 'ai-nested-cards', `카드 안에 테두리·그림자 카드를 또 넣은 곳이 ${nested.length}곳이다.`, nested.slice(0, 3).map((e) => target(e)));
   const emojiHeads = blocks.filter((b) => (b.heading || b.el.matches('button,a,label,li,dt,th')) && EMOJI.test(b.text.slice(0, 3)));
-  if (emojiHeads.length >= 2) add('warn', 'ai-emoji-icons', `이모지를 아이콘처럼 쓴 제목·단추가 ${emojiHeads.length}곳이다.`, emojiHeads.slice(0, 3).map((b) => target(b.el)));
+  if (emojiHeads.length >= 2) add('info', 'ai-emoji-icons', `이모지를 아이콘처럼 쓴 제목·단추가 ${emojiHeads.length}곳이다.`, emojiHeads.slice(0, 3).map((b) => target(b.el)));
   if (DESKTOP) {
     const longText = blocks.filter((b) => !b.heading && b.lines.length >= 2 && !b.faint);
     const centered = longText.filter((b) => centerish(b.align));
-    if (longText.length >= 4 && centered.length / longText.length > 0.5) add('warn', 'ai-center-stack', `여러 줄 문단의 ${Math.round(100 * centered.length / longText.length)}%가 가운데 정렬이다.`, centered.slice(0, 3).map((b) => target(b.el)));
+    if (longText.length >= 4 && centered.length / longText.length > 0.5) add('info', 'ai-center-stack', `여러 줄 문단의 ${Math.round(100 * centered.length / longText.length)}%가 가운데 정렬이다.`, centered.slice(0, 3).map((b) => target(b.el)));
   }
   const stats = blocks.filter((b) => b.fs >= 40 && /^[\d.,\s]+[%+×xKkMm만억천배점개명건년]*\+?$/.test(b.text));
-  if (stats.length >= 3) add('warn', 'ai-big-numbers', `큰 숫자를 늘어놓은 띠가 있다(${stats.length}곳).`, stats.slice(0, 3).map((b) => target(b.el)));
+  if (stats.length >= 3) add('info', 'ai-big-numbers', `큰 숫자를 늘어놓은 띠가 있다(${stats.length}곳).`, stats.slice(0, 3).map((b) => target(b.el)));
   const arrows = blocks.filter((b) => b.el.matches('a,button,a *,button *') && /(→|->|↗)\s*$/.test(b.text));
-  if (arrows.length >= 2) add('warn', 'ai-arrow-cta', `단추·링크 글 끝에 화살표를 붙인 곳이 ${arrows.length}곳이다.`, arrows.slice(0, 3).map((b) => target(b.el)));
+  if (arrows.length >= 2) add('info', 'ai-arrow-cta', `단추·링크 글 끝에 화살표를 붙인 곳이 ${arrows.length}곳이다.`, arrows.slice(0, 3).map((b) => target(b.el)));
   const toppers = cards.filter((c) => { const first = [...c.children].find((k) => visible(k)); if (!first || !first.matches('svg,img,span,div,i')) return false; const q = R(first), cq = R(c); if (q.w > 72 || q.h > 72 || q.w < 16) return false; const head = c.querySelector('h1,h2,h3,h4,h5,h6,[role=heading],strong,b'); return head && R(head).y > q.b - 2 && Math.abs((q.x + q.w / 2) - (cq.x + cq.w / 2)) < 3; });
-  if (toppers.length >= 3) add('warn', 'ai-icon-topper', `카드마다 제목 위 가운데에 아이콘을 얹었다(${toppers.length}곳).`, toppers.slice(0, 3).map((e) => target(e)));
+  if (toppers.length >= 3) add('info', 'ai-icon-topper', `카드마다 제목 위 가운데에 아이콘을 얹었다(${toppers.length}곳).`, toppers.slice(0, 3).map((e) => target(e)));
 
   // ---------- E/W: images ----------
   const distorted = [], noAlt = [];
