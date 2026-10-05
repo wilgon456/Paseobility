@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.3-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.4-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -75,6 +75,9 @@ v2.8.2에서 더한 웹·앱 프론트 워크플로 `/paseo-design`을 v2.8.3에
   (`vendor/SOURCES.md`에 원본 커밋을 적음), Vercel Web Interface Guidelines는
   오프라인 스냅샷으로 넣었습니다.
 - CI가 macOS와 Windows에서 design-check 셀프테스트를 돌립니다.
+- v2.8.4 : 화면 읽기 프로그램용으로만 남기고 눈에서는 숨긴 조상 안의 글자(폰에서
+  숨긴 표 머리줄 같은 것)를 더는 겹친 글자로 세지 않습니다. 스킬 A/B 시험에서
+  찾았고, 깨끗한 본보기에 이 경우를 넣어 묶었습니다.
 
 아래 2026-09-30 CloakBrowser 기록은 이전 업데이트입니다. 더 아래 섹션은 역사
 기록으로 그대로 둡니다.

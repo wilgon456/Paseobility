@@ -26,6 +26,9 @@
   form { display: flex; align-items: center; gap: 8px; margin: 0; }
   label { font-size: 14px; flex: none; }
   input { height: 44px; flex: 1 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; font: inherit; color: var(--ink); background: var(--bg); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  table.list { border-collapse: collapse; width: 100%; }
+  table.list td { padding: 8px 0; border-bottom: 1px solid var(--line); }
   button { height: 44px; flex: none; border: 0; border-radius: 8px; background: var(--brand); color: #fff; padding: 0 16px; font: inherit; font-weight: 600; }
 </style>
 </head>
@@ -48,6 +51,11 @@
       <article class="card"><h3>경고</h3><p>고치거나 이유를 한 줄 적어야 하는 것입니다.</p></article>
       <article class="card"><h3>통계</h3><p>글자 크기와 여백의 가짓수를 함께 적습니다.</p></article>
     </div>
+  </section>
+  <section id="d">
+    <h2>요약 표</h2>
+    <table class="list"><thead class="sr"><tr><th>항목</th><th>건수</th></tr></thead>
+      <tbody><tr><td>오류</td><td>0건</td></tr><tr><td>경고</td><td>2건</td></tr></tbody></table>
   </section>
   <section id="c">
     <h2>검색</h2>

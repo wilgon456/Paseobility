@@ -72,7 +72,7 @@ try {
   });
 
   const good = await run([path.join(FIX, 'good.html'), '--out', out, '--no-sheet']);
-  check('good.html is clean at 375, 768 and 1440', () => {
+  check('good.html is clean at 375, 768 and 1440 (incl. a visually hidden table header)', () => {
     for (const p of good.results[0].pages) {
       assert.deepEqual(p.findings.map((f) => `${p.width}px ${f.level} ${f.rule}: ${f.msg}`), [], 'unexpected findings');
     }

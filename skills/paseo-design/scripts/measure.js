@@ -24,17 +24,28 @@
   const rr = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
   const ignored = (el) => IGNORE.length > 0 && IGNORE.some((s) => { try { return el.closest(s); } catch (e) { return false; } });
 
+  const srCache = new Map();
+  function srHidden(el) { // the visually-hidden pattern on el or any ancestor: still in the accessibility tree, not on screen
+    if (!el || el.nodeType !== 1 || el === document.body || el === document.documentElement) return false;
+    if (srCache.has(el)) return srCache.get(el);
+    const s = S(el);
+    let v = false;
+    if ((s.position === 'absolute' || s.position === 'fixed') && s.clip && /rect\(\s*0(px)?[\s,]+0(px)?/.test(s.clip)) v = true;
+    if (!v && s.clipPath && /inset\(\s*50%/.test(s.clipPath)) v = true;
+    if (!v && (s.overflow === 'hidden' || s.overflowX === 'hidden' || s.overflow === 'clip') && (s.position === 'absolute' || s.position === 'fixed')) {
+      const r = el.getBoundingClientRect(); if (r.width <= 1.5 && r.height <= 1.5) v = true;
+    }
+    if (!v) v = srHidden(el.parentElement || (el.parentNode && el.parentNode.host) || null);
+    srCache.set(el, v);
+    return v;
+  }
   const visCache = new Map();
   function visible(el) {
     if (visCache.has(el)) return visCache.get(el);
     let v = true;
     if (el.checkVisibility) v = el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true });
     if (v) { const r = el.getBoundingClientRect(); v = r.width > 0.5 && r.height > 0.5; }
-    if (v) {
-      const s = S(el);
-      if (s.clip && /rect\(0(px)?,?\s*0(px)?/.test(s.clip)) v = false;
-      if (s.clipPath && /inset\(\s*50%/.test(s.clipPath)) v = false;
-    }
+    if (v && srHidden(el)) v = false;
     if (v && ignored(el)) v = false;
     visCache.set(el, v);
     return v;

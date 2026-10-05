@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.3-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.4-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -76,6 +76,9 @@ it around proof instead of prose:
   their upstream text and licenses (`vendor/SOURCES.md`, now with pinned
   commits); Vercel's Web Interface Guidelines ship as an offline snapshot.
 - CI runs the design-check selftest on macOS and Windows.
+- v2.8.4: content inside a visually hidden (screen-reader-only) ancestor, such as a
+  table header kept for screen readers on phones, no longer counts as overlapping
+  text. Found in an A/B run of the skill; the clean fixture now covers it.
 
 The 2026-09-30 CloakBrowser notes below stay as the previous update. Older
 sections are historical and unchanged.
