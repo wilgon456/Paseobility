@@ -37,10 +37,12 @@ Write `DESIGN.md` from `templates/DESIGN.md` (Google's DESIGN.md format; schema 
 
 The dotted bin name `design.md` does nothing on Windows (exit 0, no output), so empty output is a failure, not a pass. Fix errors; keep a warning only with a reason.
 
-## 2. Compose before you decorate
+## 2. Find the concept, then compose
 
-Read `references/design-digest.md` (five minutes: the surface list, the plan-then-check pass, the AI-tell list). Then:
+Read `references/design-digest.md` (five minutes: concept first, the surface list, the plan-then-check pass, the AI-tell list). Then:
 
+- Find one concept in the subject's own world before any layout: its objects, materials, rituals and vernacular (an address converter becomes airmail: striped borders, stamps, a typewritten label; a lottery page becomes the paper slip). Name it in one line. The concept decides color, type, shapes and the one memorable element. A screen without a concept is what makes generated UI look bland and interchangeable, more than any single tell.
+- For a new screen or a visual reshape, sketch three clearly different directions before building: for each, the concept, palette, type and memorable element in three lines, then build only its first screen (one small HTML file each), render each with design-check, and look at them side by side. Build the full page from the strongest; when taste matters to the user, show the three and let them pick. Small changes inside an existing design skip this.
 - Name the surface in one line before choosing a layout: Monitor, Operate, Compare, Configure, Decide/Learn, Explore, or Command/Inspect. A hero plus three equal cards is right for Decide/Learn only.
 - Read what exists: screens, components, copy, the screenshots the user gave. Reuse components (the project's own, shadcn/ui, the design system) before adding any.
 - Ask only when the work is new, high-fidelity or externally facing and the brand or audience is unknown. Otherwise state your assumptions and proceed.
@@ -57,7 +59,7 @@ Write production code in the repo's framework. A standalone HTML artifact only w
 - Controls on one row share one height token (40px; 44px on phones) and sit on `align-items: center`.
 - Contrast 4.5:1 (3:1 at 24px or bold 19px and up); tap targets 44px on phones; nothing under 12px.
 - Images keep their aspect ratio (`object-fit: cover` or one fixed dimension) and carry `alt`. Keyboard focus stays visible (`:focus-visible` ring; never bare `outline: none`). Buttons and inputs use one or two height tokens across the page; icons in a row share one size. Animations stop under `prefers-reduced-motion: reduce`.
-- No gradients, glows, glass, left accent rails, tracked uppercase eyebrows, emoji as icons, icon toppers, arrows in button text, or centered multi-line paragraphs unless the brief asks for them.
+- The AI tells (gradient washes, glows, glass, left accent rails, tracked uppercase eyebrows, emoji as icons, icon toppers, arrows in button text, centered multi-line paragraphs) are habits, not bans. Do not reach for them by default; use any of them boldly when the concept calls for it (an airmail border is a gradient, a tilted envelope is a rotation, a seal stamp is a red accent). What to cut is decoration that belongs to no idea. Over-restraint is its own failure: a page of grey cards that passes every check can still be bad.
 
 ## 4. Prove it with design-check (required)
 
@@ -69,6 +71,8 @@ Per page and width it writes a clean screenshot, a marked screenshot with number
 
 - Open the sheet and the marked screenshots and look at them. The machine finds overflow, clipping, overlap, misalignment, uneven rhythm, contrast, Hangul mid-word breaks, scale sprawl and the common AI tells. You judge hierarchy, composition, copy and whether one thing is memorable: go through `references/review-checklist.md` and answer each line in the report.
 - Fix every error. Fix each warning or write one line why it stays. Rerun until errors are 0.
+- Findings named `ai-*` are 참고 (info): they point at habits. Keep one when the concept needs it and say why in one line; remove it when it is decoration for its own sake.
+- Judge blandness as hard as breakage: is there one memorable element, does the page look like this subject and no other, would a designer keep it? If it is merely tidy, push the concept further and rerun.
 - Also read `vendor/web-design-guidelines/command.md` (Vercel's Web Interface Guidelines, pinned snapshot) and check the changed code for the accessibility, form, keyboard and motion rules a renderer cannot see.
 - Changing an existing screen: run design-check once before you edit and keep that `--out` folder, so the report can compare the before and after sheets and error counts.
 - Running app: use its dev or staging URL. If nothing is serving, start the project's dev server in the background (its `package.json` scripts or run skill), wait for the port, check, then stop it. Never exercise production data. Pages behind a login: a staging server with a test account, or a saved copy of the rendered HTML.

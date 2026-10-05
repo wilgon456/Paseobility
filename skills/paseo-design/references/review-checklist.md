@@ -2,6 +2,12 @@
 
 `design-check` measures geometry and style discipline. These are the judgments it cannot make. Go through them on the `-sheet.png` and the `-marked.png` of every width, and answer each line in one sentence in your report. "Looked fine" is not an answer.
 
+## Concept and appeal
+
+- Can you say the concept in one line, and is it visible in color, type and the memorable element?
+- Would someone call this pretty, or only tidy? Bland is a defect: push the concept until the page could only belong to this subject.
+- Is boldness spent in one place, with everything around it calm?
+
 ## Hierarchy (the first three seconds)
 
 - Can you tell what the screen is for and what to do first without reading everything?

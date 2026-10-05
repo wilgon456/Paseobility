@@ -24,17 +24,28 @@
   const rr = (r) => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) });
   const ignored = (el) => IGNORE.length > 0 && IGNORE.some((s) => { try { return el.closest(s); } catch (e) { return false; } });
 
+  const srCache = new Map();
+  function srHidden(el) { // the visually-hidden pattern on el or any ancestor: still in the accessibility tree, not on screen
+    if (!el || el.nodeType !== 1 || el === document.body || el === document.documentElement) return false;
+    if (srCache.has(el)) return srCache.get(el);
+    const s = S(el);
+    let v = false;
+    if ((s.position === 'absolute' || s.position === 'fixed') && s.clip && /rect\(\s*0(px)?[\s,]+0(px)?/.test(s.clip)) v = true;
+    if (!v && s.clipPath && /inset\(\s*50%/.test(s.clipPath)) v = true;
+    if (!v && (s.overflow === 'hidden' || s.overflowX === 'hidden' || s.overflow === 'clip') && (s.position === 'absolute' || s.position === 'fixed')) {
+      const r = el.getBoundingClientRect(); if (r.width <= 1.5 && r.height <= 1.5) v = true;
+    }
+    if (!v) v = srHidden(el.parentElement || (el.parentNode && el.parentNode.host) || null);
+    srCache.set(el, v);
+    return v;
+  }
   const visCache = new Map();
   function visible(el) {
     if (visCache.has(el)) return visCache.get(el);
     let v = true;
     if (el.checkVisibility) v = el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true });
     if (v) { const r = el.getBoundingClientRect(); v = r.width > 0.5 && r.height > 0.5; }
-    if (v) {
-      const s = S(el);
-      if (s.clip && /rect\(0(px)?,?\s*0(px)?/.test(s.clip)) v = false;
-      if (s.clipPath && /inset\(\s*50%/.test(s.clipPath)) v = false;
-    }
+    if (v && srHidden(el)) v = false;
     if (v && ignored(el)) v = false;
     visCache.set(el, v);
     return v;
@@ -212,13 +223,14 @@
     const hangul = (text.match(HANGUL_G) || []).length;
     const letters = (text.match(/[\p{L}]/gu) || []).length;
     const box = R(el);
-    let centeredBox = false;
+    let centeredBox = false, rightAnchored = false;
     const par = el.parentElement;
     if (par && par !== document.body) {
       const ps = S(par); const pr = R(par);
       const cl = pr.x + num(ps.borderLeftWidth) + num(ps.paddingLeft);
       const crr = pr.r - num(ps.borderRightWidth) - num(ps.paddingRight);
       const lg = box.x - cl, rg = crr - box.r;
+      if (Math.abs(rg) <= 1 && lg > 8) rightAnchored = true; // pushed to the right end (space-between, margin-left:auto, float): it aligns by its right edge
       if (lg > 0.75 && Math.abs(lg - rg) <= 1.5) centeredBox = true; // symmetric side gaps = centered by construction, whatever text-align says
       if (centerish(ps.textAlign) && /inline/.test(s.display)) centeredBox = true;
       if ((ps.display.includes('flex') && (ps.justifyContent === 'center' || ps.alignItems === 'center' && ps.flexDirection.startsWith('column'))) || (ps.display.includes('grid') && (ps.justifyItems === 'center' || s.justifySelf === 'center'))) {
@@ -230,7 +242,7 @@
     const selfCentered = (s.display.includes('flex') && ((!s.flexDirection.startsWith('column') && s.justifyContent === 'center') || (s.flexDirection.startsWith('column') && s.alignItems === 'center')))
       || (s.display.includes('grid') && (s.justifyItems === 'center' || s.justifyContent === 'center'));
     blocks.push({
-      el, s, nodes, rects, lines, text, box, centeredBox, ownBox, selfCentered,
+      el, s, nodes, rects, lines, text, box, centeredBox, rightAnchored, ownBox, selfCentered,
       fs, lh: lineHeightPx(s), weight: num(s.fontWeight, 400),
       align: s.textAlign, heading: isHeading(el, s),
       hangulRatio: letters ? hangul / letters : 0, hangul: hangul > 0,
@@ -401,24 +413,36 @@
   }
 
   // ---------- E: near-miss alignment (left/right edges), top edges in a row ----------
+  // a run = same-tag siblings side by side on one line (unit chart, icon row, number pad, chip row):
+  // only its first item witnesses the left edge and only its last item the right edge
+  const sameLine = (a, b) => { const p = a.getBoundingClientRect(), q = b.getBoundingClientRect(); return Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > Math.min(p.height, q.height) * 0.5 && q.left >= p.right - 1; };
+  const hugsRight = (el) => { const par = el.parentElement; if (!par) return false; const ps = S(par); const pr = par.getBoundingClientRect(); return Math.abs((pr.right - num(ps.borderRightWidth) - num(ps.paddingRight)) - el.getBoundingClientRect().right) <= 1; };
+  // the last item of a run is a right-edge witness only when the run reaches the container's right wall; otherwise its end is ragged like a text line
+  const runRight = (el, nf, nl, r) => (nl ? null : nf && !hugsRight(el) ? null : r);
+  const runNeighbour = (el, dir) => { const s = dir < 0 ? el.previousElementSibling : el.nextElementSibling; return s && s.tagName === el.tagName && visible(s) && (dir < 0 ? sameLine(s, el) : sameLine(el, s)); };
+  const rotated = (el) => { for (let e = el; e && e !== document.body; e = e.parentElement) { const t = S(e).transform; if (t && t !== 'none') { const m = t.match(/matrix\(([^,]+),\s*([^,]+)/); if (m && Math.abs(parseFloat(m[2])) > 0.001) return true; } } return false; };
   const items = [];
   for (const b of blocks) {
     if (b.faint || b.pinned || b.abs || b.centeredBox) continue;
     if (b.s.transform && b.s.transform !== 'none') continue;
     if (b.el.tagName === 'SUMMARY') continue; // its disclosure marker is UA-drawn; the text start is not a design decision
     if (b.ownBox) { // a chip, button or callout aligns by its own edge, not by the glyphs inside
+      if (rotated(b.el)) continue;
       if (b.box.w > W * 0.96) continue;
-      items.push({ el: b.el, g: groupOf(b.el), x: b.box.x, r: b.box.r, y: b.box.y, b: b.box.b, kind: 'box', label: clip(b.text, 18) });
+      const nf = runNeighbour(b.el, -1), nl = runNeighbour(b.el, 1);
+      if (!(nf && nl)) items.push({ el: b.el, g: groupOf(b.el), x: nf ? null : b.box.x, r: runRight(b.el, nf, nl, b.box.r), y: b.box.y, b: b.box.b, kind: 'box', label: clip(b.text, 18) });
       continue;
     }
-    if (b.selfCentered || !leftish(b.align)) continue;
+    if (b.selfCentered || b.rightAnchored || !leftish(b.align)) continue;
     items.push({ el: b.el, g: groupOf(b.el), x: b.ink.x, r: null, y: b.ink.y, b: b.ink.b, kind: 'text', label: clip(b.text, 18) });
   }
   for (const el of [...media, ...controls, ...cards]) {
-    if (absolute(el) || pinned(el)) continue;
+    if (absolute(el) || pinned(el) || rotated(el)) continue; // a deliberately tilted object has no straight edge to align
+    const notFirst = runNeighbour(el, -1), notLast = runNeighbour(el, 1);
+    if (notFirst && notLast) continue;
     const q = R(el);
     if (q.w < 8 || q.w > W * 0.96) continue;
-    items.push({ el, g: groupOf(el), x: q.x, r: q.r, y: q.y, b: q.b, kind: 'box', label: clip(textOf(el), 18) || el.tagName.toLowerCase() });
+    items.push({ el, g: groupOf(el), x: notFirst ? null : q.x, r: runRight(el, notFirst, notLast, q.r), y: q.y, b: q.b, kind: 'box', label: clip(textOf(el), 18) || el.tagName.toLowerCase() });
   }
   const byGroup = new Map();
   for (const it of items) { if (!byGroup.has(it.g)) byGroup.set(it.g, []); byGroup.get(it.g).push(it); }
@@ -648,30 +672,30 @@
   const docArea = Math.max(1, document.documentElement.scrollWidth * document.documentElement.scrollHeight);
   const grads = all.filter((el) => /gradient\(/.test(S(el).backgroundImage) && !el.matches('img,svg'));
   const gradArea = grads.reduce((a, el) => { const q = el.getBoundingClientRect(); return a + q.width * q.height; }, 0);
-  if (grads.length >= 3 || gradArea / docArea > 0.08) add('warn', 'ai-gradient', `장식용 그라데이션 배경이 ${grads.length}곳(화면의 ${Math.round(100 * gradArea / docArea)}%)이다.`, grads.slice(0, 3).map((e) => target(e)));
+  if (grads.length >= 3 || gradArea / docArea > 0.08) add('info', 'ai-gradient', `장식용 그라데이션 배경이 ${grads.length}곳(화면의 ${Math.round(100 * gradArea / docArea)}%)이다.`, grads.slice(0, 3).map((e) => target(e)));
   const glows = all.filter((el) => { const s = S(el); const m = (s.boxShadow || '').match(/(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(\d+(?:\.\d+)?)px/); if (m && +m[3] >= 32) { const c = color((s.boxShadow.match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}|oklch\([^)]*\)/i) || ['#000'])[0]); if (sat(c) > 0.35 && c.a > 0.15) return true; } return /blur\((\d+)px\)/.test(s.filter) && +s.filter.match(/blur\((\d+)px\)/)[1] >= 20; });
-  if (glows.length) add('warn', 'ai-glow', `빛이 번지는 장식(색 그림자·흐림 덩어리)이 ${glows.length}곳이다.`, glows.slice(0, 3).map((e) => target(e)));
+  if (glows.length) add('info', 'ai-glow', `빛이 번지는 장식(색 그림자·흐림 덩어리)이 ${glows.length}곳이다.`, glows.slice(0, 3).map((e) => target(e)));
   const glass = all.filter((el) => { const f = S(el).backdropFilter; return f && f !== 'none'; });
-  if (glass.length >= 2) add('warn', 'ai-glass', `유리 효과(배경 흐림)가 ${glass.length}곳이다.`, glass.slice(0, 3).map((e) => target(e)));
+  if (glass.length >= 2) add('info', 'ai-glass', `유리 효과(배경 흐림)가 ${glass.length}곳이다.`, glass.slice(0, 3).map((e) => target(e)));
   const eyebrows = blocks.filter((b) => b.fs <= 14 && num(b.s.letterSpacing) / b.fs >= 0.05 && (b.s.textTransform === 'uppercase' || (/[A-Z]{3,}/.test(b.text) && b.text === b.text.toUpperCase())));
-  if (eyebrows.length >= 2) add('warn', 'ai-eyebrow', `자간을 벌린 대문자 꼬리표가 ${eyebrows.length}곳이다(예: "${clip(eyebrows[0].text, 24)}").`, eyebrows.slice(0, 3).map((b) => target(b.el)));
+  if (eyebrows.length >= 2) add('info', 'ai-eyebrow', `자간을 벌린 대문자 꼬리표가 ${eyebrows.length}곳이다(예: "${clip(eyebrows[0].text, 24)}").`, eyebrows.slice(0, 3).map((b) => target(b.el)));
   const rails = cards.filter((el) => { const s = S(el); const l = num(s.borderLeftWidth); return l >= 3 && num(s.borderTopWidth) <= 1 && num(s.borderRightWidth) <= 1 && sat(color(s.borderLeftColor)) > 0.3; });
-  if (rails.length >= 2) add('warn', 'ai-accent-rail', `왼쪽에 색 막대를 단 상자가 ${rails.length}곳이다.`, rails.slice(0, 3).map((e) => target(e)));
-  const nested = cards.filter((el) => { for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) if (cards.includes(e) && (num(S(e).borderTopWidth) > 0 || S(e).boxShadow !== 'none') && (num(S(el).borderTopWidth) > 0 || S(el).boxShadow !== 'none')) return true; return false; });
-  if (nested.length >= 2) add('warn', 'ai-nested-cards', `카드 안에 테두리·그림자 카드를 또 넣은 곳이 ${nested.length}곳이다.`, nested.slice(0, 3).map((e) => target(e)));
+  if (rails.length >= 2) add('info', 'ai-accent-rail', `왼쪽에 색 막대를 단 상자가 ${rails.length}곳이다.`, rails.slice(0, 3).map((e) => target(e)));
+  const nested = cards.filter((el) => { if (el.matches(CONTROL_SEL)) return false; for (let e = el.parentElement; e && e !== document.body; e = e.parentElement) if (cards.includes(e) && (num(S(e).borderTopWidth) > 0 || S(e).boxShadow !== 'none') && (num(S(el).borderTopWidth) > 0 || S(el).boxShadow !== 'none')) return true; return false; });
+  if (nested.length >= 2) add('info', 'ai-nested-cards', `카드 안에 테두리·그림자 카드를 또 넣은 곳이 ${nested.length}곳이다.`, nested.slice(0, 3).map((e) => target(e)));
   const emojiHeads = blocks.filter((b) => (b.heading || b.el.matches('button,a,label,li,dt,th')) && EMOJI.test(b.text.slice(0, 3)));
-  if (emojiHeads.length >= 2) add('warn', 'ai-emoji-icons', `이모지를 아이콘처럼 쓴 제목·단추가 ${emojiHeads.length}곳이다.`, emojiHeads.slice(0, 3).map((b) => target(b.el)));
+  if (emojiHeads.length >= 2) add('info', 'ai-emoji-icons', `이모지를 아이콘처럼 쓴 제목·단추가 ${emojiHeads.length}곳이다.`, emojiHeads.slice(0, 3).map((b) => target(b.el)));
   if (DESKTOP) {
     const longText = blocks.filter((b) => !b.heading && b.lines.length >= 2 && !b.faint);
     const centered = longText.filter((b) => centerish(b.align));
-    if (longText.length >= 4 && centered.length / longText.length > 0.5) add('warn', 'ai-center-stack', `여러 줄 문단의 ${Math.round(100 * centered.length / longText.length)}%가 가운데 정렬이다.`, centered.slice(0, 3).map((b) => target(b.el)));
+    if (longText.length >= 4 && centered.length / longText.length > 0.5) add('info', 'ai-center-stack', `여러 줄 문단의 ${Math.round(100 * centered.length / longText.length)}%가 가운데 정렬이다.`, centered.slice(0, 3).map((b) => target(b.el)));
   }
   const stats = blocks.filter((b) => b.fs >= 40 && /^[\d.,\s]+[%+×xKkMm만억천배점개명건년]*\+?$/.test(b.text));
-  if (stats.length >= 3) add('warn', 'ai-big-numbers', `큰 숫자를 늘어놓은 띠가 있다(${stats.length}곳).`, stats.slice(0, 3).map((b) => target(b.el)));
+  if (stats.length >= 3) add('info', 'ai-big-numbers', `큰 숫자를 늘어놓은 띠가 있다(${stats.length}곳).`, stats.slice(0, 3).map((b) => target(b.el)));
   const arrows = blocks.filter((b) => b.el.matches('a,button,a *,button *') && /(→|->|↗)\s*$/.test(b.text));
-  if (arrows.length >= 2) add('warn', 'ai-arrow-cta', `단추·링크 글 끝에 화살표를 붙인 곳이 ${arrows.length}곳이다.`, arrows.slice(0, 3).map((b) => target(b.el)));
+  if (arrows.length >= 2) add('info', 'ai-arrow-cta', `단추·링크 글 끝에 화살표를 붙인 곳이 ${arrows.length}곳이다.`, arrows.slice(0, 3).map((b) => target(b.el)));
   const toppers = cards.filter((c) => { const first = [...c.children].find((k) => visible(k)); if (!first || !first.matches('svg,img,span,div,i')) return false; const q = R(first), cq = R(c); if (q.w > 72 || q.h > 72 || q.w < 16) return false; const head = c.querySelector('h1,h2,h3,h4,h5,h6,[role=heading],strong,b'); return head && R(head).y > q.b - 2 && Math.abs((q.x + q.w / 2) - (cq.x + cq.w / 2)) < 3; });
-  if (toppers.length >= 3) add('warn', 'ai-icon-topper', `카드마다 제목 위 가운데에 아이콘을 얹었다(${toppers.length}곳).`, toppers.slice(0, 3).map((e) => target(e)));
+  if (toppers.length >= 3) add('info', 'ai-icon-topper', `카드마다 제목 위 가운데에 아이콘을 얹었다(${toppers.length}곳).`, toppers.slice(0, 3).map((e) => target(e)));
 
   // ---------- E/W: images ----------
   const distorted = [], noAlt = [];

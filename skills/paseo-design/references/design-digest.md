@@ -2,6 +2,10 @@
 
 Condensed from Anthropic's `frontend-design` (Apache-2.0) and Hermes' `claude-design` (MIT). The full texts are in `../vendor/frontend-design/GUIDE.md` and `../vendor/hermes/claude-design/GUIDE.md`; read them when you need the long form. Read this before composing anything.
 
+## Concept first
+
+The single biggest difference between a page people call pretty and one they call generated is a concept: one idea taken from the subject's world and carried through color, type, shape and the memorable element. Airmail for an address converter, the paper slip for a lottery picker, ink and a red seal for fortune telling. Find it before the layout, then let it license boldness: saturated color, big type, illustration, texture, a tilt, a stripe. Restraint is a tool, not a goal; a page that avoids every tell but has no idea is bland, and bland reads as generated too.
+
 ## Start from context, not vibes
 
 Read brand docs, existing screens, components, tokens, copy, and the constraints from product, legal or engineering. The file tree is only the menu; read the files that define the visual vocabulary (theme, tokens, global stylesheet, button/card/form components) before drawing. If fidelity matters and context is missing, ask two or three short questions instead of inventing a generic mockup. Skip questions for small tweaks, continuations, or when the missing detail has an obvious default; label the important assumptions.
@@ -54,7 +58,7 @@ No fake metrics, decorative stats, generic feature grids, placeholder testimonia
 
 When exploring, three options: conservative (closest to what exists), strong fit (best reading of the brief), divergent (to find the taste boundary). Not color swaps. When the user picks, consolidate; do not leave a pile of options.
 
-## The ten AI tells (score before you fix)
+## The ten AI tells (habits to notice, not rules to obey)
 
 1. Tech gradient: glossy blue, violet or indigo gradient on everything.
 2. Generic tech hue: indigo or violet accent chosen by habit, not for the brand.

@@ -40,9 +40,14 @@ try {
   });
   check('bad.html at 375 reports the planted warnings', () => {
     const w = rules(phone, 'warn');
-    for (const r of ['type-twins', 'ai-eyebrow', 'ai-gradient', 'ai-accent-rail', 'hangul-tracking', 'hangul-font', 'img-alt', 'control-text-center', 'control-heights', 'icon-size-mix', 'infinite-animation', 'focus-invisible']) {
+    for (const r of ['type-twins', 'hangul-tracking', 'hangul-font', 'img-alt', 'control-text-center', 'control-heights', 'icon-size-mix', 'infinite-animation', 'focus-invisible']) {
       assert.ok(w.has(r), `missing warn ${r}; got: ${[...w].join(', ')}`);
     }
+  });
+  check('bad.html at 375 reports the AI tells as info, never as errors or warnings', () => {
+    const i = rules(phone, 'info');
+    for (const r of ['ai-eyebrow', 'ai-gradient', 'ai-accent-rail']) assert.ok(i.has(r), `missing info ${r}; got: ${[...i].join(', ')}`);
+    assert.ok(![...rules(phone, 'warn'), ...rules(phone, 'error')].some((r) => r.startsWith('ai-')));
   });
   check('text inside an open shadow root is measured', () => {
     const tiny = phone.findings.find((f) => f.rule === 'tiny-text');
@@ -72,7 +77,7 @@ try {
   });
 
   const good = await run([path.join(FIX, 'good.html'), '--out', out, '--no-sheet']);
-  check('good.html is clean at 375, 768 and 1440', () => {
+  check('good.html is clean at 375, 768 and 1440 (hidden table header, unit chart, right-anchored label, button in a bar)', () => {
     for (const p of good.results[0].pages) {
       assert.deepEqual(p.findings.map((f) => `${p.width}px ${f.level} ${f.rule}: ${f.msg}`), [], 'unexpected findings');
     }
