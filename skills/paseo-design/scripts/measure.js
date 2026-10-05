@@ -413,6 +413,13 @@
   }
 
   // ---------- E: near-miss alignment (left/right edges), top edges in a row ----------
+  // a run = same-tag siblings side by side on one line (unit chart, icon row, number pad, chip row):
+  // only its first item witnesses the left edge and only its last item the right edge
+  const sameLine = (a, b) => { const p = a.getBoundingClientRect(), q = b.getBoundingClientRect(); return Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > Math.min(p.height, q.height) * 0.5 && q.left >= p.right - 1; };
+  const hugsRight = (el) => { const par = el.parentElement; if (!par) return false; const ps = S(par); const pr = par.getBoundingClientRect(); return Math.abs((pr.right - num(ps.borderRightWidth) - num(ps.paddingRight)) - el.getBoundingClientRect().right) <= 1; };
+  // the last item of a run is a right-edge witness only when the run reaches the container's right wall; otherwise its end is ragged like a text line
+  const runRight = (el, nf, nl, r) => (nl ? null : nf && !hugsRight(el) ? null : r);
+  const runNeighbour = (el, dir) => { const s = dir < 0 ? el.previousElementSibling : el.nextElementSibling; return s && s.tagName === el.tagName && visible(s) && (dir < 0 ? sameLine(s, el) : sameLine(el, s)); };
   const items = [];
   for (const b of blocks) {
     if (b.faint || b.pinned || b.abs || b.centeredBox) continue;
@@ -420,24 +427,20 @@
     if (b.el.tagName === 'SUMMARY') continue; // its disclosure marker is UA-drawn; the text start is not a design decision
     if (b.ownBox) { // a chip, button or callout aligns by its own edge, not by the glyphs inside
       if (b.box.w > W * 0.96) continue;
-      items.push({ el: b.el, g: groupOf(b.el), x: b.box.x, r: b.box.r, y: b.box.y, b: b.box.b, kind: 'box', label: clip(b.text, 18) });
+      const nf = runNeighbour(b.el, -1), nl = runNeighbour(b.el, 1);
+      if (!(nf && nl)) items.push({ el: b.el, g: groupOf(b.el), x: nf ? null : b.box.x, r: runRight(b.el, nf, nl, b.box.r), y: b.box.y, b: b.box.b, kind: 'box', label: clip(b.text, 18) });
       continue;
     }
     if (b.selfCentered || b.rightAnchored || !leftish(b.align)) continue;
     items.push({ el: b.el, g: groupOf(b.el), x: b.ink.x, r: null, y: b.ink.y, b: b.ink.b, kind: 'text', label: clip(b.text, 18) });
   }
-  const interiorOfRun = (el) => { // a glyph inside a unit chart or icon row: its neighbour of the same tag sits on the same line
-    const prev = el.previousElementSibling;
-    if (!prev || prev.tagName !== el.tagName || !visible(prev)) return false;
-    const a = prev.getBoundingClientRect(), b = el.getBoundingClientRect();
-    return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > Math.min(a.height, b.height) * 0.5 && b.left >= a.right - 1;
-  };
   for (const el of [...media, ...controls, ...cards]) {
     if (absolute(el) || pinned(el)) continue;
-    if (media.includes(el) && interiorOfRun(el)) continue;
+    const notFirst = runNeighbour(el, -1), notLast = runNeighbour(el, 1);
+    if (notFirst && notLast) continue;
     const q = R(el);
     if (q.w < 8 || q.w > W * 0.96) continue;
-    items.push({ el, g: groupOf(el), x: q.x, r: q.r, y: q.y, b: q.b, kind: 'box', label: clip(textOf(el), 18) || el.tagName.toLowerCase() });
+    items.push({ el, g: groupOf(el), x: notFirst ? null : q.x, r: runRight(el, notFirst, notLast, q.r), y: q.y, b: q.b, kind: 'box', label: clip(textOf(el), 18) || el.tagName.toLowerCase() });
   }
   const byGroup = new Map();
   for (const it of items) { if (!byGroup.has(it.g)) byGroup.set(it.g, []); byGroup.get(it.g).push(it); }
