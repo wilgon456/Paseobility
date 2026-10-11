@@ -54,6 +54,7 @@ KNOWN_SKILLS = (
     "paseo-agent-cleanup",
     "paseo-browser",
     "paseo-cua",
+    "paseo-multi",
     "paseo-orchestration",
     "paseo-project",
     "paseo-design",

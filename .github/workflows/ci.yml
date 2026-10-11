@@ -33,6 +33,12 @@ jobs:
       - name: Offline Python suites
         run: python -m unittest discover -s tests -p "test_*.py" -v
 
+      - name: Paseo Multi offline adapter suite
+        run: python skills/paseo-multi/scripts/test_hosts.py
+
+      - name: Paseo Multi adapter syntax
+        run: node --check skills/paseo-multi/scripts/rpc.mjs
+
       - name: Node cleanup suite
         run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js
 
@@ -99,6 +105,12 @@ jobs:
       # first-command failure the way two commands in one block can.
       - name: Shared Python suites (cross-platform)
         run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Paseo Multi offline adapter suite
+        run: python skills/paseo-multi/scripts/test_hosts.py
+
+      - name: Paseo Multi adapter syntax
+        run: node --check skills/paseo-multi/scripts/rpc.mjs
 
       - name: Node cleanup suite
         run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js

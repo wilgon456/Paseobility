@@ -48,3 +48,20 @@ After installation, give the user this first-use prompt:
 GitHub 연결이 필요하면 먼저 알려주고, 연결되어 있으면 내 계정의
 private paseo_share 저장소를 안전하게 준비해서 사용해줘.
 ```
+
+## Paseo Multi
+
+For `paseo-multi`, install only that skill with Claude support:
+
+```bash
+./scripts/paseobility-init.sh --skill paseo-multi --with-claude --no-context
+```
+
+```powershell
+.\scripts\paseobility-install.ps1 -Skill paseo-multi -WithClaude
+```
+
+Installation does not register PCs or operate them. Keep connection offers and
+keys in the user's private registry, following
+`skills/paseo-multi/references/connections.md`. Do not copy another user's host
+registry into the repository or install package.

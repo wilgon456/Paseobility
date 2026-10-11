@@ -1,6 +1,6 @@
 {
   "name": "Paseobility",
-  "version": "2.8.4",
+  "version": "2.9.0",
   "skillPath": "skills",
   "installTargets": {
     "paseo": {
@@ -17,6 +17,7 @@
     "paseo-browser",
     "paseo-cua",
     "paseo-design",
+    "paseo-multi",
     "paseo-orchestration",
     "paseo-project",
     "paseo-share",

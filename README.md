@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.8.4-111827?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v2.9.0-111827?style=for-the-badge">
   <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
   <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
   <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
@@ -42,6 +42,43 @@ With base Paseo alone you can combine built-in tools to do similar work. But let
 This repo is a **skill package for reproducibly composing Paseo's built-in tools**. It ships a macOS/Linux bootstrap helper and a Windows PowerShell install helper.
 
 ---
+
+## 2026-10-11 update — `/paseo-multi` (v2.9.0)
+
+`/paseo-multi` selects named computers connected through Paseo for status and
+agent checks, remote Bash/PowerShell commands, and coordinated updates. It
+checks the live server identity before operating, preserves active work before
+restart, and captures remote command exit codes before reporting completion.
+Trusted host connections live in a private local registry outside this package;
+new Desktop connections require registration rather than automatic discovery.
+
+The adapter was exercised from macOS and Windows controllers with the Paseo
+0.11.2 client: each ran read-only commands on Mac and Windows targets, recovered
+recorded runs and confirmed their intended nonzero exit codes. Twelve offline
+adapter tests passed on both controllers; the shared Python suite passed all
+49 tests on macOS. Run records are saved before dispatch, Windows JSON uses
+UTF-8, and oversized Windows commands are rejected before submission. Linux
+remains unverified, and captured Korean text may contain extra screen spaces.
+See the [dated validation report](docs/paseo-multi-validation.md). Existing
+compatibility records below retain their dated scope.
+
+Install only this skill:
+
+```bash
+./scripts/paseobility-init.sh --skill paseo-multi --no-context
+```
+
+```powershell
+.\scripts\paseobility-install.ps1 -Skill paseo-multi
+```
+
+Then register trusted connections using the
+[connection guide](skills/paseo-multi/references/connections.md). Installation
+itself does not import a host registry or operate/restart a PC. First-use prompt:
+
+```text
+/paseo-multi Check the registered PCs and their running agents.
+```
 
 ## 2026-10-05 update — `/paseo-design` with design-check (v2.8.3)
 
@@ -196,10 +233,11 @@ Selecting `paseo-cua`, or installing the full package, also prepares the trycua 
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
 - A manual `cp -R` / `Copy-Item` copies documents only and cannot auto-install the Cua Driver runtime.
 
-The package now has **8 skills**. `/paseo-design` is the eighth. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua` or `paseo-design` — the six-skill record must not be read as covering the later skills. `paseo-cua` is **preview / limited validation**, not broad stable Mac and Windows support. Its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on Intel macOS and Windows, plus an isolated upstream PR build, are recorded with a dated matrix in the [Cua platform validation status](docs/cua-platform-validation.md). See [Verification status](#verification-status) below for the compact 2026-09-22 summary.
+The package now has **9 skills**. `/paseo-multi` is the ninth. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`, `paseo-design` or `paseo-multi` — the six-skill record must not be read as covering the later skills. `paseo-cua` is **preview / limited validation**, not broad stable Mac and Windows support. Its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on Intel macOS and Windows, plus an isolated upstream PR build, are recorded with a dated matrix in the [Cua platform validation status](docs/cua-platform-validation.md). See [Verification status](#verification-status) below for the compact 2026-09-22 summary.
 
 | Skill | Scope |
 | --- | --- |
+| `/paseo-multi` | Selected remote computers: status, agents, shell commands and updates |
 | `/paseo-orchestration` | Explicitly requested multi-agent coordination or compare/tournament |
 | `/paseo-project` | Requested project summary/handoff or initial setup/environment changes |
 | `/paseo-browser` | Web UI manipulation/verification via CloakBrowser (Paseo browser + Playwright CLI optional) |
@@ -333,6 +371,8 @@ When you explicitly request these tasks, you can use the following capabilities:
 
 | Skill | Role | Strong at requests like |
 | --- | --- | --- |
+| `/paseo-multi` | Operate selected Paseo computers | Named host selection, remote status/agents, Bash/PowerShell commands and verified updates |
+| `/paseo-design` | Web and app frontend workflow | Project design rules, existing components and frontend review |
 | `/paseo-browser` | Browser manipulation workflow (CloakBrowser default) | Filling login forms, reading search results, clicking UI, responsive screenshots, checking web app state; CloakBrowser stealth Chromium via Playwright API, with optional Paseo `browser_*` and Microsoft Playwright CLI backends |
 | `/paseo-cua` | Native desktop GUI driving | App window manipulation/snapshot/verification with the trycua Cua Driver, only on explicit request |
 | `/paseo-orchestration` | Multi-agent coordination and comparison | Explicitly requested coordination or tournament, mode-specific guidance |
@@ -1064,6 +1104,7 @@ skills/
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
 ├── paseo-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
+├── paseo-multi/              # SKILL.md + host adapter/tests + references
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
 ├── paseo-project/            # SKILL.md

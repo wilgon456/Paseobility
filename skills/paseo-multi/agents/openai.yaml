@@ -1,0 +1,3 @@
+interface:
+  display_name: "Paseo Multi"
+  short_description: "Control selected PCs connected through Paseo"

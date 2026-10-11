@@ -68,9 +68,24 @@ Paseobility is a skill document package. Installation means copying every
 directory under `skills/` into the user's local skills directory. It does not
 require a package build.
 
+## Paseo Multi single-skill install
+
+For a request to operate several Paseo computers or install `paseo-multi`, use
+`./scripts/paseobility-init.sh --skill paseo-multi --no-context` (Windows:
+`.\scripts\paseobility-install.ps1 -Skill paseo-multi`). Add `--with-claude`
+/ `-WithClaude` when Claude support is requested. Installation copies the skill
+only; it does not import private host connections, install or restart Paseo,
+or run commands on another PC. Register trusted host connections locally as
+explained in `skills/paseo-multi/references/connections.md`.
+
+The adapter is verified with macOS and Windows controllers using the Paseo
+0.11.2 client and Mac/Windows remote hosts. Linux is unverified. See
+`docs/paseo-multi-validation.md`; this does not change the older compatibility
+records for other skills.
+
 ## Consolidated skill migration
 
-The package contains eight skills. `paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Chrome and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
+The package contains nine skills. `paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Chrome and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver and is explicit-only;
