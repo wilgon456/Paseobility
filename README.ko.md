@@ -4,7 +4,7 @@
 
 # Paseobility
 
-프로젝트·브라우저·산출물·Paseo로 연결된 PC를 다루는 9개 스킬입니다.
+프로젝트·브라우저·산출물·Paseo로 연결된 PC를 다루는 10개 스킬입니다.
 
 [English](README.md) · **한국어**
 
@@ -20,7 +20,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.9.1.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 9개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
+**현재 패키지: v2.9.1.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 10개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
 
 ## 한 줄 요약
 
@@ -33,6 +33,28 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 이 repo는 **Paseo 내장 도구를 반복 가능하게 조합하기 위한 스킬 패키지**입니다. macOS/Linux용 bootstrap helper와 Windows PowerShell 설치 helper를 함께 제공합니다.
 
 ---
+
+## `/paseo-god` — 명시 호출 작업 모드 (v0)
+
+완료 조건을 먼저 정하고 필요한 디버깅·리뷰·실험 절차만 읽습니다. 작업마다
+별도 TODO·검증 근거·재개 지점을 남깁니다. 학습 내용은 저장 후보로 제안하며,
+기존 메모리나 설치된 스킬을 자동으로 고치지 않습니다. 선택형 Node 도우미는
+기록을 만들고 재개할 뿐, 작업을 자동 실행하는 런타임이 아닙니다.
+
+```bash
+./scripts/paseobility-init.sh --skill paseo-god --no-context
+```
+
+```powershell
+.\scripts\paseobility-install.ps1 -Skill paseo-god
+```
+
+```text
+/paseo-god 이 버그를 고치고 원래 증상으로 검증해줘. 막히면 재개 지점을 남겨줘.
+```
+
+범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
+기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
 
 ## 2026-10-13 업데이트 — 의존성 최신화 (v2.9.1)
 
@@ -277,9 +299,9 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 - `cp -R` / `Copy-Item` 수동 복사는 문서만 복사하며 Cua Driver 런타임을 자동
   설치할 수 없습니다.
 
-현재 패키지는 **9개 스킬**입니다. 아홉 번째는 `/paseo-multi`입니다. CLI·MCP 도구 규격 호환성은 기존 6개 스킬에 대해
+현재 패키지는 **10개 스킬**입니다. `/paseo-god`는 명시 호출로 실행·검증·재개하는 v0 워크플로입니다. 검증 범위는 [God 안내](docs/paseo-god.md)에 따로 기록합니다. CLI·MCP 도구 규격 호환성은 기존 6개 스킬에 대해
 v2.7.0 시점에 확인했고 [호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에
-기록되어 있으며, 이 보고서는 **`paseo-cua`, `paseo-design`, `paseo-multi`를 포함하지 않습니다**. 6개 스킬 기록을
+기록되어 있으며, 이 보고서는 **`paseo-cua`, `paseo-design`, `paseo-multi`, `paseo-god`를 포함하지 않습니다**. 6개 스킬 기록을
 그 뒤에 추가된 스킬까지 검증한 것으로 해석하면 안 됩니다. `paseo-cua`는 **preview / 제한 검증**
 단계로, 넓은 범위의 안정적인 Mac·Windows 지원이 아닙니다. 직접 검증된 경계는
 2026-09-21 Apple Silicon macOS 26.6.2 한 대(Cua Driver 0.28.2)이고, Intel macOS와
@@ -289,6 +311,7 @@ Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 �
 
 | 스킬 | 사용 범위 |
 | --- | --- |
+| `/paseo-god` | 명시 호출 작업 모드: 완료 조건, 필요한 절차, 검증 근거와 작업별 재개 |
 | `/paseo-orchestration` | 명시 요청한 다중 에이전트 조율 또는 비교·토너먼트 |
 | `/paseo-project` | 요청한 프로젝트 요약·인수인계 또는 초기 설정·환경 수정 |
 | `/paseo-browser` | CloakBrowser 기반 웹 UI 조작·검증(Paseo 브라우저·Playwright CLI는 선택) |
@@ -453,6 +476,7 @@ https://github.com/wilgon456/Paseobility
 
 | Skill | 역할 | 이런 요청에 강함 |
 | --- | --- | --- |
+| `/paseo-god` | 명시 호출 실행·검증·재개 | 완료 조건, 디버깅·리뷰·실험, 작업별 기록과 학습 후보 제안 |
 | `/paseo-browser` | 브라우저 조작 워크플로우(CloakBrowser 기본) | 로그인 폼 채우기, 검색 결과 읽기, UI 클릭, 반응형 스크린샷, 웹앱 상태 확인; CloakBrowser stealth Chromium을 Playwright API로 구동, Paseo `browser_*`·Microsoft Playwright CLI는 선택형 백엔드 |
 | `/paseo-cua` | 네이티브 데스크톱 GUI 구동 | trycua Cua Driver로 앱 창 조작·스냅샷·검증, 명시 요청 시에만 동작 |
 | `/paseo-orchestration` | 다중 에이전트 조율과 비교 | 명시 요청한 조율 또는 토너먼트, 모드별 지침 |
@@ -1196,6 +1220,7 @@ skills/
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
 ├── paseo-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
+├── paseo-god/                # SKILL.md + explicit-only policy, procedures, run helper/tests
 ├── paseo-multi/              # SKILL.md + host adapter/tests + references
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md

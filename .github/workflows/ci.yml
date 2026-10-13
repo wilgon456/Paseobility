@@ -57,6 +57,9 @@ jobs:
       - name: Node cleanup suite
         run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js
 
+      - name: God run records
+        run: node --test skills/paseo-god/scripts/god-run.test.mjs
+
       - name: Node share suite
         run: node skills/paseo-share/scripts/paseo-share.test.js
 
@@ -144,6 +147,9 @@ jobs:
 
       - name: Node cleanup suite
         run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js
+
+      - name: God run records
+        run: node --test skills/paseo-god/scripts/god-run.test.mjs
 
       - name: Node share suite
         run: node skills/paseo-share/scripts/paseo-share.test.js

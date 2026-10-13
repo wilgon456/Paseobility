@@ -85,7 +85,12 @@ records for other skills.
 
 ## Consolidated skill migration
 
-The package contains nine skills. `paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Chrome and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
+The package contains ten skills. `paseo-god` is explicit-only task execution,
+verification and resumption; install it alone with
+`./scripts/paseobility-init.sh --skill paseo-god --no-context` (Windows:
+`.\scripts\paseobility-install.ps1 -Skill paseo-god`). Its Node helper creates
+local run records only; it does not execute tasks or save native memory.
+`paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Chrome and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver and is explicit-only;

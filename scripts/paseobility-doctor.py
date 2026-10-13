@@ -58,6 +58,7 @@ KNOWN_SKILLS = (
     "paseo-orchestration",
     "paseo-project",
     "paseo-design",
+    "paseo-god",
     "paseo-share",
     "paseo-spyware-check",
 )

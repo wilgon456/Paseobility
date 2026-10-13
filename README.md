@@ -4,7 +4,7 @@
 
 # Paseobility
 
-Nine reusable skills for projects, browsers, artifacts and computers connected through Paseo.
+Ten reusable skills for projects, browsers, artifacts and computers connected through Paseo.
 
 **English** · [한국어](README.ko.md)
 
@@ -20,7 +20,7 @@ Nine reusable skills for projects, browsers, artifacts and computers connected t
 
 ## At a glance
 
-**Current package: v2.9.1.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all nine skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
+**Current package: v2.9.1.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
 
 ## One-line summary
 
@@ -33,6 +33,28 @@ With base Paseo alone you can combine built-in tools to do similar work. But let
 This repo is a **skill package for reproducibly composing Paseo's built-in tools**. It ships a macOS/Linux bootstrap helper and a Windows PowerShell install helper.
 
 ---
+
+## `/paseo-god` — explicit task mode (v0)
+
+Define observable completion criteria, use only the needed debugging/review/spike
+procedure, and retain a separate TODO, evidence and resume point for each run.
+Learning is proposed for review; native memory and skills are not automatically
+rewritten. The optional Node helper creates/resumes records, not autonomous jobs.
+
+```bash
+./scripts/paseobility-init.sh --skill paseo-god --no-context
+```
+
+```powershell
+.\scripts\paseobility-install.ps1 -Skill paseo-god
+```
+
+```text
+/paseo-god Fix this bug, verify the original trigger, and save a resume point if blocked.
+```
+
+See [the God guide](docs/paseo-god.md) for scope, local records and validation
+limits. Existing version and platform reports retain their original scope.
 
 ## 2026-10-13 update — dependency refresh (v2.9.1)
 
@@ -255,10 +277,11 @@ Selecting `paseo-cua`, or installing the full package, also prepares the trycua 
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
 - A manual `cp -R` / `Copy-Item` copies documents only and cannot auto-install the Cua Driver runtime.
 
-The package now has **9 skills**. `/paseo-multi` is the ninth. CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`, `paseo-design` or `paseo-multi` — the six-skill record must not be read as covering the later skills. `paseo-cua` is **preview / limited validation**, not broad stable Mac and Windows support. Its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on Intel macOS and Windows, plus an isolated upstream PR build, are recorded with a dated matrix in the [Cua platform validation status](docs/cua-platform-validation.md). See [Verification status](#verification-status) below for the compact 2026-09-22 summary.
+The package now has **10 skills**. `/paseo-god` adds an explicit task workflow; its v0 validation is recorded separately in [the God guide](docs/paseo-god.md). CLI/MCP tool-schema compatibility was checked for the prior six skills at v2.7.0 and is recorded in the linked [compatibility report](docs/compatibility-0.9.0-beta.2.md), which does **not** cover `paseo-cua`, `paseo-design`, `paseo-multi` or `paseo-god` — the six-skill record must not be read as covering the later skills. `paseo-cua` is **preview / limited validation**, not broad stable Mac and Windows support. Its only directly verified boundary is a single Apple Silicon macOS 26.6.2 host on 2026-09-21 with Cua Driver 0.28.2; separate **user-reported** passes on Intel macOS and Windows, plus an isolated upstream PR build, are recorded with a dated matrix in the [Cua platform validation status](docs/cua-platform-validation.md). See [Verification status](#verification-status) below for the compact 2026-09-22 summary.
 
 | Skill | Scope |
 | --- | --- |
+| `/paseo-god` | Explicit task mode: criteria, selective procedures, verification and run resumption |
 | `/paseo-multi` | Selected remote computers: status, agents, shell commands and updates |
 | `/paseo-orchestration` | Explicitly requested multi-agent coordination or compare/tournament |
 | `/paseo-project` | Requested project summary/handoff or initial setup/environment changes |
@@ -393,6 +416,7 @@ When you explicitly request these tasks, you can use the following capabilities:
 
 | Skill | Role | Strong at requests like |
 | --- | --- | --- |
+| `/paseo-god` | Explicit task execution and resumption | Bounded work, acceptance evidence, debugging/review/spike and learning proposals |
 | `/paseo-multi` | Operate selected Paseo computers | Named host selection, remote status/agents, Bash/PowerShell commands and verified updates |
 | `/paseo-design` | Web and app frontend workflow | Project design rules, existing components and frontend review |
 | `/paseo-browser` | Browser manipulation workflow (CloakBrowser default) | Filling login forms, reading search results, clicking UI, responsive screenshots, checking web app state; CloakBrowser stealth Chromium via Playwright API, with optional Paseo `browser_*` and Microsoft Playwright CLI backends |
@@ -1126,6 +1150,7 @@ skills/
 ├── paseo-cua/                # SKILL.md + explicit-only policy
 │   └── references/           # setup.md, workflow.md, recovery.md
 ├── paseo-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
+├── paseo-god/                # SKILL.md + explicit-only policy, procedures, run helper/tests
 ├── paseo-multi/              # SKILL.md + host adapter/tests + references
 ├── paseo-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
