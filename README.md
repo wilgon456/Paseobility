@@ -1,35 +1,26 @@
 <div align="center">
 
-<h1>Paseobility</h1>
+![Paseobility](docs/readme-banner.svg)
 
-<p><strong>A Paseo slash-skill pack you install by handing the GitHub URL to Codex/Claude</strong></p>
+# Paseobility
 
-<p>
-  <a href="./README.ko.md">한국어</a> · <strong>English</strong>
-</p>
+Nine reusable skills for projects, browsers, artifacts and computers connected through Paseo.
 
-<p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.9.0-111827?style=for-the-badge">
-  <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
-  <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
-  <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
-  <img alt="Project Bootstrap" src="https://img.shields.io/badge/Project-Bootstrap-059669?style=for-the-badge">
-  <img alt="Agent Tournament" src="https://img.shields.io/badge/Agent-Tournament-db2777?style=for-the-badge">
-  <img alt="Spyware Check" src="https://img.shields.io/badge/Spyware-Check-dc2626?style=for-the-badge">
-  <img alt="Agent Cleanup" src="https://img.shields.io/badge/Agent-Cleanup-475569?style=for-the-badge">
-  <img alt="Paseo Share" src="https://img.shields.io/badge/Paseo-Share-0284c7?style=for-the-badge">
-</p>
+**English** · [한국어](README.ko.md)
 
-<p>
-  Drive a web UI directly with <code>/paseo-browser</code>,<br>
-  compare answers from several models with <code>/paseo-orchestration</code>,<br>
-  set up new project context with <code>/paseo-project</code>,<br>
-  and share artifacts between your computer and mobile with <code>/paseo-share</code>.
-</p>
+![project: skill pack](https://img.shields.io/badge/project-skill%20pack-a78bfa?style=flat-square) ![stack: Paseo](https://img.shields.io/badge/stack-Paseo-a78bfa?style=flat-square) [![License](https://img.shields.io/badge/license-MIT-a78bfa?style=flat-square)](LICENSE)
+
+[Install](#install) · [Skills](#included-skills) · [Verification](#verification-status)
+
+[![CI](https://github.com/wilgon456/Paseobility/actions/workflows/ci.yml/badge.svg)](https://github.com/wilgon456/Paseobility/actions/workflows/ci.yml)
 
 </div>
 
 ---
+
+## At a glance
+
+**Current package: v2.9.0.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all nine skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
 
 ## One-line summary
 

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img" aria-labelledby="title desc">
+  <title id="title">Paseobility</title>
+  <desc id="desc">Practical skills for your agent workspace.. Project banner.</desc>
+  <rect width="1200" height="260" rx="18" fill="#0f172a"/>
+  <rect x="0" y="0" width="14" height="260" fill="#a78bfa"/>
+  <path d="M735 0v260" stroke="#334155" stroke-width="1"/>
+  <text x="58" y="105" fill="#f8fafc" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="700">Paseobility</text>
+  <text x="60" y="158" fill="#cbd5e1" font-family="Arial, Helvetica, sans-serif" font-size="24">Practical skills for your agent workspace.</text>
+  <text x="60" y="216" fill="#a78bfa" font-family="Arial, Helvetica, sans-serif" font-size="19">github.com/wilgon456</text>
+  <g fill="none" stroke="#a78bfa" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"><path d="M845 160l75-85 75 85-75 40z M845 160h150 M920 75v125"/><circle cx="845" cy="160" r="13"/><circle cx="920" cy="75" r="18"/><circle cx="995" cy="160" r="13"/><circle cx="920" cy="200" r="13"/></g>
+</svg>

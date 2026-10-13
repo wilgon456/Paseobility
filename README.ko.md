@@ -1,35 +1,26 @@
 <div align="center">
 
-<h1>Paseobility</h1>
+![Paseobility](docs/readme-banner.svg)
 
-<p><strong>GitHub URL을 Codex/Claude에게 던져 설치하는 Paseo 슬래쉬 스킬팩</strong></p>
+# Paseobility
 
-<p>
-  <strong>한국어</strong> · <a href="./README.md">English</a>
-</p>
+프로젝트·브라우저·산출물·Paseo로 연결된 PC를 다루는 9개 스킬입니다.
 
-<p>
-  <img alt="Version" src="https://img.shields.io/badge/version-v2.9.0-111827?style=for-the-badge">
-  <a href="https://paseo.sh"><img alt="Paseobility Skill Pack" src="https://img.shields.io/badge/Paseobility-Skill%20Pack-111827?style=for-the-badge"></a>
-  <img alt="Browser Automation" src="https://img.shields.io/badge/Browser-Automation-2563eb?style=for-the-badge">
-  <img alt="Multi Agent Orchestration" src="https://img.shields.io/badge/Multi--Agent-Orchestration-7c3aed?style=for-the-badge">
-  <img alt="Project Bootstrap" src="https://img.shields.io/badge/Project-Bootstrap-059669?style=for-the-badge">
-  <img alt="Agent Tournament" src="https://img.shields.io/badge/Agent-Tournament-db2777?style=for-the-badge">
-  <img alt="Spyware Check" src="https://img.shields.io/badge/Spyware-Check-dc2626?style=for-the-badge">
-  <img alt="Agent Cleanup" src="https://img.shields.io/badge/Agent-Cleanup-475569?style=for-the-badge">
-  <img alt="Paseo Share" src="https://img.shields.io/badge/Paseo-Share-0284c7?style=for-the-badge">
-</p>
+[English](README.md) · **한국어**
 
-<p>
-  <code>/paseo-browser</code>로 웹 UI를 직접 조작하고,<br>
-  <code>/paseo-orchestration</code>로 여러 모델의 답을 비교하고,<br>
-  <code>/paseo-project</code>으로 새 프로젝트 맥락을 세팅하고,<br>
-  <code>/paseo-share</code>로 컴퓨터와 모바일 사이에 산출물을 공유합니다.
-</p>
+![project: skill pack](https://img.shields.io/badge/project-skill%20pack-a78bfa?style=flat-square) ![stack: Paseo](https://img.shields.io/badge/stack-Paseo-a78bfa?style=flat-square) [![License](https://img.shields.io/badge/license-MIT-a78bfa?style=flat-square)](LICENSE)
+
+[설치](#설치) · [스킬](#들어있는-스킬) · [검증](#검증-상태)
+
+[![CI](https://github.com/wilgon456/Paseobility/actions/workflows/ci.yml/badge.svg)](https://github.com/wilgon456/Paseobility/actions/workflows/ci.yml)
 
 </div>
 
 ---
+
+## 시작 전에
+
+**현재 패키지: v2.9.0.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 9개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
 
 ## 한 줄 요약
 
