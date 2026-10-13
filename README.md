@@ -20,7 +20,7 @@ Nine reusable skills for projects, browsers, artifacts and computers connected t
 
 ## At a glance
 
-**Current package: v2.9.0.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all nine skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
+**Current package: v2.9.1.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all nine skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
 
 ## One-line summary
 
@@ -33,6 +33,37 @@ With base Paseo alone you can combine built-in tools to do similar work. But let
 This repo is a **skill package for reproducibly composing Paseo's built-in tools**. It ships a macOS/Linux bootstrap helper and a Windows PowerShell install helper.
 
 ---
+
+## 2026-10-13 update — dependency refresh (v2.9.1)
+
+- Browser recipes pin `cloakbrowser@0.6.2` with `playwright-core@1.64.0`.
+  Node must satisfy `^20.19.0 || >=22.12.0`. The wrapper now supports ESM and
+  CommonJS; the recipes keep dynamic import. The keyless free browser remains
+  Chromium 145 on macOS, separately from the licensed Chromium 154 channel.
+- Fresh Cua installations pin `0.34.1` at immutable commit
+  `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`. Skill instructions follow its
+  token-only action contract and distinguish display previews from action captures.
+  The package installer still reuses existing working drivers; host upgrades
+  require an explicit update request.
+- Vercel's offline interface-guideline snapshot is refreshed to the 2026-10-05
+  commit, including desktop overscroll guidance.
+- On the local Apple Silicon Mac, the updated browser passed fixture input,
+  click, result readback, three viewport captures and failure-path cleanup.
+  The user-requested Cua 0.28.2 → 0.34.1 upgrade preserved OS grants; version,
+  doctor and tool schemas were checked. This is not a new native GUI end-to-end
+  pass or Windows/Linux runtime validation.
+
+The same local v2.9.1 preparation also hardens `/paseo-agent-cleanup`: complete
+paginated state, exact workspace ownership, permission/unknown-state guards,
+pre/post checks and exact-ID client dispatch replace CLI display-list assumptions.
+A workspace-only request no longer selects unrelated disposable agents. CI now
+checks the catalog/frontmatter, vendored runtime/data and all skill PowerShell
+files. Upstream-only tests are explicitly skipped with reasons. Browser recipes
+use accessible locators and wait for postconditions. See
+[the improvement validation](docs/skill-improvements-2026-10-13.md).
+
+See [the dated validation record](docs/dependency-validation-2026-10-13.md).
+Earlier update sections retain their historical versions and evidence.
 
 ## 2026-10-11 update — `/paseo-multi` (v2.9.0)
 
@@ -214,11 +245,11 @@ v2.8.0 adds `paseo-cua`. It is used only when the user **explicitly asks to driv
 
 Selecting `paseo-cua`, or installing the full package, also prepares the trycua Cua Driver runtime. If a working driver already exists, the installer reuses it and never auto-upgrades it.
 
-- Pinned source: trycua/cua commit `bf6c76786d938070f4ecf1e44004752f69f518b8` (the `cua-driver-rs-v0.30.4` release tag), Cua Driver version `0.30.4`. This pin is a source/schema-reviewed contract; the last runtime exercised end-to-end in the validation records below remains `0.28.2`, and an existing working driver is reused, never auto-upgraded.
+- Pinned source: trycua/cua commit `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc` (the `cua-driver-rs-v0.34.1` release tag), Cua Driver version `0.34.1`. This pin is a source/schema-reviewed contract; the last runtime exercised end-to-end in the validation records below remains `0.28.2`, and an existing working driver is reused, never auto-upgraded.
 - The installer downloads the upstream install scripts at the pinned commit and runs them from a temporary directory (never `curl | bash`). The pinned `_install-rust.sh` and `_install-common.sh` (and the Windows `install.ps1` / `_install-common.psm1`) are fetched too, so the delegated script cannot silently fall back to a rolling URL.
 - `--skip-cua-driver` / `-SkipCuaDriver`: skip the runtime and copy skills only (docs-only / offline).
 - A custom `--target-home` / `-TargetHome` skips the real-host runtime by default and logs why. `--allow-host-runtime` / `-AllowHostRuntime` instead allows real host runtime installation even when the skills `--target-home` is custom. The driver is always installed at its normal host location; on macOS that still writes `/Applications/CuaDriver.app` and `~/.cua-driver`, so this is not a sandbox.
-- The driver step verifies the code signature on macOS, does not modify PATH (`--no-modify-path` / `-NoPathUpdate`), and never touches shell rc or MCP config. The pinned installer only resolves/downloads a release and stops stale daemons; it never starts a daemon ([`install.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/install.sh), [`_install-rust.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/_install-rust.sh)). An explicit `CUA_DRIVER_RS_VERSION=0.30.4` pin outranks the installer's baked version, and the pinned installer refuses withdrawn releases (`0.28.3`).
+- The driver step verifies the code signature on macOS, does not modify PATH (`--no-modify-path` / `-NoPathUpdate`), and never touches shell rc or MCP config. The pinned installer only resolves/downloads a release and stops stale daemons; it never starts a daemon ([`install.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/install.sh), [`_install-rust.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/_install-rust.sh)). An explicit `CUA_DRIVER_RS_VERSION=0.34.1` pin outranks the installer's baked version, and the pinned installer refuses withdrawn releases (`0.28.3`).
 - If the runtime step fails, the installer exits non-zero and reports that skills were copied but the runtime setup failed (installation may be incomplete).
 - macOS Accessibility and Screen Recording permissions are granted by the human. A binary being installed is not the same as permissions being ready.
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
@@ -963,7 +994,7 @@ Key rules:
 
 - Act with locators/roles, then re-read state (fresh snapshot) after navigation or a DOM change; a click alone is not proof.
 - Default is headless and isolated; sessions never share the user's Chrome/Paseo profile, cookies, login, or refs. Close the browser in `finally` so failed runs do not leak it.
-- Prefer the keyless free binary (macOS: Chromium 145; Linux/Windows: Chromium 146). The latest keyed build (macOS 151 / Linux+Windows 152) is free for one concurrent session with a GitHub-issued key, or paid for scaling — a paid plan is not mandatory to use a current build. Never run `cloakbrowser login` or store a license key; the wrapper's latest release is not the latest browser binary.
+- Prefer the keyless free binary (macOS: Chromium 145; Linux/Windows: Chromium 146). The latest keyed build (Chromium 154 on all supported platforms) is free for one concurrent session with a GitHub-issued key, or paid for scaling — a paid plan is not mandatory to use a current build. Never run `cloakbrowser login` or store a license key; the wrapper's latest release is not the latest browser binary.
 - Do not add a confirmation prompt for reversible steps the current browser task already authorizes; do verify payment/submission/account changes.
 - Do not read sensitive information such as cookies, tokens, or localStorage with `evaluate`.
 
@@ -972,13 +1003,13 @@ Key rules:
 ```bash
 RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
 mkdir -p "$RUNTIME" && cd "$RUNTIME" && npm init -y >/dev/null
-npm install --save-exact --no-audit --no-fund cloakbrowser@0.5.11 playwright-core@1.63.0
+npm install --save-exact --no-audit --no-fund cloakbrowser@0.6.2 playwright-core@1.64.0
 export PASEOBILITY_CLOAK_RUNTIME="$RUNTIME"
 export CLOAKBROWSER_CACHE_DIR="${CLOAKBROWSER_CACHE_DIR:-$RUNTIME/cache}"  # runtime-scoped binary cache
 export CLOAKBROWSER_AUTO_UPDATE=false            # reproducible pin
 ```
 
-The package is ESM: load it with dynamic `import()` (Node >= 20, the package engine minimum; verified on Node 22.23.2). See [`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md).
+The package supports ESM and CommonJS. Recipes use dynamic `import()` (Node ^20.19.0 or >=22.12.0; verified on Node 22.23.2). See [`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md).
 
 Skill copying stays docs-only: the convenience installers do **not** install
 Node packages or download the browser binary, including for a temp `--target-home`.

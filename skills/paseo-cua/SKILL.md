@@ -43,7 +43,8 @@ The installed binary is authoritative. Do not assume a fixed schema:
 
 1. Resolve the exact target window (`list_windows`) or launch it (`launch_app`).
 2. `get_window_state` for a fresh accessibility tree plus screenshot. Act on
-   the opaque `element_token`, or `snapshot_id` with `element_index`.
+   its opaque `element_token`. Cua 0.34.1 no longer accepts `element_index`;
+   do not invent tokens or reuse handles invalidated by a fresh snapshot.
 3. Perform one snapshot-bound action (`click`, `type_text`, `press_key`,
    `set_value`, `invoke_menu`, `set_window_frame`, `scroll`).
 4. Re-read state and confirm the postcondition (`verify_state`). A tool reply

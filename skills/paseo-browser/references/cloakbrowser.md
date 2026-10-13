@@ -8,30 +8,27 @@ compatibility backends; they are not substituted when CloakBrowser fails.
 
 ## Source and pinned version
 
-- Package: **`cloakbrowser@0.5.11`** (npm, **ESM** — `exports` only exposes
-  `import`). `dist.integrity`
-  `sha512-fyNjE+w6oGAOuUe4JeHRfzbGZMe3lLCvdpJ1dLRHFT/RkD5FWvP7MHvwVgmnCY8lVUcKWuVxHfJgfGafg3IgQg==`,
-  shasum `9596362acf49040c8e8053b0d1d0f0e8d42252bb`.
-- Source: <https://github.com/CloakHQ/CloakBrowser>, release tag `v0.5.11`,
-  immutable commit `9bc5e374d7fc3a4099360bbd93e570b1e7ec8618` (== npm `gitHead`).
-- Playwright peer: `playwright-core@1.63.0` (peer range `>=1.53.0`; pinned for
+- Package: **`cloakbrowser@0.6.2`** (npm, supports **ESM and CommonJS**). `dist.integrity`
+  `sha512-/37JlfgvBbjfCPfUWiowPvg3aA436o6ZBLSqfdxgChnkG5oK2rR50ZadzbJyS9X+rv4PSuhMvs8PZQhICdljzg==`,
+  shasum `8f1be5e8157211a0da61309d25bebe45dccaf0a5`.
+- Source: <https://github.com/CloakHQ/CloakBrowser>, release tag `v0.6.2`,
+  immutable commit `4a1b8f9c89adb43d7b1f853055ac41e3e59876ab` (== npm `gitHead`).
+- Playwright peer: `playwright-core@1.64.0` (peer range `>=1.53.0`; pinned for
   reproducibility).
-- **Node.js >= 20** (the package engine minimum). Recipes load the ESM package
-  with dynamic `import()`, which is supported on Node 20's module API. Verified
-  on Node 22.23.2.
+- **Node.js ^20.19.0 or >=22.12.0** (the package engine range). Recipes use
+  dynamic `import()`; CommonJS is also supported. Verified on Node 22.23.2.
 - Wrapper license: **MIT**. Binary license: CloakHQ's `BINARY-LICENSE.md`.
 
 ## Latest wrapper ≠ latest browser binary, and current binary terms
 
-The npm tag `0.5.11` is the **wrapper** version; it does **not** imply the
+The npm tag `0.6.2` is the **wrapper** version; it does **not** imply the
 newest browser binary.
 
 - **Keyless free binary** — what a launch with no license key downloads, pinned
   per platform by the wrapper (`PLATFORM_CHROMIUM_VERSIONS`). On Apple Silicon
   macOS that is **Chromium 145.0.7632.109**; on Linux x64/arm64 and Windows x64
   it is **Chromium 146.0.7680.177.x**.
-- **Latest keyed binary** — a newer Chromium (152-class on Linux/Windows, 151 on
-  macOS) with the full patch set. This is **free with a GitHub-issued key for one
+- **Latest keyed binary** — Chromium 154 on Linux, Windows and macOS with the full patch set. This is **free with a GitHub-issued key for one
   concurrent session** (<https://cloakbrowser.dev/free>) or a paid key for more
   sessions/scaling. A paid subscription is **not** mandatory to use a current
   build.
@@ -45,6 +42,19 @@ key, and never prints key material. If a task needs the latest keyed binary, the
 user supplies the key out of band (`CLOAKBROWSER_LICENSE_KEY`); otherwise use the
 keyless free binary and report exactly which binary ran.
 
+## Upgrade notes for 0.6.2
+
+Update `cloakbrowser` and `playwright-core` together. CloakBrowser 0.6.2 fixes
+humanized actions with Playwright 1.64; the older 0.5.11/1.63.0 pair was tested
+separately. Keep the runtime's exact pins and lockfile.
+
+In 0.6.x, humanized locators use strict matching and raise errors instead of
+silently falling back. Use a more specific locator for multiple matches.
+Persistent contexts now save one fingerprint seed per profile; keep that file
+with the task-owned profile. Binary downloads stage atomically for concurrent
+first launches. No persistent profile or licensed browser is needed by the
+ordinary incognito fixture recipes below.
+
 ## Paseobility-owned runtime (no global install)
 
 Installed here (exact pins, own lockfile) — **not** a global npm install and
@@ -52,7 +62,7 @@ Installed here (exact pins, own lockfile) — **not** a global npm install and
 
 ```text
 $HOME/.local/share/paseobility/browser/cloakbrowser/
-  package.json        # cloakbrowser 0.5.11 + playwright-core 1.63.0 (exact)
+  package.json        # cloakbrowser 0.6.2 + playwright-core 1.64.0 (exact)
   package-lock.json   # lockfile
   node_modules/
   cache/              # CLOAKBROWSER_CACHE_DIR: verified stealth-Chromium binary
@@ -64,7 +74,7 @@ Reproduce on another machine:
 RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
 mkdir -p "$RUNTIME" && cd "$RUNTIME"
 npm init -y >/dev/null
-npm install --save-exact --no-audit --no-fund cloakbrowser@0.5.11 playwright-core@1.63.0
+npm install --save-exact --no-audit --no-fund cloakbrowser@0.6.2 playwright-core@1.64.0
 ```
 
 Load from the runtime path with dynamic `import()` (respects a custom
@@ -107,9 +117,9 @@ pretending install succeeded.
 
 | Platform | Keyless free | Latest (keyed) |
 | --- | --- | --- |
-| Linux x64 / arm64 | Chromium 146 | Chromium 152 |
-| macOS arm64 / x64 | Chromium 145 | Chromium 151 |
-| Windows x64 | Chromium 146 | Chromium 152 |
+| Linux x64 / arm64 | Chromium 146 | Chromium 154 |
+| macOS arm64 / x64 | Chromium 145 | Chromium 154 |
+| Windows x64 | Chromium 146 | Chromium 154 |
 
 ## Diagnostics
 
@@ -192,11 +202,11 @@ try {
   const page = await (await browser.newContext()).newPage();
   page.setDefaultTimeout(15000);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.fill('#a', '7');
-  await page.fill('#b', '5');
-  await page.click('#compute');
+  await page.getByLabel('A', { exact: true }).fill('7');
+  await page.getByLabel('B', { exact: true }).fill('5');
+  await page.getByRole('button', { name: 'Compute', exact: true }).click();
   await page.waitForFunction(() => document.getElementById('result').textContent === '12', null, { timeout: 5000 });
-  console.log('result', await page.textContent('#result'));        // 12
+  console.log('result', await page.getByRole('status').textContent()); // fresh 12
   console.log(await page.locator('main').ariaSnapshot());          // fresh semantics
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.screenshot({ path: path.join(outDir, 'desktop.png') });
@@ -209,6 +219,25 @@ try {
 }
 NODE
 ```
+
+### Wait for the postcondition, then re-read
+
+A click waits for the control to be actionable; it does not wait for every
+asynchronous consequence. For a navigation, wait for its known destination:
+
+```js
+await page.getByRole('link', { name: 'Details', exact: true }).click();
+await page.waitForURL('**/details', { waitUntil: 'domcontentloaded', timeout: 15000 });
+console.log(await page.locator('main').ariaSnapshot());
+```
+
+For a DOM update, use a bounded predicate on the expected visible result, like
+the adder recipe above. Keep evaluate/predicates read-only and scoped; never
+read credentials. If the project already uses Playwright Test, its auto-retrying
+`expect(locator).toHaveText(...)` is appropriate; these standalone recipes do
+not add that dependency just for assertions. Avoid fixed waits and `networkidle`
+for readiness. See [Playwright best practices](https://playwright.dev/docs/best-practices)
+and [the Page API](https://playwright.dev/docs/api/class-page#page-wait-for-function).
 
 ### Console / network diagnostics (scoped)
 

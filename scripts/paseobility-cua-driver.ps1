@@ -31,12 +31,12 @@ param(
   [switch]$Check,
   [switch]$DryRun,
   [string]$BinDir = $(if ($env:PASEOBILITY_CUA_BIN_DIR) { $env:PASEOBILITY_CUA_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }),
-  [string]$Version = $(if ($env:PASEOBILITY_CUA_PIN_VERSION) { $env:PASEOBILITY_CUA_PIN_VERSION } else { "0.30.4" })
+  [string]$Version = $(if ($env:PASEOBILITY_CUA_PIN_VERSION) { $env:PASEOBILITY_CUA_PIN_VERSION } else { "0.34.1" })
 )
 
 $ErrorActionPreference = "Stop"
 
-$PinSha = $(if ($env:PASEOBILITY_CUA_PIN_SHA) { $env:PASEOBILITY_CUA_PIN_SHA } else { "bf6c76786d938070f4ecf1e44004752f69f518b8" })
+$PinSha = $(if ($env:PASEOBILITY_CUA_PIN_SHA) { $env:PASEOBILITY_CUA_PIN_SHA } else { "0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc" })
 $RawBase = $(if ($env:PASEOBILITY_CUA_RAW_BASE) { $env:PASEOBILITY_CUA_RAW_BASE } else { "https://raw.githubusercontent.com/trycua/cua/$PinSha/libs/cua-driver/scripts" })
 $InstallerDir = $env:PASEOBILITY_CUA_INSTALLER_DIR
 $DriverBin = $env:PASEOBILITY_CUA_DRIVER_BIN

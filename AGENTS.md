@@ -112,11 +112,11 @@ broken and left untouched (non-zero exit), never overwritten. Selecting only
 other skills has no driver side effects.
 
 - The helper fetches the pinned installer scripts (commit
-  `bf6c76786d938070f4ecf1e44004752f69f518b8`, Cua Driver `0.30.4`) and runs
+  `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`, Cua Driver `0.34.1`) and runs
   them from a temp directory. It never edits PATH or registers MCP config, and
   it never starts the daemon: the pinned `install.sh` / `_install-rust.sh` only
   resolve/download a release and stop stale daemons
-  (https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/).
+  (https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/).
   An explicit `CUA_DRIVER_RS_VERSION` pin outranks the installer's baked
   version, and the pinned installer refuses withdrawn releases. The pin is a
   source/schema-reviewed contract; `0.28.2` remains the last version exercised

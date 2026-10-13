@@ -3,8 +3,11 @@
 "use strict";
 
 const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const ACTIVE_STATUS_PATTERN = /(^|[\s_-])(running|initializing|working|active|starting|queued|pending|busy|executing|in[\s_-]?progress)([\s_-]|$)/i;
+const INACTIVE_STATUSES = new Set(["idle", "error", "closed"]);
 const DISPOSABLE_MARKER_PATTERN = /(^|[\s/_.-])(disposable|fixture|fixtures|smoke|temp|temporary|test|tests|testing|validation|validate|verification|verify)([\s/_.-]|$)/i;
 
 function usage() {
@@ -111,44 +114,79 @@ function parseArgs(argv) {
   return opts;
 }
 
-function run(command, args) {
-  const useCmd = process.platform === "win32" && command === "paseo";
-  const spawnCommand = useCmd ? "cmd.exe" : command;
-  const spawnArgs = useCmd ? ["/d", "/s", "/c", command, ...args] : args;
-  const result = spawnSync(spawnCommand, spawnArgs, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
-  return {
-    status: Number.isInteger(result.status) ? result.status : 1,
-    stdout: result.stdout || "",
-    stderr: result.stderr || (result.error ? result.error.message : ""),
-  };
-}
-
-function parseListingResult(result, label) {
-  if (result.status !== 0) {
-    throw new Error(`${label} failed: ${result.stderr || result.stdout}`.trim());
+function snapshotRuntime() {
+  const customModule = process.env.PASEO_CLEANUP_CLIENT_MODULE;
+  const customNode = process.env.PASEO_CLEANUP_NODE;
+  if (customModule || customNode) {
+    if (!customModule || !customNode || !fs.existsSync(customModule) || !fs.existsSync(customNode)) {
+      throw new Error("Set both PASEO_CLEANUP_CLIENT_MODULE and PASEO_CLEANUP_NODE to installed files");
+    }
+    return {command: customNode, args: [], module: customModule};
   }
-  const text = result.stdout.trim();
-  if (!text) return [];
-  const value = JSON.parse(text);
-  if (Array.isArray(value)) return value;
-  const key = label.includes("workspace") ? "workspaces" : "agents";
-  if (value && Array.isArray(value[key])) return value[key];
-  throw new Error(`${label} returned JSON without an array`);
+  const resources = process.platform === "win32"
+    ? [process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs/Paseo/resources"),
+       process.env.ProgramFiles && path.join(process.env.ProgramFiles, "Paseo/resources")].filter(Boolean)
+    : ["/Applications/Paseo.app/Contents/Resources"];
+  for (const root of resources) {
+    const command = process.platform === "win32" ? path.join(root, "..", "Paseo.exe")
+      : path.join(root, "..", "Frameworks/Paseo Helper.app/Contents/MacOS/Paseo Helper");
+    const runner = path.join(root, "app.asar.unpacked/dist/daemon/node-entrypoint-runner.js");
+    if (fs.existsSync(path.join(root, "app.asar")) && fs.existsSync(command) && fs.existsSync(runner)) {
+      return {command, args: ["--disable-warning=DEP0040", runner, "node-script"],
+        module: path.join(root, "app.asar/node_modules/@getpaseo/cli/dist/utils/client.js")};
+    }
+  }
+  // Standalone npm CLI installs expose the same client next to dist/index.js.
+  for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+    const executable = path.join(dir, process.platform === "win32" ? "paseo.cmd" : "paseo");
+    if (!fs.existsSync(executable)) continue;
+    let parent = path.dirname(fs.realpathSync(executable));
+    for (let depth = 0; depth < 5; depth++, parent = path.dirname(parent)) {
+      const module = path.join(parent, "dist/utils/client.js");
+      if (fs.existsSync(module)) return {command: process.execPath, args: [], module};
+    }
+  }
+  throw new Error("Installed Paseo client runtime not found; cleanup requires complete snapshots");
 }
 
-function listAgents(runCommand) {
-  return parseListingResult(runCommand("paseo", ["ls", "--json"]), "paseo ls --json");
+function run(command, args, serverId) {
+  if (command === "snapshot" || command === "paseo") {
+    let request = {action: "snapshot"};
+    if (command === "paseo") {
+      const agent = args.length === 3 && args[0] === "archive" && args[2] === "--json";
+      const workspace = args.length === 4 && args[0] === "workspace" && args[1] === "archive" && args[3] === "--json";
+      if (!agent && !workspace) throw new Error("Only exact-ID archive requests are supported");
+      request = {action: "archive", kind: agent ? "agent" : "workspace", id: args[agent ? 1 : 2], serverId};
+    }
+    const runtime = snapshotRuntime();
+    const result = spawnSync(runtime.command, [...runtime.args, path.join(__dirname, "snapshot.mjs")], {
+      encoding: "utf8", timeout: 45000, killSignal: "SIGKILL", maxBuffer: 8 * 1024 * 1024,
+      env: {...process.env, ELECTRON_RUN_AS_NODE: "1", PASEO_CLEANUP_CLIENT_MODULE: runtime.module},
+      input: JSON.stringify(request), windowsHide: true,
+    });
+    return {status: result.status ?? 1, stdout: result.stdout || "", stderr: result.error
+      ? "Guarded request timed out or unavailable; outcome unknown, inspect fresh state before retrying"
+      : result.status ? "Guarded request failed; inspect fresh state before retrying" : ""};
+  }
+  throw new Error("Unsupported cleanup operation");
 }
 
-function listWorkspaces(runCommand) {
-  return parseListingResult(
-    runCommand("paseo", ["workspace", "ls", "--json"]),
-    "paseo workspace ls --json"
-  );
+function readSnapshot(runCommand, expectedServer) {
+  const result = runCommand("snapshot", []);
+  if (result.status !== 0) throw new Error("Complete Paseo snapshot unavailable; no further cleanup attempted");
+  const value = JSON.parse(result.stdout);
+  if (value.complete !== true || typeof value.serverId !== "string" || !value.serverId ||
+      !Array.isArray(value.agents) || !Array.isArray(value.workspaces) ||
+      (expectedServer && value.serverId !== expectedServer)) throw new Error("Incomplete snapshot or daemon identity changed");
+  for (const [rows, key] of [[value.agents, "id"], [value.workspaces, "workspaceId"]]) {
+    const ids = new Set();
+    for (const row of rows) {
+      if (!row || typeof row[key] !== "string" || !/^[a-zA-Z0-9_-]+$/.test(row[key]) || ids.has(row[key]))
+        throw new Error("Invalid or duplicate record in Paseo snapshot");
+      ids.add(row[key]);
+    }
+  }
+  return value;
 }
 
 function searchableValue(item) {
@@ -179,6 +217,15 @@ function isActive(agent) {
   return ACTIVE_STATUS_PATTERN.test(String(agent.status || ""));
 }
 
+function protectionReason(agent) {
+  if (!INACTIVE_STATUSES.has(agent.status)) return "active or unknown agent state";
+  if (!Number.isInteger(agent.pendingPermissionCount) || agent.pendingPermissionCount < 0)
+    return "permission state unknown";
+  if (agent.pendingPermissionCount > 0 || agent.attentionReason === "permission") return "permission pending";
+  if (agent.requiresAttention && agent.attentionReason !== "finished") return "attention required";
+  return "";
+}
+
 function matchesId(item, requestedId, kind = "agent") {
   const values = kind === "workspace"
     ? [item.workspaceId, item.id]
@@ -200,14 +247,14 @@ function selectAgents(agents, opts, regex) {
     } else if (opts.patternProvided) {
       requested = patternMatch;
       if (requested) selectionSource = "user-pattern";
-    } else {
+    } else if (!opts.workspaceIds.length) {
       requested = disposableMarker;
       if (requested) selectionSource = "disposable-marker";
     }
 
-    const active = isActive(agent);
+    const protection = protectionReason(agent);
     let skippedReason = "";
-    if (active) skippedReason = "active agents are never archived by this helper";
+    if (protection) skippedReason = protection;
     else if (!requested && !opts.agentIds.length && !opts.patternProvided) {
       skippedReason = "inactive but not marked disposable; idle alone is preserved";
     } else if (!requested) skippedReason = "not selected";
@@ -218,7 +265,7 @@ function selectAgents(agents, opts, regex) {
       patternMatch,
       disposableMarker,
       selectionSource,
-      selected: requested && !active,
+      selected: requested && !protection,
       skippedReason,
     };
   });
@@ -247,7 +294,8 @@ function archiveAcknowledgement(stdout, expectedId, kind) {
   try {
     const payload = JSON.parse(String(stdout || "").trim());
     const idKey = kind === "workspace" ? "workspaceId" : "agentId";
-    return payload?.status === "archived" && payload?.[idKey] === expectedId;
+    return payload?.status === "archived" && payload?.[idKey] === expectedId &&
+      typeof payload.archivedAt === "string" && Number.isFinite(Date.parse(payload.archivedAt));
   } catch (_error) {
     return false;
   }
@@ -258,16 +306,14 @@ function requestedIdsMissing(items, requestedIds, kind) {
 }
 
 function stillListed(items, original, kind) {
-  const ids = kind === "workspace"
-    ? [original.workspaceId, original.id]
-    : [original.id, original.shortId];
-  return items.some((item) => ids.filter(Boolean).some((id) => matchesId(item, id, kind)));
+  const key = kind === "workspace" ? "workspaceId" : "id";
+  return items.some(item => item[key] === original[key]);
 }
 
 function execute(opts, runCommand = run) {
   const regex = opts.patternProvided ? new RegExp(opts.pattern, "i") : null;
-  const agents = listAgents(runCommand);
-  const workspaces = listWorkspaces(runCommand);
+  const initial = readSnapshot(runCommand);
+  const {agents, workspaces} = initial;
   const agentRows = selectAgents(agents, opts, regex);
   const workspaceRows = selectWorkspaces(workspaces, opts, regex);
   const selectedAgents = agentRows.filter((row) => row.selected);
@@ -280,6 +326,10 @@ function execute(opts, runCommand = run) {
   const missingWorkspaceIds = requestedIdsMissing(workspaces, opts.workspaceIds, "workspace");
   if (missingAgentIds.length) validationErrors.push(`agent IDs not found: ${missingAgentIds.join(", ")}`);
   if (missingWorkspaceIds.length) validationErrors.push(`workspace IDs not found: ${missingWorkspaceIds.join(", ")}`);
+  for (const id of opts.agentIds) {
+    if (agents.filter(agent => matchesId(agent, id)).length > 1)
+      validationErrors.push(`ambiguous agent ID: ${id}; use a full ID`);
+  }
 
   const summary = {
     status: opts.dryRun ? "dry-run" : "pending",
@@ -300,6 +350,8 @@ function execute(opts, runCommand = run) {
       agentListRechecked: false,
       workspaceListRechecked: false,
       historyOrResumeUsed: false,
+      completeSnapshots: true,
+      preArchiveRechecks: 0,
     },
   };
 
@@ -311,79 +363,69 @@ function execute(opts, runCommand = run) {
     return { summary, agentRows, workspaceRows, exitCode: 1 };
   }
 
-  for (const row of selectedAgents) {
-    const id = row.item.id;
-    const result = runCommand("paseo", ["archive", id, "--json"]);
-    summary.actions.push({
-      type: "agent",
-      id,
-      commandExitCode: result.status,
-      archiveAcknowledged: result.status === 0
-        ? archiveAcknowledgement(result.stdout, id, "agent")
-        : false,
-      paseoRecordRemoved: null,
-      outcome: result.status === 0 ? "pending-verification" : "archive-command-failed",
-      stdout: result.stdout,
-      stderr: result.stderr,
-      _item: row.item,
-    });
-  }
-
-  for (const row of selectedWorkspaces) {
-    const id = row.item.workspaceId;
-    const result = runCommand("paseo", ["workspace", "archive", id, "--json"]);
-    summary.actions.push({
-      type: "workspace",
-      id,
-      commandExitCode: result.status,
-      archiveAcknowledged: result.status === 0
-        ? archiveAcknowledgement(result.stdout, id, "workspace")
-        : false,
-      paseoRecordRemoved: null,
-      outcome: result.status === 0 ? "pending-verification" : "archive-command-failed",
-      stdout: result.stdout,
-      stderr: result.stderr,
-      _item: row.item,
-    });
-  }
-
-  const agentActions = summary.actions.filter((action) => action.type === "agent");
-  if (agentActions.length) {
+  let halt = false;
+  function attempt(kind, row) {
+    const id = kind === "agent" ? row.item.id : row.item.workspaceId;
+    let fresh;
     try {
-      const remainingAgents = listAgents(runCommand);
-      summary.verification.agentListRechecked = true;
-      for (const action of agentActions) {
-        action.paseoRecordRemoved = !stillListed(remainingAgents, action._item, "agent");
-      }
+      fresh = readSnapshot(runCommand, initial.serverId);
+      summary.verification.preArchiveRechecks++;
     } catch (error) {
-      summary.verification.agentListError = error.message;
+      summary.actions.push({type: kind, id, commandExitCode: null, archiveAcknowledged: false,
+        paseoRecordRemoved: null, outcome: "precheck-failed", reason: error.message});
+      halt = true;
+      return;
     }
-  }
-
-  const workspaceActions = summary.actions.filter((action) => action.type === "workspace");
-  if (workspaceActions.length) {
-    try {
-      const remainingWorkspaces = listWorkspaces(runCommand);
-      summary.verification.workspaceListRechecked = true;
-      for (const action of workspaceActions) {
-        action.paseoRecordRemoved = !stillListed(remainingWorkspaces, action._item, "workspace");
-      }
-    } catch (error) {
-      summary.verification.workspaceListError = error.message;
-    }
-  }
-
-  for (const action of summary.actions) {
-    if (action.commandExitCode !== 0) {
-      action.outcome = "archive-command-failed";
-    } else if (action.archiveAcknowledged !== true) {
-      action.outcome = "archive-response-invalid";
-    } else if (action.paseoRecordRemoved !== true) {
-      action.outcome = "verification-failed";
+    let reason = "";
+    if (kind === "agent") {
+      const current = fresh.agents.find(agent => agent.id === id);
+      reason = current ? protectionReason(current) : "agent no longer present";
+      if (current && !reason && !selectAgents([current], opts, regex)[0].selected)
+        reason = "selection no longer matches fresh state";
     } else {
-      action.outcome = "success";
+      const unknownOwnership = fresh.agents.some(agent => typeof agent.workspaceId !== "string" || !agent.workspaceId);
+      const blocked = fresh.agents.some(agent => agent.workspaceId === id && protectionReason(agent));
+      reason = !fresh.workspaces.some(workspace => workspace.workspaceId === id) ? "workspace no longer present"
+        : unknownOwnership ? "agent ownership unknown"
+        : blocked ? "workspace contains active/unknown/attention-required agents" : "";
     }
-    delete action._item;
+    if (reason) {
+      summary.actions.push({type: kind, id, commandExitCode: null, archiveAcknowledged: false,
+        paseoRecordRemoved: false, outcome: "protected", reason});
+      return;
+    }
+    const args = kind === "agent" ? ["archive", id, "--json"] : ["workspace", "archive", id, "--json"];
+    const result = runCommand("paseo", args, initial.serverId);
+    const action = {type: kind, id, commandExitCode: result.status,
+      archiveAcknowledged: result.status === 0 && archiveAcknowledgement(result.stdout, id, kind),
+      paseoRecordRemoved: null, outcome: "pending-verification", stdout: result.stdout, stderr: result.stderr};
+    summary.actions.push(action);
+    try {
+      const after = readSnapshot(runCommand, initial.serverId);
+      if (kind === "agent") {
+        summary.verification.agentListRechecked = true;
+        action.paseoRecordRemoved = !stillListed(after.agents, row.item, "agent");
+      } else {
+        summary.verification.workspaceListRechecked = true;
+        action.paseoRecordRemoved = !stillListed(after.workspaces, row.item, "workspace") &&
+          !after.agents.some(agent => agent.workspaceId === id);
+      }
+    } catch (error) {
+      summary.verification[kind + "ListError"] = error.message;
+      halt = true;
+    }
+    action.outcome = result.status !== 0 ? "archive-command-failed"
+      : !action.archiveAcknowledged ? "archive-response-invalid"
+      : action.paseoRecordRemoved !== true ? "verification-failed" : "success";
+    if (action.outcome !== "success") halt = true;
+  }
+  for (const row of selectedAgents) {
+    attempt("agent", row);
+    if (halt) break;
+  }
+  if (!halt) for (const row of selectedWorkspaces) {
+    attempt("workspace", row);
+    if (halt) break;
   }
 
   if (!summary.actions.length) {
@@ -441,6 +483,7 @@ function printHuman(result) {
       `archiveAcknowledged=${action.archiveAcknowledged} paseoRecordRemoved=${action.paseoRecordRemoved}`
     );
     if (action.stderr) console.log(`  stderr: ${action.stderr.trim()}`);
+    if (action.reason) console.log(`  reason: ${action.reason}`);
   }
   for (const error of summary.validationErrors) console.log(`- validation failure: ${error}`);
   if (summary.verification.agentListError) console.log(`- agent verification failure: ${summary.verification.agentListError}`);
@@ -488,4 +531,6 @@ module.exports = {
   printHuman,
   selectAgents,
   selectWorkspaces,
+  protectionReason,
+  readSnapshot,
 };

@@ -21,8 +21,9 @@ filesystem/shell work does not need a browser.
 
 ## Preconditions and runtime
 
-- Node.js >= 20 (the `cloakbrowser` package engine minimum). Recipes load the
-  ESM package with dynamic `import()`; verified here on Node 22.23.2.
+- Node.js ^20.19.0 or >= 22.12.0 (the `cloakbrowser@0.6.2` engine range).
+  Recipes use dynamic `import()`; CommonJS is also supported by the package.
+  Verified here on Node 22.23.2, with `playwright-core@1.64.0`.
 - Paseobility-owned runtime (never a global install, never `HOME` reuse):
 
   ```bash
@@ -104,10 +105,13 @@ try {
 NODE
 ```
 
-1. Act with Playwright locators/roles (`page.getByRole`, `#id`), not guessed
-   coordinates.
-2. Re-read state after navigation or a DOM change: take a fresh `ariaSnapshot`
-   or `textContent` before the next action.
+1. Prefer role/accessible-name or label locators (`getByRole`, `getByLabel`),
+   then a stable test ID or scoped CSS selector. Scope frames with `frameLocator`.
+   Strict matching errors need a better target, not a guessed `.first()`.
+2. Let locators auto-wait for actionability. After asynchronous changes, wait
+   for the task's actual postcondition with a bounded `waitForURL` or read-only
+   `waitForFunction`, then take a fresh `ariaSnapshot` or `textContent`. Do not
+   use fixed sleeps or `networkidle` as proof that an application is ready.
 3. Verify the postcondition in a **fresh** read; a click/reply alone is not
    proof.
 4. Close the browser you opened (in `finally`). Never kill unrelated sessions.

@@ -46,12 +46,14 @@ Report what was operated, the evidence, and any refusal. Never log secrets.
 ## Source
 
 Pinned upstream: [`trycua/cua`](https://github.com/trycua/cua) @
-[`bf6c76786d938070f4ecf1e44004752f69f518b8`](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8).
+[`0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`](https://github.com/trycua/cua/tree/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc).
 Reviewed contract:
-[`Skills/cua-driver/SKILL.md`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/Skills/cua-driver/SKILL.md)
-(0.30.4, which still supports `element_token` and the `element_index` +
-`snapshot_id` alternative; the token-only change in upstream PR `#3873` is not
-in this release), with
-[BROWSER.md](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/Skills/cua-driver/BROWSER.md)
+[`Skills/cua-driver/SKILL.md`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/Skills/cua-driver/SKILL.md)
+(0.34.1: actions accept `element_token`; `element_index` and `snapshot_id`
+are no longer input arguments). Use `capture_id` with pixel input when the
+installed action schema advertises it. `get_window_state` with `display_only`
+and `include_accessibility_tree:false` provides display pixels only; those
+images do not register an action capture or replace the agent snapshot.
+Reviewed [BROWSER.md](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/Skills/cua-driver/BROWSER.md)
 for page content. MIT licensed. The last version exercised end-to-end remains
-`0.28.2`; `0.30.4` here is a source/schema-reviewed contract.
+`0.28.2`; `0.34.1` here is an installed/schema-reviewed contract, not a new GUI end-to-end result.

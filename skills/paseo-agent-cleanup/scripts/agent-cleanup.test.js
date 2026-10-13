@@ -16,6 +16,8 @@ const idleAgent = {
   status: "idle",
   cwd: "/projects/product",
   provider: "codex",
+  workspaceId: "workspace-test",
+  pendingPermissionCount: 0,
 };
 
 const testAgent = {
@@ -25,6 +27,8 @@ const testAgent = {
   status: "idle",
   cwd: "/tmp/cleanup-validation",
   provider: "codex",
+  workspaceId: "workspace-test",
+  pendingPermissionCount: 0,
 };
 
 const activeAgent = {
@@ -34,6 +38,8 @@ const activeAgent = {
   status: "running",
   cwd: "/tmp/cleanup-validation",
   provider: "codex",
+  workspaceId: "workspace-test",
+  pendingPermissionCount: 0,
 };
 
 const testWorkspace = {
@@ -56,6 +62,7 @@ function createRunner(options = {}) {
   }
 
   function run(command, args) {
+    if (command === "snapshot") return response(0, {complete: true, serverId: "server-test", agents, workspaces});
     assert.equal(command, "paseo");
     calls.push([...args]);
     const key = args.join(" ");
@@ -224,6 +231,7 @@ test("mixed archive outcomes are an explicit non-zero partial failure", () => {
   let agents = [structuredClone(testAgent), structuredClone(secondTestAgent)];
   const calls = [];
   const run = (_command, args) => {
+    if (_command === "snapshot") return {status: 0, stdout: JSON.stringify({complete: true, serverId: "server-test", agents, workspaces: []}), stderr: ""};
     calls.push([...args]);
     if (args.join(" ") === "ls --json") {
       return { status: 0, stdout: JSON.stringify(agents), stderr: "" };
@@ -301,4 +309,126 @@ test("initializing agents are protected as active", () => {
   assert.deepEqual(result.summary.agentsSelected, []);
   assert.equal(result.summary.status, "no-op");
   assert.equal(runner.calls.some((call) => call[0] === "archive"), false);
+});
+
+test("unknown, missing and future statuses remain protected", () => {
+  for (const status of ["unknown", "waiting", "", undefined, "completed", "exited"]) {
+    const runner = createRunner({agents: [{...testAgent, status}]});
+    const result = execute(parseArgs(["--auto"]), runner.run);
+    assert.deepEqual(result.summary.agentsSelected, [], String(status));
+    assert.equal(runner.calls.some(call => call[0] === "archive"), false);
+  }
+});
+
+test("permission and unfinished attention block even an idle explicit target", () => {
+  for (const state of [
+    {pendingPermissionCount: 1}, {pendingPermissionCount: undefined},
+    {requiresAttention: true, attentionReason: "permission"},
+    {requiresAttention: true, attentionReason: "error"},
+  ]) {
+    const runner = createRunner({agents: [{...testAgent, ...state}]});
+    const result = execute(parseArgs(["--agent", testAgent.id, "--archive", "--yes"]), runner.run);
+    assert.deepEqual(result.summary.agentsSelected, []);
+    assert.equal(runner.calls.some(call => call[0] === "archive"), false);
+  }
+});
+
+test("finished attention permits a deliberately selected inactive agent", () => {
+  const runner = createRunner({agents: [{...testAgent, requiresAttention: true, attentionReason: "finished"}]});
+  assert.equal(execute(parseArgs(["--auto"]), runner.run).exitCode, 0);
+  assert.equal(runner.calls.filter(call => call[0] === "archive").length, 1);
+});
+
+test("an agent becoming running after preview is protected before archive", () => {
+  const runner = createRunner({agents: [{...testAgent, status: "running"}]});
+  let reads = 0;
+  const run = (command, args) => command === "snapshot" && ++reads === 1
+    ? {status: 0, stdout: JSON.stringify({complete: true, serverId: "server-test", agents: [testAgent], workspaces: []})}
+    : runner.run(command, args);
+  const result = execute(parseArgs(["--auto"]), run);
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.summary.actions[0].outcome, "protected");
+  assert.equal(runner.calls.some(call => call[0] === "archive"), false);
+});
+
+test("workspace archive protects active, unknown and permission-pending children", () => {
+  for (const state of [{status: "running"}, {status: "unknown"}, {pendingPermissionCount: 1}]) {
+    const runner = createRunner({agents: [{...testAgent, ...state}], workspaces: [testWorkspace]});
+    const result = execute(parseArgs(["--workspace", testWorkspace.workspaceId, "--archive", "--yes"]), runner.run);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.summary.actions[0].outcome, "protected");
+    assert.equal(runner.calls.some(call => call.includes("archive")), false);
+  }
+});
+
+test("workspace archive refuses unproven ownership instead of comparing cwd", () => {
+  const runner = createRunner({agents: [{...testAgent, workspaceId: undefined}], workspaces: [testWorkspace]});
+  const result = execute(parseArgs(["--workspace", testWorkspace.workspaceId, "--archive", "--yes"]), runner.run);
+  assert.equal(result.exitCode, 1);
+  assert.match(result.summary.actions[0].reason, /ownership unknown/);
+});
+
+test("same cwd does not make another workspace's running agent a child", () => {
+  const runner = createRunner({agents: [{...activeAgent, workspaceId: "different-workspace"}], workspaces: [testWorkspace]});
+  assert.equal(execute(parseArgs(["--workspace", testWorkspace.workspaceId, "--archive", "--yes"]), runner.run).exitCode, 0);
+});
+
+test("incomplete or identity-changing snapshots authorize no archive", () => {
+  for (const bad of [{complete: false}, {agents: null}, {agents: [testAgent, testAgent]}]) {
+    const run = () => ({status: 0, stdout: JSON.stringify({complete: true, serverId: "server-test", agents: [testAgent], workspaces: [], ...bad})});
+    assert.throws(() => execute(parseArgs(["--auto"]), run), /snapshot|record/i);
+  }
+  let reads = 0, archived = false;
+  const run = (command) => {
+    if (command !== "snapshot") {archived = true; throw Error("must not archive");}
+    return {status: 0, stdout: JSON.stringify({complete: true, serverId: ++reads === 1 ? "server-test" : "server-replaced", agents: [testAgent], workspaces: []})};
+  };
+  const changed = execute(parseArgs(["--auto"]), run);
+  assert.equal(changed.exitCode, 1);
+  assert.equal(changed.summary.actions[0].outcome, "precheck-failed");
+  assert.equal(archived, false);
+});
+
+test("an explicit workspace request never implicitly archives disposable agents elsewhere", () => {
+  const runner = createRunner({agents: [{...testAgent, workspaceId: "different-workspace"}], workspaces: [testWorkspace]});
+  const result = execute(parseArgs(["--workspace", testWorkspace.workspaceId, "--archive", "--yes"]), runner.run);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(runner.calls, [["workspace", "archive", testWorkspace.workspaceId, "--json"]]);
+});
+
+test("a failed fresh snapshot retains prior verified effects as partial failure", () => {
+  const second = {...testAgent, id: "second-agent"};
+  const runner = createRunner({agents: [testAgent, second]});
+  let reads = 0;
+  const run = (command, args) => command === "snapshot" && ++reads === 4
+    ? {status: 1, stdout: ""} : runner.run(command, args);
+  const result = execute(parseArgs(["--auto"]), run);
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.summary.status, "partial-failure");
+  assert.deepEqual(result.summary.actions.map(action => action.outcome), ["success", "precheck-failed"]);
+  assert.equal(runner.calls.length, 1);
+});
+
+test("ambiguous short IDs refuse selection and cannot corrupt full-ID verification", () => {
+  const other = {...testAgent, id: "other-agent"};
+  const runner = createRunner({agents: [testAgent, other]});
+  const ambiguous = execute(parseArgs(["--agent", testAgent.shortId, "--archive", "--yes"]), runner.run);
+  assert.equal(ambiguous.exitCode, 1);
+  assert.match(ambiguous.summary.validationErrors[0], /ambiguous/);
+  assert.equal(runner.calls.length, 0);
+  const exact = execute(parseArgs(["--agent", testAgent.id, "--archive", "--yes"]), runner.run);
+  assert.equal(exact.exitCode, 0);
+});
+
+test("a disposable selection that changes before dispatch remains untouched", () => {
+  const original = {...testAgent, name:"fixture-test", cwd:"/projects/app"};
+  const runner = createRunner({agents:[{...original,name:"normal-work"}]});
+  let reads=0;
+  const run=(command,args)=>command==="snapshot" && ++reads===1
+    ? {status:0,stdout:JSON.stringify({complete:true,serverId:"server-test",agents:[original],workspaces:[]})}
+    : runner.run(command,args);
+  const result=execute(parseArgs(["--auto"]),run);
+  assert.equal(result.exitCode,1);
+  assert.match(result.summary.actions[0].reason,/selection no longer/);
+  assert.equal(runner.calls.length,0);
 });

@@ -20,7 +20,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.9.0.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 9개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
+**현재 패키지: v2.9.1.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 9개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
 
 ## 한 줄 요약
 
@@ -33,6 +33,34 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 이 repo는 **Paseo 내장 도구를 반복 가능하게 조합하기 위한 스킬 패키지**입니다. macOS/Linux용 bootstrap helper와 Windows PowerShell 설치 helper를 함께 제공합니다.
 
 ---
+
+## 2026-10-13 업데이트 — 의존성 최신화 (v2.9.1)
+
+- 브라우저 예제를 `cloakbrowser@0.6.2`, `playwright-core@1.64.0`으로 함께
+  고정했습니다. Node 조건은 `^20.19.0 || >=22.12.0`입니다. ESM과 CommonJS를
+  모두 지원하지만 예제는 동적 import를 유지합니다. 키 없는 무료 브라우저는
+  macOS Chromium 145이며, 라이선스가 필요한 Chromium 154 채널과 구분합니다.
+- 새 Cua 설치는 `0.34.1`, 불변 커밋
+  `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`을 사용합니다. 동작 입력은
+  `element_token`을 사용하며, 표시용 미리보기와 입력을 위한 캡처를 구분합니다.
+  패키지 설치기는 기존 동작 중인 드라이버를 계속 재사용합니다. 호스트 업그레이드는
+  별도의 명시적 업데이트 요청으로 수행합니다.
+- Vercel 인터페이스 지침의 오프라인 사본을 2026-10-05 커밋으로 갱신했습니다.
+- 로컬 Apple Silicon Mac에서 새 브라우저의 입력·클릭·결과 재확인, 세 화면 크기
+  캡처, 실패 후 브라우저 종료를 확인했습니다. 사용자가 요청한 Cua
+  0.28.2 → 0.34.1 업그레이드는 OS 권한을 유지했고 버전·doctor·도구 스키마를
+  확인했습니다. 새로운 네이티브 GUI 종단 검증이나 Windows/Linux 실행 결과는 아닙니다.
+
+이번 로컬 v2.9.1 준비에는 정리 스킬 보완도 포함됩니다. 페이지 전체 상태와
+정확한 workspaceId를 읽고, 미확인 상태·권한 대기·활성 자식을 보호하며,
+정확한 ID로 요청한 뒤 바로 재확인합니다. 워크스페이스만 지정했을 때 다른
+임시 에이전트를 함께 선택하던 문제도 고쳤습니다. CI는 스킬 카탈로그·메타데이터,
+디자인 데이터·런타임, 스킬 폴더의 PowerShell까지 검사하며, 원본 저장소 전용
+테스트는 이유를 명시해 건너뜁니다. 브라우저 예제는 접근성 로케이터와 결과
+대기를 사용합니다. [보완 검증 기록](docs/skill-improvements-2026-10-13.md)을 참고하세요.
+
+[날짜별 검증 기록](docs/dependency-validation-2026-10-13.md)을 참고하세요.
+아래의 과거 업데이트 기록은 당시 버전과 검증 범위를 유지합니다.
 
 ## 2026-10-11 업데이트 — `/paseo-multi` (v2.9.0)
 
@@ -214,8 +242,8 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 이미 동작하는 드라이버가 있으면 다시 설치하지 않고 재사용하며 자동
 업그레이드하지 않습니다.
 
-- 고정 소스: trycua/cua `bf6c76786d938070f4ecf1e44004752f69f518b8` 커밋
-  (`cua-driver-rs-v0.30.4` 릴리스 태그), Cua Driver `0.30.4`. 이 고정값은
+- 고정 소스: trycua/cua `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc` 커밋
+  (`cua-driver-rs-v0.34.1` 릴리스 태그), Cua Driver `0.34.1`. 이 고정값은
   소스/스키마 검토 계층이며, 아래 검증 기록에서 E2E로 실행된 마지막 버전은
   여전히 `0.28.2`입니다. 동작하는 기존 드라이버는 재사용하고 자동 업그레이드하지
   않습니다.
@@ -233,9 +261,9 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 - 드라이버 단계는 macOS에서 코드 서명을 검증하고, PATH를 수정하지 않으며
   (`--no-modify-path` / `-NoPathUpdate`), 셸 rc와 MCP 설정을 건드리지 않습니다.
   고정 installer는 릴리스 해석·다운로드와 오래된 데몬 중지만 하며 데몬을 시작하지
-  않습니다([`install.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/install.sh),
-  [`_install-rust.sh`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/scripts/_install-rust.sh)).
-  명시적 `CUA_DRIVER_RS_VERSION=0.30.4` 고정은 installer의 baked 버전보다
+  않습니다([`install.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/install.sh),
+  [`_install-rust.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/_install-rust.sh)).
+  명시적 `CUA_DRIVER_RS_VERSION=0.34.1` 고정은 installer의 baked 버전보다
   우선하며, 고정 installer는 철회된 릴리스(`0.28.3`)를 거부합니다.
 - 런타임 단계가 실패하면 installer는 0이 아닌 코드로 종료하고, 스킬은 복사되었
   지만 런타임 설정이 실패했음(설치가 불완전할 수 있음)을 알립니다.
@@ -1032,7 +1060,7 @@ stealth Chromium 바이너리(런타임 캐시)를 필요로 합니다.
 
 - 로케이터/롤로 액션하고, 네비게이션·DOM 변경 후 상태를 새로 읽습니다(클릭만으로 증명 불가).
 - 기본은 headless·격리이며, 사용자의 Chrome/Paseo 프로필·쿠키·로그인·ref를 공유하지 않습니다. 실패 시에도 `finally`에서 브라우저를 닫아 누수를 막습니다.
-- 키 없는 무료 바이너리를 우선합니다(macOS: Chromium 145, Linux/Windows: Chromium 146). 최신 키드 빌드(macOS 151 / Linux·Windows 152)는 GitHub 발급 키로 1 동시 세션까지 무료이며, 대규모는 유료입니다 — 최신 빌드 사용에 유료가 필수는 아닙니다. `cloakbrowser login`이나 라이선스 키 저장은 하지 않으며, 래퍼 최신 릴리스가 최신 브라우저 바이너리는 아닙니다.
+- 키 없는 무료 바이너리를 우선합니다(macOS: Chromium 145, Linux/Windows: Chromium 146). 최신 키드 빌드(모든 지원 플랫폼 Chromium 154)는 GitHub 발급 키로 1 동시 세션까지 무료이며, 대규모는 유료입니다 — 최신 빌드 사용에 유료가 필수는 아닙니다. `cloakbrowser login`이나 라이선스 키 저장은 하지 않으며, 래퍼 최신 릴리스가 최신 브라우저 바이너리는 아닙니다.
 - 현재 브라우저 작업이 이미 허용한 가역 단계에 확인 프롬프트를 추가하지 않고, 결제·제출·계정 변경은 검증합니다.
 - `evaluate`로 쿠키, 토큰, localStorage 같은 민감 정보를 읽지 않습니다.
 
@@ -1041,13 +1069,13 @@ stealth Chromium 바이너리(런타임 캐시)를 필요로 합니다.
 ```bash
 RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
 mkdir -p "$RUNTIME" && cd "$RUNTIME" && npm init -y >/dev/null
-npm install --save-exact --no-audit --no-fund cloakbrowser@0.5.11 playwright-core@1.63.0
+npm install --save-exact --no-audit --no-fund cloakbrowser@0.6.2 playwright-core@1.64.0
 export PASEOBILITY_CLOAK_RUNTIME="$RUNTIME"
 export CLOAKBROWSER_CACHE_DIR="${CLOAKBROWSER_CACHE_DIR:-$RUNTIME/cache}"  # 런타임 범위 바이너리 캐시
 export CLOAKBROWSER_AUTO_UPDATE=false            # 재현 가능한 고정
 ```
 
-패키지는 ESM입니다: 동적 `import()`으로 로드합니다(Node >= 20, 패키지 엔진 최소값; Node 22.23.2에서 검증). 자세한 내용은 [`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md).
+패키지는 ESM과 CommonJS를 지원합니다. 예제는 동적 `import()`을 사용합니다(Node ^20.19.0 또는 >=22.12.0; Node 22.23.2에서 검증). 자세한 내용은 [`skills/paseo-browser/references/cloakbrowser.md`](skills/paseo-browser/references/cloakbrowser.md).
 
 스킬 복사는 문서 전용입니다: convenience installer(임시 `--target-home` 포함)는
 Node 패키지 설치나 브라우저 바이너리 다운로드를 하지 않습니다.

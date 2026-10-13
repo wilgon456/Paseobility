@@ -22,10 +22,13 @@ import re
 import unittest
 from pathlib import Path
 
-REPO = next(
+REPO = next((
     parent for parent in Path(__file__).resolve().parents
     if (parent / "scripts" / "generate-catalog-summary.py").is_file()
-)
+), None)
+if REPO is None:
+    raise unittest.SkipTest("Upstream repository-only test: supporting root scripts are not shipped by Paseobility")
+
 SKILL_TREES = ("cli/assets/skills", ".claude/skills")
 # The only file that may use the plugin-root form: hand-authored for the plugin install
 # and not shipped by the CLI (sync-assets.mjs mirrors data/ and scripts/, never SKILL.md).

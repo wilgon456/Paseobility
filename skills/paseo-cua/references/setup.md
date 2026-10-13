@@ -55,7 +55,7 @@ The Paseobility installer only prepares the pinned binary. It does not start the
 daemon and does not grant permissions. On a Mac:
 
 1. Record the installed version: `cua-driver --version`. The Paseobility
-   installer now pins `0.30.4` (the latest upstream stable release) for a fresh
+   installer now pins `0.34.1` (verified upstream stable release as of 2026-10-13) for a fresh
    install, but a working existing driver is reused as-is — do not downgrade or
    replace it just to match the pin. The pin is a source/schema-reviewed
    contract; `0.28.2` remains the last version exercised end-to-end in the
@@ -112,12 +112,12 @@ source is authoritative.
 ## Source
 
 Pinned upstream: [`trycua/cua`](https://github.com/trycua/cua) @
-[`bf6c76786d938070f4ecf1e44004752f69f518b8`](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8)
-(the `cua-driver-rs-v0.30.4` release tag),
-skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/Skills/cua-driver),
-Cua Driver version 0.30.4. The pinned installers resolve/download a release and
+[`0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`](https://github.com/trycua/cua/tree/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc)
+(the `cua-driver-rs-v0.34.1` release tag),
+skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/Skills/cua-driver),
+Cua Driver version 0.34.1. The pinned installers resolve/download a release and
 stop stale daemons; they never start one. Reviewed implementation:
-[`src/cli.rs`](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
+[`src/cli.rs`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
 (`run_mcp_config` prints a snippet; it writes no config).
 Upstream source files are MIT licensed (Copyright (c) 2025 Cua AI, Inc.).
 Docs: [cua.ai/docs/cua-driver](https://cua.ai/docs/cua-driver)

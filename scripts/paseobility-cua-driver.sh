@@ -18,8 +18,8 @@
 #   stay manual, and binary presence is not permission readiness.
 set -euo pipefail
 
-PIN_VERSION="${PASEOBILITY_CUA_PIN_VERSION:-0.30.4}"
-PIN_SHA="${PASEOBILITY_CUA_PIN_SHA:-bf6c76786d938070f4ecf1e44004752f69f518b8}"
+PIN_VERSION="${PASEOBILITY_CUA_PIN_VERSION:-0.34.1}"
+PIN_SHA="${PASEOBILITY_CUA_PIN_SHA:-0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc}"
 RAW_BASE="${PASEOBILITY_CUA_RAW_BASE:-https://raw.githubusercontent.com/trycua/cua/${PIN_SHA}/libs/cua-driver/scripts}"
 BIN_DIR="${PASEOBILITY_CUA_BIN_DIR:-$HOME/.local/bin}"
 INSTALLER_DIR="${PASEOBILITY_CUA_INSTALLER_DIR:-}"
@@ -48,7 +48,7 @@ Options:
   --check         Report presence only; do not install (exit 3 when missing)
   --dry-run       Print the install plan without downloading or executing
   --bin-dir DIR   Visible binary directory (default ~/.local/bin)
-  --version V     Pinned Cua Driver version to install (default 0.30.4)
+  --version V     Pinned Cua Driver version to install (default 0.34.1)
 
 Test hooks (environment):
   PASEOBILITY_CUA_INSTALLER_DIR   Use this directory's installer scripts
