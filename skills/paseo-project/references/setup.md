@@ -22,6 +22,16 @@ helper preserves existing files unless `--force` is requested; do not call an
 unchanged old artifact freshly generated. Read only output sections needed for
 the requested work instead of rereading every source excerpt.
 
+The helper includes nested `AGENTS.md` and prefers a declared `packageManager`
+over lockfile inference. Conflicting lockfiles or an unresolved manager produce
+no guessed install command. It copies bounded excerpts, not a complete
+instruction/monorepo audit.
+Inspect current nested instructions and selected package manifests directly.
+Before requested setup, choose the repository's declared package manager/runtime
+and lockfile. Describe install, build, test and installed/runtime results
+separately; package installation or a healthy daemon alone does not prove the
+requested repair. Do not install dependencies solely to prepare a read-only brief.
+
 ## Installation or update
 
 - Read the checkout's `AGENTS.md` for installation-specific requirements.

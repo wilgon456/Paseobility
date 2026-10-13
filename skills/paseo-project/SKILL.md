@@ -25,6 +25,11 @@ relying on them. Read only missing or changed material relevant to the request:
 README, applicable agent instructions, overview/setup docs, and command manifests.
 Do not repeat a repository survey just because a new session began.
 
+A Git repository root, monorepo package directory and registered Paseo workspace
+can be different. Record which one each command targets. Read nearer/nested
+`AGENTS.md` for selected modules; generated `.paseobility` context is a snapshot
+and never replaces applicable current instructions.
+
 Only inspect Paseo runtime when the request concerns its setup or operation.
 Use `paseo --version` and `paseo daemon status --json` for the selected host;
 `paseo project ls --json` and `paseo workspace ls --json` identify live records.

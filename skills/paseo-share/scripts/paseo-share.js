@@ -122,11 +122,15 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     encoding: "utf8",
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+    timeout: 120000,
+    killSignal: "SIGKILL",
+    maxBuffer: 8 * 1024 * 1024,
     windowsHide: true
   });
   if (result.error) {
-    if (options.allowFailure) return { ok: false, stdout: "", stderr: result.error.message };
+    if (options.allowFailure) return { ok: false, stdout: "", stderr: result.error.code === "ETIMEDOUT"
+      ? "command timed out; remote outcome is unknown, inspect state before retrying" : result.error.message };
     fail(`${command} could not run: ${result.error.message}`);
   }
   const response = {
@@ -145,7 +149,9 @@ function runBuffer(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     encoding: null,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" },
+    timeout: 120000,
+    killSignal: "SIGKILL",
     maxBuffer: MAX_BYTES + (1024 * 1024),
     windowsHide: true
   });
@@ -693,30 +699,40 @@ function validateFetchedPayload(sourcePath, metadata, config) {
   return { stat, ...verified };
 }
 
-function pushWithRetry(config) {
+function pushWithRetry(config, runGit = git) {
   let lastError = "";
   for (let attempt = 1; attempt <= 4; attempt += 1) {
-    const pushResult = git(
-      ["push", "origin", `HEAD:${config.branch}`],
+    const pushResult = runGit(
+      ["push", "--porcelain", "origin", `HEAD:${config.branch}`],
       config.checkoutPath,
       true
     );
     if (pushResult.ok) return;
     lastError = pushResult.stderr;
-    const fetchResult = git(["fetch", "origin", config.branch], config.checkoutPath, true);
-    if (!fetchResult.ok) break;
-    const rebaseResult = git(
+    // Only a proven concurrent branch update is safe to rebase and retry.
+    // Authentication, hooks, transport loss and timeout do not prove rejection.
+    const rejected = pushResult.stdout.split(/\r?\n/).some(line => {
+      const [flag, ref, summary] = line.split("\t");
+      return flag === "!" && ref === `HEAD:refs/heads/${config.branch}` &&
+        /^\[rejected\] \((fetch first|non-fast-forward)\)$/.test(summary || "");
+    });
+    if (!rejected || attempt === 4) break;
+    const fetchResult = runGit(["fetch", "origin", config.branch], config.checkoutPath, true);
+    if (!fetchResult.ok) { lastError = fetchResult.stderr || lastError; break; }
+    const rebaseResult = runGit(
       ["rebase", `origin/${config.branch}`],
       config.checkoutPath,
       true
     );
     if (!rebaseResult.ok) {
-      git(["rebase", "--abort"], config.checkoutPath, true);
+      lastError = rebaseResult.stderr || "rebase failed";
+      const abort = runGit(["rebase", "--abort"], config.checkoutPath, true);
+      if (!abort.ok) lastError += "; abort failed, inspect the managed checkout";
       break;
     }
   }
-  fail(
-    `push failed after retries; the committed artifact remains in ${config.checkoutPath}: ${redact(lastError)}`
+  throw new Error(
+    `push not confirmed; the committed artifact remains in ${config.checkoutPath}. Inspect remote state before retrying: ${redact(lastError)}`
   );
 }
 
@@ -1010,6 +1026,7 @@ module.exports = {
   isNotFoundResponse,
   isPathInside,
   parseCommandJson,
+  pushWithRetry,
   resolveDefaultGithubRepository,
   resolveWithin,
   sha256,

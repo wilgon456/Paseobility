@@ -139,7 +139,10 @@ artifacts/<machine>/<year>/<month>/<artifact-id>/
 ```
 
 Each directory contains the shared file and `artifact.json`. Concurrent pushes
-normally touch different paths; the CLI retries rejected pushes with a rebase.
+normally touch different paths; the CLI retries only machine-readable,
+non-fast-forward/fetch-first rejections, at most four pushes, with a rebase.
+Authentication, server-hook failures and uncertain transport outcomes stop
+without automatic resubmission. Git/gh subprocesses are bounded to two minutes.
 Do not manually edit files inside the managed clone. Publish a new artifact
 instead.
 
@@ -164,3 +167,6 @@ LF/CRLF conversion. Fail closed if any remote artifact is malformed or modified.
 - Do not install a background daemon or create GitHub Actions workflows.
 - If the remote is unavailable, report that the local commit remains in the
   managed checkout and retry only when the user asks or during the next share.
+  If the push response was lost or timed out, first inspect the artifact ID and
+  remote branch to determine whether it arrived. Do not publish the same file
+  again merely to retry an existing pending commit; that creates another ID.

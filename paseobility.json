@@ -1,6 +1,6 @@
 {
   "name": "Paseobility",
-  "version": "2.9.1",
+  "version": "2.9.2",
   "skillPath": "skills",
   "installTargets": {
     "paseo": {

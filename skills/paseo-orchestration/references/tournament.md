@@ -21,6 +21,10 @@ such a request. Use the shared discovery and safety rules in ../SKILL.md.
    outputs, and evidence. Ask for the best-supported result, decisive disagreement,
    useful parts to merge, and remaining risks. Do not manufacture a winner when
    requirements are missing or evidence is incomparable.
+   Compare behavior at the same boundary and base revision. A contestant's test
+   claims need commands/results, and a proposed plan must not be scored as a
+   working implementation. When implementations are combined, rerun the relevant
+   checks in the integrated tree before accepting the combination.
 5. The coordinator reports the actual contestants/judge used and verification.
    Selecting an implementation does not authorize merging, pushing, publishing,
    or deploying it. Perform those actions only within the user's authorization.

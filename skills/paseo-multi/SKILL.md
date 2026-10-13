@@ -9,11 +9,16 @@ Use the existing Paseo connection to operate the computer the user selected. A d
 
 ## Select the target
 
-Run `python3 scripts/hosts.py hosts` from this skill directory. It lists a private registry at `~/.config/paseo-multi/hosts.json`, including names, aliases, platform and expected server ID. This registry is a snapshot, not automatic discovery of newly added Desktop hosts. Register a new connection from a trusted pairing offer or saved-host export; see [connections.md](references/connections.md).
+Resolve this skill's installed directory first. Run `python3 <skill-dir>/scripts/hosts.py hosts` (Windows: `python` or `py -3`). The relative examples below assume this skill directory, not the user's project. It lists a private registry at `~/.config/paseo-multi/hosts.json`, including names, aliases, platform and expected server ID. This registry is a snapshot, not automatic discovery of newly added Desktop hosts. Register a new connection from a trusted pairing offer or saved-host export; see [connections.md](references/connections.md).
 
 Resolve names exactly against labels or aliases. If a user's name matches more than one computer, ask which one while doing independent read-only work. Never substitute the local computer for an unreachable remote host. Expand a request for several PCs into an explicit target list; `all` is not a mutation target.
 
 Run `python3 scripts/hosts.py status HOST` and `agents HOST`. Every remote operation checks the live server ID against the registry before continuing. Offline hosts remain reported as offline. Registered hosts are not necessarily online.
+
+`agents` reads every page, with a bounded deadline/page count. Malformed or
+repeated cursors, duplicate IDs or unknown permission counts refuse a complete
+result. Lifecycle decisions must use that complete snapshot; CLI/MCP compact
+lists are display views. A later page can contain active work.
 
 ## Operate
 
@@ -42,6 +47,11 @@ For agent/project/workspace/schedule operations, use `cli HOST -- ...` with inst
 Treat the user's requested operation and target list as authorization for necessary steps within that scope. Do not ask again for already authorized updates. A request to inspect or list PCs does not authorize restarting them. Preserve existing settings, credentials, user data and unrelated work.
 
 Before a restart/update, inspect active agents. The `restart` helper refuses active or unknown states. If the user says to apply after work finishes, use a host-local one-time idle watcher; do not cancel that work or rely on an indefinite controller session. Follow [updates.md](references/updates.md) for this mode. User instructions to restart immediately override the default waiting policy; do not silently infer that instruction from a general update request.
+
+Only `idle`, `error` and `closed` are confirmed inactive lifecycle states for
+the reviewed client. Permission attention blocks restart even if its separate
+attention boolean is false. The server has no atomic idle-only restart guard;
+fresh reads reduce the race but cannot prevent new work between read and restart.
 
 ## Verify and report
 

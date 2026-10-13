@@ -11,6 +11,7 @@ const { spawnSync } = require("node:child_process");
 
 const {
   MAX_BYTES,
+  pushWithRetry,
   resolveDefaultGithubRepository,
   resolveWithin,
   sha256,
@@ -19,6 +20,103 @@ const {
   validateFetchedPayload,
   validatePortableFileName
 } = require("./paseo-share.js");
+
+test("push retries only a proven non-fast-forward rejection", () => {
+  const config = {branch: "main", checkoutPath: "/fixture"};
+  const calls = [];
+  const runner = args => {
+    calls.push(args[0]);
+    if (calls.length === 1) return commandResult(false,
+      "!\tHEAD:refs/heads/main\t[rejected] (fetch first)", "remote advanced");
+    return commandResult(true);
+  };
+  pushWithRetry(config, runner);
+  assert.deepEqual(calls, ["push", "fetch", "rebase", "push"]);
+});
+
+test("authentication, remote hooks, transport uncertainty and wrong refs never retry", () => {
+  const cases = [
+    ["", "authentication failed"], ["", "command timed out"],
+    ["!\tHEAD:refs/heads/main\t[remote rejected] (hook declined)", "hook"],
+    ["!\tHEAD:refs/heads/main\t[remote failure] (connection lost)", "lost"],
+    ["!\tHEAD:refs/heads/other\t[rejected] (fetch first)", "wrong ref"]
+  ];
+  for (const [stdout, stderr] of cases) {
+    const calls = [];
+    assert.throws(() => pushWithRetry({branch: "main", checkoutPath: "/fixture"}, args => {
+      calls.push(args[0]); return commandResult(false, stdout, stderr);
+    }), /push not confirmed/);
+    assert.deepEqual(calls, ["push"]);
+  }
+});
+
+test("conflicting rebase aborts once and preserves the pending artifact", () => {
+  const calls = [];
+  assert.throws(() => pushWithRetry({branch: "main", checkoutPath: "/fixture"}, args => {
+    calls.push(args.join(" "));
+    if (args[0] === "push") return commandResult(false,
+      "!\tHEAD:refs/heads/main\t[rejected] (non-fast-forward)");
+    return commandResult(args[0] !== "rebase" || args[1] === "--abort");
+  }), /committed artifact remains/);
+  assert.equal(calls.length, 4);
+  assert.equal(calls.at(-1), "rebase --abort");
+});
+
+test("concurrent push retry budget stops without an extra fetch or rebase", () => {
+  const calls = [];
+  assert.throws(() => pushWithRetry({branch: "main", checkoutPath: "/fixture"}, args => {
+    calls.push(args[0]);
+    return args[0] === "push" ? commandResult(false,
+      "!\tHEAD:refs/heads/main\t[rejected] (fetch first)") : commandResult(true);
+  }), /push not confirmed/);
+  assert.equal(calls.filter(c => c === "push").length, 4);
+  assert.equal(calls.filter(c => c === "fetch").length, 3);
+});
+
+test("real concurrent Git push rebases and preserves both artifacts", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-share-push-"));
+  const invoke = (args, cwd) => {
+    const result = spawnSync("git", args, {cwd, encoding: "utf8", timeout: 10000,
+      env: {...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0"}});
+    return commandResult(result.status === 0, result.stdout || "", result.stderr || "", result.status);
+  };
+  const gitOK = (args, cwd) => {
+    const result = invoke(args, cwd);
+    assert.equal(result.ok, true, result.stderr);
+    return result.stdout;
+  };
+  try {
+    const remote = path.join(root, "remote.git");
+    gitOK(["init", "--bare", "--initial-branch=main", remote]);
+    const clones = [path.join(root, "first"), path.join(root, "second")];
+    for (const clone of clones) {
+      gitOK(["clone", remote, clone]);
+      gitOK(["config", "user.name", "Fixture"], clone);
+      gitOK(["config", "user.email", "fixture@example.invalid"], clone);
+    }
+    fs.writeFileSync(path.join(clones[0], "base.txt"), "base");
+    gitOK(["add", "base.txt"], clones[0]);
+    gitOK(["commit", "-m", "base"], clones[0]);
+    gitOK(["push", "origin", "main"], clones[0]);
+    gitOK(["pull", "--ff-only", "origin", "main"], clones[1]);
+    for (const [index, clone] of clones.entries()) {
+      fs.writeFileSync(path.join(clone, `artifact-${index}.txt`), "artifact");
+      gitOK(["add", "."], clone);
+      gitOK(["commit", "-m", `artifact ${index}`], clone);
+    }
+    gitOK(["push", "origin", "main"], clones[0]);
+    const calls = [];
+    pushWithRetry({branch: "main", checkoutPath: clones[1]}, (args, cwd) => {
+      calls.push(args[0]); return invoke(args, cwd);
+    });
+    assert.deepEqual(calls, ["push", "fetch", "rebase", "push"]);
+    const tree = gitOK(["ls-tree", "--name-only", "HEAD"], clones[1]);
+    assert.match(tree, /artifact-0.txt/);
+    assert.match(tree, /artifact-1.txt/);
+    const local = gitOK(["rev-parse", "HEAD"], clones[1]).trim();
+    assert.equal(gitOK(["--git-dir", remote, "rev-parse", "main"]).trim(), local);
+  } finally {fs.rmSync(root, {recursive: true, force: true});}
+});
 
 const CLI_SCRIPT = path.join(__dirname, "paseo-share.js");
 

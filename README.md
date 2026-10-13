@@ -20,7 +20,7 @@ Ten reusable skills for projects, browsers, artifacts and computers connected th
 
 ## At a glance
 
-**Current package: v2.9.1.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
+**Current package: v2.9.2.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
 
 ## One-line summary
 
@@ -55,6 +55,16 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-13 follow-up — all nine existing skills (v2.9.2)
+
+The first refresh changed cleanup, browser, Cua and design. This follow-up also
+reviews and improves multi, orchestration, project, share and spyware-check:
+complete remote-agent pagination, evidence-based worktree integration,
+monorepo-aware context, classified push retries and current scanner commands.
+The existing nine-skill scope excludes the separately added God workflow.
+See [the per-skill coverage and validation](docs/all-skills-validation-2026-10-13.md)
+for official sources, local checks and remaining runtime limits.
 
 ## 2026-10-13 update — dependency refresh (v2.9.1)
 

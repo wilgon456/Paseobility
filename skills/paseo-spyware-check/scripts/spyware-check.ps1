@@ -173,16 +173,16 @@ try {
   }
 
   if (Get-Command gitleaks -ErrorAction SilentlyContinue) {
-    Invoke-OptionalTool "gitleaks" @("gitleaks", "detect", "--source", $Repo, "--redact", "--report-format", "json", "--report-path", (Join-Path $Out "gitleaks.json"))
+    Invoke-OptionalTool "gitleaks" @("gitleaks", "dir", $Repo, "--redact", "--report-format", "json", "--report-path", (Join-Path $Out "gitleaks.json"))
   }
   if (Get-Command trufflehog -ErrorAction SilentlyContinue) {
     Invoke-OptionalTool "trufflehog" @("trufflehog", "filesystem", $Repo, "--no-verification", "--json")
   }
   if (Get-Command semgrep -ErrorAction SilentlyContinue) {
-    Invoke-OptionalTool "semgrep" @("semgrep", "scan", "--config", "p/security-audit", "--json", "--output", (Join-Path $Out "semgrep.json"), $Repo)
+    Invoke-OptionalTool "semgrep" @("semgrep", "scan", "--config", "p/security-audit", "--metrics=off", "--json", "--output", (Join-Path $Out "semgrep.json"), $Repo)
   }
   if (Get-Command osv-scanner -ErrorAction SilentlyContinue) {
-    Invoke-OptionalTool "osv-scanner" @("osv-scanner", "scan", "source", "-r", $Repo, "--format", "json", "--output", (Join-Path $Out "osv-scanner.json"))
+    Invoke-OptionalTool "osv-scanner" @("osv-scanner", "scan", "source", "-r", $Repo, "--no-resolve", "--format", "json", "--output-file", (Join-Path $Out "osv-scanner.json"))
   }
   if (Get-Command trivy -ErrorAction SilentlyContinue) {
     Invoke-OptionalTool "trivy" @("trivy", "fs", "--scanners", "vuln,secret,misconfig", "--format", "json", "--output", (Join-Path $Out "trivy.json"), $Repo)
@@ -197,7 +197,7 @@ try {
       if ($relative.StartsWith($Repo)) {
         $relative = $relative.Substring($Repo.Length).TrimStart([char[]]@('\', '/'))
       }
-      $evidence = "${relative}:$($match.LineNumber):$($match.Line.Trim())"
+      $evidence = "${relative}:$($match.LineNumber): [content omitted]"
       $safeEvidence = $evidence.Replace("|", "\|")
       $classification = Get-Severity -RelativePath $relative -Line $match.Line
       $classifiedRows += [PSCustomObject]@{

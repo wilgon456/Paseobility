@@ -48,16 +48,39 @@ function endpointFor(h) {
   return target.toString().replace(/\/(?=\?|$)/, '');
 }
 async function agents() {
-  const result = await client.fetchAgents({timeout: 30000});
-  if (result.hasMore || result.nextCursor || result.page?.hasMore || result.page?.nextCursor || result.pageInfo?.hasMore || result.pageInfo?.nextCursor)
-    throw Error('Agent response is paginated; inspect all pages before lifecycle actions.');
-  const rows = result.entries ?? result.agents;
-  if (!Array.isArray(rows)) throw Error('Unsupported agent-list response.');
-  return rows.map(row => {
-    const a = row.agent ?? row;
-    return {id: a.id, title: a.title, status: a.status, requiresAttention: !!a.requiresAttention, attentionReason: a.attentionReason,
-      pendingPermissionCount: a.pendingPermissions?.length ?? a.pendingPermissionCount ?? 0};
-  });
+  const rows = [], cursors = new Set(), ids = new Set();
+  const deadline = Date.now() + 30000;
+  let cursor;
+  for (let page = 0; page < 50; page++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw Error('Agent snapshot deadline exceeded.');
+    const result = await client.fetchAgents({timeout: remaining,
+      page: {limit: 200, ...(cursor ? {cursor} : {})}});
+    if (!Array.isArray(result.entries) || typeof result.pageInfo?.hasMore !== 'boolean')
+      throw Error('Unsupported agent pagination schema.');
+    for (const row of result.entries) {
+      const a = row.agent;
+      if (!a || typeof a.id !== 'string' || !a.id || ids.has(a.id) ||
+          (a.pendingPermissions != null && !Array.isArray(a.pendingPermissions)))
+        throw Error('Invalid or duplicate agent record.');
+      ids.add(a.id);
+      if (a.archivedAt) continue;
+      const count = a.pendingPermissions?.length ?? a.pendingPermissionCount ?? 0;
+      if (!Number.isInteger(count) || count < 0) throw Error('Unknown pending permission count.');
+      rows.push({id: a.id, title: a.title, status: a.status,
+        requiresAttention: !!a.requiresAttention, attentionReason: a.attentionReason,
+        pendingPermissionCount: count});
+    }
+    if (!result.pageInfo.hasMore) {
+      if (result.pageInfo.nextCursor) throw Error('Inconsistent agent pagination.');
+      return rows;
+    }
+    cursor = result.pageInfo.nextCursor;
+    if (typeof cursor !== 'string' || !cursor || cursors.has(cursor))
+      throw Error('Missing or repeated agent cursor.');
+    cursors.add(cursor);
+  }
+  throw Error('Agent snapshot exceeds page limit.');
 }
 async function capture(run) {
   const terminals = await client.listTerminals();
@@ -98,7 +121,8 @@ async function main() {
   if (req.action === 'agents') return {host: req.host.label, agents: await agents()};
   if (req.action === 'restart') {
     const rows = await agents();
-    const blocked = rows.filter(a => !['idle', 'error', 'closed', 'exited', 'archived'].includes(a.status) ||
+    const blocked = rows.filter(a => !['idle', 'error', 'closed'].includes(a.status) ||
+      a.attentionReason === 'permission' ||
       (a.requiresAttention && a.attentionReason !== 'finished') || a.pendingPermissionCount > 0);
     if (blocked.length) throw Error('Restart deferred: active/unknown agent state or attention required.');
     return {host: req.host.label, acknowledged: await client.restartServer('cli_restart', undefined, {timeout: 30000}),

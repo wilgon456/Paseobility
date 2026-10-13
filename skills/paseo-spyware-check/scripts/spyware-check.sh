@@ -142,6 +142,7 @@ classify_finding_line() {
   rel_line="$(printf '%s\n' "$line" | sed "s#^$REPO_DIR/##")"
   path="${rel_line%%:*}"
   text="${rel_line#*:}"
+  line_number="${text%%:*}"
   text="${text#*:}"
 
   severity="Medium"
@@ -170,7 +171,7 @@ classify_finding_line() {
     fi
   fi
 
-  printf '%s\t%s\t%s\n' "$severity" "$rel_line" "$reason" >>"$CLASSIFIED"
+  printf '%s\t%s:%s: [content omitted]\t%s\n' "$severity" "$path" "$line_number" "$reason" >>"$CLASSIFIED"
 }
 
 {
@@ -210,7 +211,7 @@ else
 fi
 
 if has_cmd gitleaks; then
-  run_optional "gitleaks" gitleaks detect --source "$REPO_DIR" --redact --report-format json --report-path "$OUT_DIR/gitleaks.json"
+  run_optional "gitleaks" gitleaks dir "$REPO_DIR" --redact --report-format json --report-path "$OUT_DIR/gitleaks.json"
 fi
 
 if has_cmd trufflehog; then
@@ -218,11 +219,11 @@ if has_cmd trufflehog; then
 fi
 
 if has_cmd semgrep; then
-  run_optional "semgrep" semgrep scan --config p/security-audit --json --output "$OUT_DIR/semgrep.json" "$REPO_DIR"
+  run_optional "semgrep" semgrep scan --config p/security-audit --metrics=off --json --output "$OUT_DIR/semgrep.json" "$REPO_DIR"
 fi
 
 if has_cmd osv-scanner; then
-  run_optional "osv-scanner" osv-scanner scan source -r "$REPO_DIR" --format json --output "$OUT_DIR/osv-scanner.json"
+  run_optional "osv-scanner" osv-scanner scan source -r "$REPO_DIR" --no-resolve --format json --output-file "$OUT_DIR/osv-scanner.json"
 fi
 
 if has_cmd trivy; then
@@ -290,9 +291,7 @@ if has_cmd rg; then
       echo
     } >>"$REPORT"
 
-    echo "## Raw Pattern Matches" >>"$REPORT"
-    echo >>"$REPORT"
-    sed "s#^$REPO_DIR/##" "$RAW" | sed 's/^/- `/' | sed 's/$/`/' >>"$REPORT"
+    echo "Raw matches and third-party reports remain local; they may contain secrets." >>"$REPORT"
   else
     {
       echo "## Finding Summary"

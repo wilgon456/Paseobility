@@ -18,10 +18,19 @@ export async function connectToDaemon(options) {
  if(mode==='redact') throw Error('failed '+options.target.host+' secret-key-123');
  return {
   getDaemonStatus:async()=>({serverId:mode==='mismatch'?'other':'expected',version:'test'}),
-  fetchAgents:async()=>({
-   entries:[{agent:{id:'a',status:mode==='busy'?'running':mode==='unknown'?'surprise':'idle',requiresAttention:mode==='finished'||mode==='attention',attentionReason:mode==='finished'?'finished':'permission',pendingPermissionCount:mode==='permission'?1:0}}],
-   pageInfo:{hasMore:mode==='paginated'}
-  }),
+  fetchAgents:async options=>{
+   const later=!!options.page?.cursor;
+   const multi=['pages-idle','pages-busy','loop','duplicate'].includes(mode);
+   return {
+    entries:[{agent:{id:later&&mode!=='duplicate'?'b':'a',
+     status:mode==='busy'||(mode==='pages-busy'&&later)?'running':mode==='unknown'?'surprise':mode==='exited'?'exited':'idle',
+     requiresAttention:mode==='finished'||mode==='attention',
+     attentionReason:mode==='finished'?'finished':['permission','attention','reason-only'].includes(mode)?'permission':undefined,
+     pendingPermissionCount:mode==='bad-count'?'unknown':mode==='permission'?1:0}}],
+    pageInfo:mode==='schema'?undefined:{hasMore:mode==='paginated'||mode==='loop'||(multi&&!later),
+     nextCursor:multi&&(!later||mode==='loop')?'next':undefined}
+   }
+  },
   restartServer:async()=>{mark('restart');return {ack:true}},
   createTerminal:async()=>{mark('exec');throw Error('mutation reached')},
   listTerminals:async()=>({terminals:[{id:'terminal',name:'somebody-elses-terminal'}]}),
@@ -94,12 +103,23 @@ class AdapterTests(unittest.TestCase):
         self.assert_no_mutation()
 
     def test_busy_unknown_permission_and_pagination_block_restart(self):
-        for mode in ['busy', 'unknown', 'permission', 'attention', 'paginated']:
+        for mode in ['busy', 'unknown', 'exited', 'permission', 'attention', 'reason-only',
+                     'bad-count', 'paginated', 'pages-busy', 'loop', 'duplicate', 'schema']:
             with self.subTest(mode=mode):
                 p, d = self.invoke(mode, 'restart', 'PC')
                 self.assertFalse(d['ok'])
                 self.assertNotEqual(p.returncode, 0)
                 self.assert_no_mutation()
+
+    def test_restart_and_listing_read_all_pages(self):
+        p, d = self.invoke('pages-idle', 'agents', 'PC')
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual([a['id'] for a in d['result']['agents']], ['a', 'b'])
+        self.assert_no_mutation()
+        p, d = self.invoke('pages-idle', 'restart', 'PC')
+        self.assertEqual(p.returncode, 0)
+        self.assertTrue(d['result']['acknowledged']['ack'])
+        self.assertEqual(self.calls.read_text(), 'restart\n')
 
     def test_finished_attention_does_not_block_restart(self):
         p, d = self.invoke('finished', 'restart', 'PC')

@@ -18,6 +18,20 @@ Use for independent subtasks.
 
 Never let multiple agents edit the same checkout concurrently.
 
+## Integrate an isolated writer
+
+Confirm its actual workspace directory, branch and base commit. Review the
+task diff and its changed paths; do not merge an entire branch containing
+unrelated commits. Within existing authorization, integrate only the reviewed
+commits or patch into the coordinator's target. Preserve target-side edits and
+resolve conflicts using both implementations' intent. Test the integrated
+result: tests in a worker's isolated tree do not prove the combined tree.
+
+Keep a worktree with unique/uncommitted work or active agents. Git worktrees
+share repository objects and branch refs even though their working files differ;
+isolation does not authorize force updates or forced removal. Track scripts
+already running before this workflow and stop only those it started.
+
 ## Pattern 2: Task DAG
 
 Use when each step depends on the previous result.

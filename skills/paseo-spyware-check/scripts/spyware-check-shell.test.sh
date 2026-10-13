@@ -48,3 +48,33 @@ grep -q '== gitleaks ==' "$REPORT_DIR/tools.log" ||
 grep -q 'exit=23' "$REPORT_DIR/tools.log" ||
   fail "optional scanner exit status was not recorded"
 echo "ok 2 - optional scanner failure is recorded and scanning continues"
+
+cat >"$MOCK_BIN/osv-scanner" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+[ "$1" = scan ] && [ "$2" = source ] || exit 90
+shift 2
+out=""
+bounded=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output-file) out="$2"; shift 2 ;;
+    --no-resolve) bounded=1; shift ;;
+    --output) exit 91 ;;
+    *) shift ;;
+  esac
+done
+[ "$bounded" -eq 1 ] && [ -n "$out" ] || exit 92
+printf '%s\n' '{"results":[]}' >"$out"
+EOF
+chmod +x "$MOCK_BIN/osv-scanner"
+printf '%s\n' 'GITHUB_TOKEN="fixture-sensitive-value-123"' >"$TARGET/fixture.js"
+PATH="$MOCK_BIN:$PATH" bash "$SCRIPT" --target "$TARGET" --out "$TEST_ROOT/current-report" \
+  >"$TEST_ROOT/current.stdout" 2>"$TEST_ROOT/current.stderr" ||
+  fail "current scanner invocation failed"
+test -s "$TEST_ROOT/current-report/osv-scanner.json" || fail "OSV output flag did not write its report"
+grep -q 'fixture.js:1:' "$TEST_ROOT/current-report/report.md" || fail "report lost finding location"
+if grep -q 'fixture-sensitive-value-123' "$TEST_ROOT/current-report/report.md"; then
+  fail "fallback report exposed source contents"
+fi
+echo "ok 3 - current OSV invocation writes output and report retains location without source values"

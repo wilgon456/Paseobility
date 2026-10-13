@@ -94,7 +94,7 @@ instruction_files() {
   project_files | while IFS= read -r file; do
     rel="$(relpath "$file")"
     case "$rel" in
-      README|README.*|AGENTS.md|CLAUDE.md|GEMINI.md|.github/copilot-instructions.md|.cursor/rules/*|docs/*.md|docs/*/*.md)
+      README|README.*|AGENTS.md|*/AGENTS.md|CLAUDE.md|GEMINI.md|.github/copilot-instructions.md|.cursor/rules/*|docs/*.md|docs/*/*.md)
         printf '%s\n' "$file"
         ;;
     esac
@@ -114,17 +114,36 @@ excerpt_for() {
 }
 
 package_manager() {
-  if [ -f "$ROOT/pnpm-lock.yaml" ]; then
-    printf 'pnpm\n'
-  elif [ -f "$ROOT/yarn.lock" ]; then
-    printf 'yarn\n'
-  elif [ -f "$ROOT/package-lock.json" ]; then
-    printf 'npm\n'
-  elif [ -f "$ROOT/package.json" ]; then
-    printf 'npm\n'
-  else
-    printf 'unknown\n'
+  if [ -f "$ROOT/package.json" ] && command -v node >/dev/null 2>&1; then
+    declared="$(node -e '
+try {
+  const pkg = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  if (pkg.packageManager != null) {
+    const match = /^(npm|pnpm|yarn|bun)@[0-9]/.exec(String(pkg.packageManager));
+    console.log(match ? match[1] : "unknown");
+  } else if (pkg.devEngines?.packageManager != null) {
+    const name = pkg.devEngines.packageManager.name;
+    console.log(["npm", "pnpm", "yarn", "bun"].includes(name) ? name : "unknown");
+  }
+} catch { console.log("unknown"); }
+' "$ROOT/package.json")"
+    if [ -n "$declared" ]; then
+      printf '%s\n' "$declared"
+      return
+    fi
   fi
+  detected=""
+  for candidate in pnpm yarn npm bun; do
+    case "$candidate" in
+      pnpm) [ -f "$ROOT/pnpm-lock.yaml" ] || continue ;;
+      yarn) [ -f "$ROOT/yarn.lock" ] || continue ;;
+      npm) [ -f "$ROOT/package-lock.json" ] || continue ;;
+      bun) [ -f "$ROOT/bun.lock" ] || [ -f "$ROOT/bun.lockb" ] || continue ;;
+    esac
+    if [ -n "$detected" ]; then printf 'ambiguous\n'; return; fi
+    detected="$candidate"
+  done
+  printf '%s\n' "${detected:-unknown}"
 }
 
 json_scripts() {
@@ -240,9 +259,14 @@ EOF
 
 ## Common Node Commands
 
-- Install: \`$pm install\`
-- Dev: check package scripts above; common names are \`dev\`, \`start\`
-- Test: check package scripts above; common names are \`test\`, \`lint\`, \`typecheck\`
+EOF
+    case "$pm" in
+      npm|pnpm|yarn|bun) printf -- '- Install hint: `%s install` (verify declared version and lockfile first)\n' "$pm" ;;
+      *) printf -- '- Install: package manager unresolved; inspect instructions, packageManager and lockfiles.\n' ;;
+    esac
+    cat <<'EOF'
+- Dev: check package scripts above; common names are `dev`, `start`
+- Test: check package scripts above; common names are `test`, `lint`, `typecheck`
 
 EOF
   fi
