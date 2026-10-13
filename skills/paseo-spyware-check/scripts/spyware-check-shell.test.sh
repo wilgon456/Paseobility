@@ -69,6 +69,19 @@ printf '%s\n' '{"results":[]}' >"$out"
 EOF
 chmod +x "$MOCK_BIN/osv-scanner"
 printf '%s\n' 'GITHUB_TOKEN="fixture-sensitive-value-123"' >"$TARGET/fixture.js"
+# The report contract is independent of whether a runner installs optional rg.
+# Supply a deterministic match containing actual fixture bytes to exercise
+# classification/location retention and ensure source values do not escape.
+cat >"$MOCK_BIN/rg" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  --files) printf '%s\n' "$FIXTURE_MATCH_FILE" ;;
+  -n) printf '%s:1:%s\n' "$FIXTURE_MATCH_FILE" "$(cat "$FIXTURE_MATCH_FILE")" ;;
+  *) cat ;; # Inventory filter: preserve filenames supplied on stdin.
+esac
+EOF
+chmod +x "$MOCK_BIN/rg"
+export FIXTURE_MATCH_FILE="$TARGET/fixture.js"
 PATH="$MOCK_BIN:$PATH" bash "$SCRIPT" --target "$TARGET" --out "$TEST_ROOT/current-report" \
   >"$TEST_ROOT/current.stdout" 2>"$TEST_ROOT/current.stderr" ||
   fail "current scanner invocation failed"
