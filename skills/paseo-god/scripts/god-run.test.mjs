@@ -42,7 +42,7 @@ test('parallel run creation never shares a record or overwrites existing work', 
   const runs = await Promise.all(Array.from({ length: 12 }, (_, i) => initRun(root, `Task ${i}`)));
   assert.equal(new Set(runs.map(run => run.id)).size, 12);
   for (let i = 0; i < runs.length; i++) {
-    assert.ok((await resumeRun(root, runs[i].id)).content.includes(`> Task ${i}\n`));
+    assert.ok((await resumeRun(root, runs[i].id)).content.split(/\r?\n/).includes(`> Task ${i}`));
   }
 });
 
@@ -126,12 +126,16 @@ test('CLI provides parseable JSON and rejects unsupported or duplicate options',
   assert.deepEqual(await readdir(path.dirname(path.dirname(created.record))), [created.id]);
 });
 
-test('copied skill works from a path containing spaces with no source checkout dependency', async t => {
+test('copied skill works with a CRLF template and a path containing spaces', async t => {
   const root = await fixture(t);
   const target = path.join(root, 'installed skill');
   await cp(skill, target, { recursive: true });
+  const template = path.join(target, 'templates', 'RUN.md');
+  await writeFile(template, (await readFile(template, 'utf8')).replace(/\r?\n/g, '\r\n'));
   const project = path.join(root, 'project with spaces');
   await mkdir(project);
   const result = JSON.parse(execFileSync(process.execPath, [path.join(target, 'scripts', 'god-run.mjs'), 'init', '--root', project, '--goal', 'Copied install'], { encoding: 'utf8' }));
-  assert.ok((await readFile(result.record, 'utf8')).includes('> Copied install'));
+  const record = await readFile(result.record, 'utf8');
+  assert.ok(record.includes('\r\n'));
+  assert.ok(record.split(/\r?\n/).includes('> Copied install'));
 });
