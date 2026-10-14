@@ -63,10 +63,10 @@ jobs:
       - name: Node share suite
         run: node skills/paseo-share/scripts/paseo-share.test.js
 
-      - name: Scanner suites
-        run: |
-          python skills/paseo-spyware-check/scripts/spyware-check.test.py
-          bash skills/paseo-spyware-check/scripts/spyware-check-shell.test.sh
+      # Shared discovery runs the repeated, isolated scanner-helper fixtures.
+      # No optional scanner from the runner's PATH may enter a fixture run.
+      - name: Scanner classification suite
+        run: python skills/paseo-spyware-check/scripts/spyware-check.test.py
 
       - name: design-check selftest (headless Chrome)
         env:

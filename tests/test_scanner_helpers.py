@@ -11,6 +11,51 @@ SCRIPT = Path(__file__).resolve().parents[1] / 'skills/paseo-spyware-check/scrip
 SHELLS = [shell for shell in ('pwsh', 'powershell') if shutil.which(shell)]
 
 
+@unittest.skipUnless(os.name == 'posix' and shutil.which('bash'), 'POSIX Bash required')
+class PosixScannerHelperTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('rg'), 'Optional real-ripgrep integration requires rg')
+    def test_real_rg_ignores_personal_config_and_repeats_without_leaks(self):
+        with tempfile.TemporaryDirectory(prefix='real-rg-scan-') as temporary:
+            root = Path(temporary)
+            tools, target = root / 'bin', root / 'target # [fixture]'
+            tools.mkdir()
+            target.mkdir()
+            for name in ('bash', 'cat', 'date', 'dirname', 'find', 'git', 'grep',
+                         'mkdir', 'mktemp', 'rm', 'sed', 'awk', 'rg'):
+                (tools / name).symlink_to(shutil.which(name))
+            (target / 'fixture.js').write_text('GITHUB_TOKEN="fixture-sensitive-value-123"')
+            config = root / 'invalid-rg-config'
+            config.write_text('--invalid-fixture-flag\n')
+            for attempt in range(2):
+                output = root / ('report-' + str(attempt))
+                result = subprocess.run([shutil.which('bash'), str(SCRIPT.with_suffix('.sh')),
+                    '--target', str(target), '--out', str(output)],
+                    capture_output=True, text=True, timeout=15,
+                    env=dict(os.environ, PATH=str(tools), RIPGREP_CONFIG_PATH=str(config)))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                report = (output / 'report.md').read_text()
+                self.assertEqual(report.count('fixture.js:1:'), 1)
+                self.assertNotIn('fixture-sensitive-value-123', report)
+
+    def test_repeatable_fixtures_ignore_host_scanners(self):
+        suite = SCRIPT.with_name('spyware-check-shell.test.sh')
+        with tempfile.TemporaryDirectory(prefix='host-scanner-sentinel-') as temporary:
+            root = Path(temporary)
+            sentinel = root / 'unexpected-call'
+            for name in ('gitleaks', 'trufflehog', 'semgrep', 'osv-scanner', 'trivy', 'shellcheck', 'rg'):
+                fake = root / name
+                fake.write_text('#!/bin/sh\nprintf unsafe > "$HOST_TOOL_SENTINEL"\nexit 97\n')
+                fake.chmod(0o755)
+            for attempt in range(2):
+                result = subprocess.run([shutil.which('bash'), str(suite)],
+                    capture_output=True, text=True, timeout=30,
+                    env=dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                             HOST_TOOL_SENTINEL=str(sentinel)))
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                self.assertIn('ok 5 - fallback read errors', result.stdout)
+                self.assertFalse(sentinel.exists(), 'host optional tool was executed')
+
+
 @unittest.skipUnless(SHELLS, 'PowerShell required for Windows scanner-helper behavior')
 class ScannerHelperTests(unittest.TestCase):
     def test_report_omits_values_and_osv_receives_current_flags(self):
@@ -46,6 +91,20 @@ function global:osv-scanner {
                 self.assertNotIn('fixture-sensitive-value-123', content)
                 output = json.loads((report / 'osv-scanner.json').read_text(encoding='utf-8-sig'))
                 self.assertEqual(output['results'], [])
+                previous = (report / 'report.md').read_bytes()
+                again = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                    '-File', str(wrapper)], capture_output=True, text=True, timeout=30,
+                    env=dict(os.environ, FIXTURE_SCANNER=str(SCRIPT),
+                             FIXTURE_TARGET=str(target), FIXTURE_REPORT=str(report)))
+                self.assertNotEqual(again.returncode, 0)
+                self.assertIn('report directory must be empty', again.stderr)
+                self.assertEqual((report / 'report.md').read_bytes(), previous)
+                nested = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                    '-File', str(wrapper)], capture_output=True, text=True, timeout=30,
+                    env=dict(os.environ, FIXTURE_SCANNER=str(SCRIPT),
+                             FIXTURE_TARGET=str(target), FIXTURE_REPORT=str(target / 'report')))
+                self.assertNotEqual(nested.returncode, 0)
+                self.assertIn('outside the scanned target', nested.stderr)
 
 
 if __name__ == '__main__':

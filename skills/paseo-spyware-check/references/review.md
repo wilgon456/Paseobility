@@ -87,6 +87,13 @@ An optional scanner's nonzero exit is recorded in `tools.log` and does not
 prevent the remaining scanners or fallback heuristics from running. Do not
 interpret a missing report or a nonzero helper exit as a clean scan.
 
+Each shell/PowerShell scan requires a fresh empty output directory outside the
+target. Reusing a populated directory is refused without overwriting previous
+evidence; otherwise stale optional-scanner JSON can be mistaken for this run.
+Let the helper generate a unique directory or supply a new path. A missing rg
+is disclosed as skipped coverage; a fallback read error exits nonzero and must
+not become a clean verdict. The POSIX helper ignores personal ripgrep config.
+
 Use:
 
 ```bash

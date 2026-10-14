@@ -71,12 +71,16 @@ function Get-Severity {
 }
 
 $WorkDir = Join-Path ([IO.Path]::GetTempPath()) ("paseo-spyware-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($Out)) {
   $Out = Join-Path ([IO.Path]::GetTempPath()) ("paseo-spyware-report-" + [guid]::NewGuid().ToString("N"))
 }
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
+if (@(Get-ChildItem -LiteralPath $Out -Force).Count -gt 0) {
+  throw "report directory must be empty; choose a new directory for each scan"
+}
+$Out = (Resolve-Path -LiteralPath $Out).Path
+New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 try {
   if (Test-Url $Target) {
@@ -98,6 +102,12 @@ try {
     }
   } else {
     $Repo = (Resolve-Path -LiteralPath $Target).Path
+  }
+  $separator = [IO.Path]::DirectorySeparatorChar
+  $targetPrefix = $Repo.TrimEnd([char[]]@('\', '/')) + $separator
+  if ($Out.Equals($Repo, [StringComparison]::OrdinalIgnoreCase) -or
+      $Out.StartsWith($targetPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "report directory must be outside the scanned target"
   }
 
   $script:ReportPath = Join-Path $Out "report.md"

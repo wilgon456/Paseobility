@@ -72,6 +72,11 @@ mkdir -p -- "$OUT_DIR" || {
   echo "could not create report directory: $OUT_DIR" >&2
   exit 1
 }
+OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
+if [ -n "$(find "$OUT_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+  echo "report directory must be empty; choose a new directory for each scan" >&2
+  exit 2
+fi
 
 is_url() {
   case "$1" in
@@ -91,13 +96,16 @@ if is_url "$TARGET"; then
     exit "$clone_status"
   fi
 else
-  if REPO_DIR="$(cd "$TARGET" 2>/dev/null && pwd)"; then
+  if REPO_DIR="$(cd "$TARGET" 2>/dev/null && pwd -P)"; then
     :
   else
     echo "target path does not exist: $TARGET" >&2
     exit 2
   fi
 fi
+case "$OUT_DIR/" in
+  "$REPO_DIR/"*) echo "report directory must be outside the scanned target" >&2; exit 2 ;;
+esac
 
 REPORT="$OUT_DIR/report.md"
 RAW="$OUT_DIR/raw-findings.txt"
@@ -139,7 +147,7 @@ run_optional() {
 
 classify_finding_line() {
   line="$1"
-  rel_line="$(printf '%s\n' "$line" | sed "s#^$REPO_DIR/##")"
+  rel_line="${line#"$REPO_DIR/"}"
   path="${rel_line%%:*}"
   text="${rel_line#*:}"
   line_number="${text%%:*}"
@@ -201,8 +209,8 @@ done
 } >>"$REPORT"
 
 if has_cmd rg; then
-  rg --files "$REPO_DIR" |
-    rg '(^|/)(package\.json|pnpm-lock\.yaml|yarn\.lock|package-lock\.json|bun\.lockb|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum|pyproject\.toml|requirements.*\.txt|Pipfile|poetry\.lock|Makefile|justfile|Taskfile\.ya?ml|Dockerfile|docker-compose\.ya?ml|AGENTS\.md|CLAUDE\.md)$|(^|/)\.github/workflows/.*\.ya?ml$|\.(sh|bash|zsh|ps1|js|ts|mjs|cjs|py)$' |
+  rg --files --no-config "$REPO_DIR" |
+    rg --no-config '(^|/)(package\.json|pnpm-lock\.yaml|yarn\.lock|package-lock\.json|bun\.lockb|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum|pyproject\.toml|requirements.*\.txt|Pipfile|poetry\.lock|Makefile|justfile|Taskfile\.ya?ml|Dockerfile|docker-compose\.ya?ml|AGENTS\.md|CLAUDE\.md)$|(^|/)\.github/workflows/.*\.ya?ml$|\.(sh|bash|zsh|ps1|js|ts|mjs|cjs|py)$' |
     sed 's/^/- /' >>"$REPORT" || true
 else
   find "$REPO_DIR" -type f |
@@ -232,7 +240,7 @@ fi
 
 if has_cmd shellcheck; then
   if has_cmd rg; then
-    rg --files "$REPO_DIR" | rg '\.(sh|bash|zsh)$' >"$OUT_DIR/shell-files.txt" || true
+    rg --files --no-config "$REPO_DIR" | rg --no-config '\.(sh|bash|zsh)$' >"$OUT_DIR/shell-files.txt" || true
   else
     find "$REPO_DIR" -type f \( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' \) >"$OUT_DIR/shell-files.txt"
   fi
@@ -247,9 +255,16 @@ if has_cmd rg; then
     echo
   } >>"$REPORT"
 
-  rg -n --hidden --glob '!/.git/**' --glob '!node_modules/**' --glob '!vendor/**' \
+  fallback_status=0
+  rg -n --no-config --color never --hidden --glob '!/.git/**' --glob '!node_modules/**' --glob '!vendor/**' \
     'preinstall|postinstall|prepare|prepublish|curl[[:space:]].*\|[[:space:]]*(sh|bash|zsh)|wget[[:space:]].*\|[[:space:]]*(sh|bash|zsh)|Invoke-Expression|[^A-Za-z]iex[^A-Za-z]|DownloadString|EncodedCommand|Start-Process.*Hidden|New-ScheduledTask|CurrentVersion\\Run|launchctl|LaunchAgents|crontab|systemctl|child_process|eval\(|Function\(|base64|atob|Buffer\.from|process\.env|\.ssh|\.aws|\.npmrc|GITHUB_TOKEN|NPM_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|api[_-]?key|webhook|pastebin|discord(app)?\.com/api/webhooks' \
-    "$REPO_DIR" >"$RAW" 2>/dev/null || true
+    "$REPO_DIR" >"$RAW" 2>"$OUT_DIR/fallback-errors.log" || fallback_status=$?
+
+  if [ "$fallback_status" -gt 1 ]; then
+    echo "- Fallback scan failed (exit=$fallback_status); coverage is incomplete." >>"$REPORT"
+    echo "fallback scan failed; inspect local fallback-errors.log; no clean result" >&2
+    exit 1
+  fi
 
   if [ -s "$RAW" ]; then
     while IFS= read -r line; do
