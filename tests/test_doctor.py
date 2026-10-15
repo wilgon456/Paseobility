@@ -165,6 +165,32 @@ class DoctorUnitTests(unittest.TestCase):
     def setUpClass(cls):
         cls.doctor = load_doctor_module()
 
+    def test_stopped_daemon_on_nonzero_exit_is_stopped_not_unsupported(self):
+        # cua-driver 0.34.x: `status --json` exits 1 and says so on stderr.
+        original = self.doctor.run_command
+        calls = []
+
+        def fake(argv, timeout, merge_stderr=False):
+            calls.append(merge_stderr)
+            return 1, "Cua Driver daemon is not running\n"
+
+        self.doctor.run_command = fake
+        try:
+            result = self.doctor.check_cua_daemon("cua-driver", 1)
+        finally:
+            self.doctor.run_command = original
+        self.assertEqual(result["status"], "stopped")
+        self.assertEqual(calls, [True])
+
+    def test_unknown_nonzero_status_stays_not_checked(self):
+        original = self.doctor.run_command
+        self.doctor.run_command = lambda argv, timeout, merge_stderr=False: (2, "error: unrecognized subcommand 'status'\n")
+        try:
+            result = self.doctor.check_cua_daemon("cua-driver", 1)
+        finally:
+            self.doctor.run_command = original
+        self.assertEqual(result["status"], "not_checked")
+
     def test_extract_semver_is_bounded(self):
         self.assertEqual(self.doctor.extract_semver("cua-driver 0.28.2 (fake)"),
                          "0.28.2")

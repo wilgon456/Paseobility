@@ -11,6 +11,7 @@ const { spawnSync } = require("node:child_process");
 
 const {
   MAX_BYTES,
+  collectArtifacts,
   pushWithRetry,
   resolveDefaultGithubRepository,
   resolveWithin,
@@ -382,6 +383,32 @@ test("accepts a valid artifact and verifies its payload", (t) => {
   const value = fixture(t);
   assert.equal(validateArtifactMetadata(value.metadata, value.config, value.metadataPath), value.metadata);
   assert.equal(validateFetchedPayload(value.payloadPath, value.metadata, value.config).stat.isFile(), true);
+});
+
+test("listing skips an invalid artifact instead of hiding every valid one", (t) => {
+  const value = fixture(t);
+  // An entry an older release accepted (.mp4) but the current validator rejects.
+  const legacyId = "psh_20260812T010101Z_aaaaaa";
+  const legacyName = "clip.mp4";
+  const legacyRelative = `artifacts/machine-a/2026/08/${legacyId}/${legacyName}`;
+  const legacyPayload = resolveWithin(value.checkoutPath, legacyRelative, "legacy payload path");
+  fs.mkdirSync(path.dirname(legacyPayload), { recursive: true });
+  fs.writeFileSync(legacyPayload, "not really a video\n");
+  fs.writeFileSync(path.join(path.dirname(legacyPayload), "artifact.json"), `${JSON.stringify({
+    ...value.metadata,
+    id: legacyId,
+    name: legacyName,
+    createdAt: "2026-08-12T01:01:01.000Z",
+    size: fs.statSync(legacyPayload).size,
+    sha256: sha256(legacyPayload),
+    relativePath: legacyRelative
+  })}\n`);
+
+  const warnings = [];
+  const found = collectArtifacts(value.config, (message) => warnings.push(message));
+  assert.deepEqual(found.map((item) => item.id), [value.metadata.id]);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /skipped invalid artifact metadata .*unsupported file type \.mp4/);
 });
 
 test("rejects traversal and absolute artifact paths", (t) => {
