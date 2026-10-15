@@ -20,7 +20,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.9.2.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 10개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
+**현재 패키지: v2.9.3.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 10개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
 
 ## 한 줄 요약
 
@@ -56,6 +56,23 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
 기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
 
+## 2026-10-15 수정 릴리스 — Windows·원격 Mac (v2.9.3)
+
+설치된 스킬팩을 Windows PC 한 대와 원격 Mac 세 대에서 실제로 돌려 보다가
+결함 세 가지를 찾아 시험과 함께 고쳤습니다.
+
+- `/paseo-share`의 `list`·`latest`·`fetch`가 산출물 하나가 검증에서 떨어져도
+  (예: 예전 판이 받던 `.mp4`) 통째로 실패하지 않습니다. 그 항목만 경고와 함께
+  건너뛰고, 검증을 통과한 메타데이터만 씁니다.
+- doctor가 꺼진 Cua 데몬을 `stopped`로 보고합니다. cua-driver 0.34.x는
+  `status`에 종료 코드 1과 stderr로 답하는데, 이를 지원하지 않는 명령으로
+  잘못 읽었습니다.
+- `/paseo-multi`의 `exec --workspace ID`로 터미널마다 작업 공간을 요구하는
+  데몬(Paseo 0.11.2: "workspaceId is required")을 지원하고, 실패하면 데몬이
+  알려 준 이유를 그대로 보여 줍니다. 비밀이 든 실행은 끝나자마자 닫으세요.
+
+macOS·Windows CI와 VAX_COM(Windows)·MAC_COM·mac_home·MAC_MINI 실기에서
+확인했습니다.
 ## 2026-10-13 후속 보완 — 기존 9개 스킬 전체 (v2.9.2)
 
 첫 수정은 정리·브라우저·Cua·디자인에 집중했습니다. 이번에는 Multi·조율·

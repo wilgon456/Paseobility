@@ -20,7 +20,7 @@ Ten reusable skills for projects, browsers, artifacts and computers connected th
 
 ## At a glance
 
-**Current package: v2.9.2.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
+**Current package: v2.9.3.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
 
 ## One-line summary
 
@@ -56,6 +56,24 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
 
+## 2026-10-15 fix release — Windows and remote Macs (v2.9.3)
+
+Running the installed pack on a Windows PC and three remote Macs reproduced
+three defects, now fixed with tests:
+
+- `/paseo-share` `list`, `latest` and `fetch` no longer fail when one artifact
+  stops validating (for example an `.mp4` an older release accepted). The
+  invalid entry is skipped with a warning; only validated metadata is used.
+- The doctor reports a stopped Cua daemon as `stopped`. cua-driver 0.34.x
+  answers `status` with exit 1 on stderr, which was read as an unsupported
+  subcommand.
+- `/paseo-multi` `exec --workspace ID` supports daemons that require a
+  workspace per terminal (Paseo 0.11.2: "workspaceId is required"), and the
+  daemon's reason is shown instead of a bare failure. Credential-bearing runs
+  should be closed right after completion.
+
+Verified by the macOS and Windows CI and live on VAX_COM (Windows),
+MAC_COM, mac_home and MAC_MINI.
 ## 2026-10-13 follow-up — all nine existing skills (v2.9.2)
 
 The first refresh changed cleanup, browser, Cua and design. This follow-up also
