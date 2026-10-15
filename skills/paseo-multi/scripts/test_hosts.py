@@ -32,7 +32,9 @@ export async function connectToDaemon(options) {
    }
   },
   restartServer:async()=>{mark('restart');return {ack:true}},
-  createTerminal:async()=>{mark('exec');throw Error('mutation reached')},
+  createTerminal:async(cwd,name,requestId,opts)=>{
+   if(mode==='ws-required'&&!opts?.workspaceId) return {error:{message:'workspaceId is required'}};
+   mark(opts?.workspaceId?'exec:'+opts.workspaceId:'exec');throw Error('mutation reached')},
   listTerminals:async()=>({terminals:[{id:'terminal',name:'somebody-elses-terminal'}]}),
   killTerminal:async()=>{mark('kill');return {}},
   close:async()=>{}
@@ -94,6 +96,16 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(record['host'], 'PC')
         p, d = self.invoke('idle', 'runs')
         self.assertEqual(d['result'][0]['runId'], record['runId'])
+
+    def test_workspace_required_reason_and_option(self):
+        p, d = self.invoke('ws-required', 'exec', 'PC', '--file', str(self.script))
+        self.assertFalse(d['ok'])
+        self.assertIn('workspaceId is required', d['error'])
+        self.assertIn('--workspace', d['error'])
+        self.assert_no_mutation()
+        p, d = self.invoke('ws-required', 'exec', 'PC', '--workspace', 'wks_1', '--file', str(self.script))
+        self.assertFalse(d['ok'])
+        self.assertEqual(self.calls.read_text(), 'exec:wks_1\n')
 
     def test_large_windows_script_rejected_before_dispatch(self):
         self.script.write_text('Write-Output "large"\n' * 3000)

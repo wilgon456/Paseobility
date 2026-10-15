@@ -140,13 +140,16 @@ def _arch_token():
     return machine or "unknown"
 
 
-def run_command(argv, timeout):
-    """Run argv with a bounded timeout. Returns (returncode|None, stdout)."""
+def run_command(argv, timeout, merge_stderr=False):
+    """Run argv with a bounded timeout. Returns (returncode|None, stdout).
+
+    merge_stderr folds stderr into the returned text for probes whose answer
+    arrives there (e.g. a stopped daemon reported on stderr with exit 1)."""
     try:
         completed = subprocess.run(
             argv,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.STDOUT if merge_stderr else subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
             timeout=max(0.1, timeout),
             check=False,
@@ -508,8 +511,16 @@ def check_cua_daemon(driver, timeout):
     The MCP probe is not a race-free no-new-daemon guarantee: this status is
     sampled once, and if the daemon stops between here and the probe's own child
     connection the underlying MCP server may still start."""
-    code, output = run_command([driver, "status", "--json"], timeout)
+    code, output = run_command([driver, "status", "--json"], timeout,
+                               merge_stderr=True)
     if code != 0:
+        # cua-driver 0.34.x exits 1 with "Cua Driver daemon is not running"
+        # when no daemon is up. That is a real answer, not a missing subcommand.
+        lowered = (output or "").lower()
+        if ("not running" in lowered or "daemon is stopped" in lowered
+                or "no daemon" in lowered):
+            return {"status": "stopped",
+                    "hint": "Cua daemon is not running; start it before an MCP check"}
         return {
             "status": "not_checked",
             "hint": ("daemon status unavailable (unsupported driver subcommand?); "

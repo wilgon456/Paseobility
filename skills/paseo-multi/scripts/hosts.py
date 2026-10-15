@@ -115,6 +115,7 @@ def main():
     exe.add_argument('--file', type=Path, required=True)
     exe.add_argument('--shell', choices=['bash', 'powershell'])
     exe.add_argument('--wait', type=int, choices=range(0, 46), default=10, metavar='0..45')
+    exe.add_argument('--workspace', help='Remote workspace ID, for daemons that require one per terminal')
     for action in ('capture', 'close'):
         p = sub.add_parser(action)
         p.add_argument('run_id')
@@ -163,6 +164,8 @@ def main():
         if shell is None:
             raise ValueError('Unknown target platform: supply --shell after verifying it.')
         req.update(script=args.file.read_text(encoding='utf-8'), shell=shell, wait=args.wait)
+        if args.workspace:
+            req['workspaceId'] = args.workspace
     if args.action == 'cli':
         commands = args.args[1:] if args.args[:1] == ['--'] else args.args
         if not commands or commands[0].startswith('-') or any(

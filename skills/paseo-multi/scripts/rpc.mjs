@@ -153,8 +153,15 @@ async function main() {
     // Recovery is durable before dispatch; lost responses resolve by unique name.
     preparedRun = run;
     const r = await client.createTerminal(req.shell === 'powershell' ? 'C:\\' : '/',
-      run.name, undefined, {command, args, size: {cols: 180, rows: 40}});
-    if (r.error || !r.terminal?.id) throw Error('Remote terminal creation failed.');
+      run.name, undefined, {command, args, size: {cols: 180, rows: 40},
+        ...(req.workspaceId ? {workspaceId: req.workspaceId} : {})});
+    if (r.error || !r.terminal?.id) {
+      // Surface the daemon's reason; a bare failure hid "workspaceId is required".
+      const reason = r.error ? String(r.error.message ?? r.error).slice(0, 200) : '';
+      const hint = /workspace/i.test(reason) ?
+        ' Pass --workspace <id> from `cli HOST -- workspace ls --json`.' : '';
+      throw Error('Remote terminal creation failed.' + (reason ? ' ' + reason + '.' : '') + hint);
+    }
     run.terminalId = r.terminal.id;
     const deadline = Date.now() + req.wait * 1000;
     let result;

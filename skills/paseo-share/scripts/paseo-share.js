@@ -788,7 +788,11 @@ function commandPublish(positionals, options) {
   printArtifact(metadata, config, options.json);
 }
 
-function collectArtifacts(config) {
+// One unreadable or no-longer-accepted entry (for example a file type an older
+// release allowed) must not hide every other artifact. Invalid entries are
+// skipped and reported on stderr; they are never returned, so list, latest and
+// fetch still only act on metadata that passes validation.
+function collectArtifacts(config, warn = (message) => process.stderr.write(`paseo-share: ${message}\n`)) {
   const artifactsRoot = path.join(config.checkoutPath, "artifacts");
   const found = [];
   if (!fs.existsSync(artifactsRoot)) return found;
@@ -807,7 +811,7 @@ function collectArtifacts(config) {
           validateArtifactMetadata(metadata, config, entryPath);
           found.push(metadata);
         } catch (error) {
-          fail(`invalid artifact metadata ${entryPath}: ${error.message}`);
+          warn(`skipped invalid artifact metadata ${entryPath}: ${error.message}`);
         }
       }
     }
@@ -1022,6 +1026,7 @@ if (require.main === module) {
 module.exports = {
   ARTIFACT_ID_PATTERN,
   MAX_BYTES,
+  collectArtifacts,
   isEmptyRepositoryResponse,
   isNotFoundResponse,
   isPathInside,

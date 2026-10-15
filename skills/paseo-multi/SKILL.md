@@ -36,6 +36,10 @@ python3 scripts/hosts.py restart HOST
 python3 scripts/hosts.py cli HOST -- agent inspect AGENT_ID --json
 ```
 
+Some daemons refuse a terminal without a workspace ("workspaceId is required"). Pick an active one with `cli HOST -- workspace ls --json` and pass `exec HOST --workspace WORKSPACE_ID ...`; workspaces can be archived meanwhile, so re-list on "not active".
+
+The retained terminal keeps the whole script in its command line until `close`. When a script carries a credential, close it with `close RUN_ID --interrupt` as soon as it completes, and never print the secret itself.
+
 `exec` chooses Bash for registered macOS/Linux targets and PowerShell for Windows; an explicit `--shell` can override this. Scripts run on the remote machine. Use its paths, not the controller's paths. The helper retains its terminal until explicitly closed, reports a unique completion marker with the remote exit code, and only closes a terminal recorded as its own. `--wait` observes for up to 45 seconds; a timeout is `running`, not success or a retry instruction. Capture later, then close after completion. Do not retry a mutation merely because its response or connection was lost: inspect its installed state and logs first.
 
 Before sending a command, the helper saves and flushes its recovery record. A local storage failure prevents dispatch. If the creation response is lost, use `runs`, then `capture RUN_ID`; capture resolves the terminal by its unique recorded name. A missing terminal means the outcome is unknown. Oversized Windows commands are rejected before dispatch; stage a shorter script on the selected host instead.
