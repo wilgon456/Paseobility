@@ -20,7 +20,7 @@ Ten reusable skills for projects, browsers, artifacts and computers connected th
 
 ## At a glance
 
-**Current package: v2.9.3.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
+**Current package: v2.9.4.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
 
 ## One-line summary
 
@@ -55,6 +55,17 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-19 — proportional God mode costs (v2.9.4)
+
+`/paseo-god` now sizes fixed per-task costs to the change. In one measured
+project, Git and checks took seconds while the commit cycle was slow because
+required documents were reread every task, a second agent rediscovered the same
+context and slow checks repeated after each fix. A run now classifies the change
+once and records the checks that class needs, reads mandatory documents once per
+run, runs slow checks once per batch and hands context over through `RUN.md`.
+Project rules are still followed; a measured disproportionate rule cost becomes
+a learning candidate. Details: [the God guide](docs/paseo-god.md).
 
 ## 2026-10-15 fix release — Windows and remote Macs (v2.9.3)
 

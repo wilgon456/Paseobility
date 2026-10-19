@@ -39,6 +39,27 @@ Each run has one writer. A second writer creates its own run; use separate
 worktrees when edits overlap. Run IDs isolate notes, not source-code changes.
 Do not rewrite another run or shared memory to resolve a conflict.
 
+## Keep fixed costs proportional
+
+Per-task overhead repeats on every small change, so size it to the change.
+
+- Classify the change once (for example copy or bug fix, UI, rights- or
+  data-sensitive, release) and record the checks that class requires in
+  `RUN.md`. Escalate when the diff crosses into a heavier class.
+- Read mandatory project documents once per run and record the constraints
+  that apply in a few lines. Later steps, resumes and authorized reviewers use
+  that record; reread only when a document changed or a decision depends on
+  wording the record lacks.
+- Iterate with the cheapest check that can fail for the change. Run slow checks
+  (full renders, e2e, release builds) once after the batch they cover.
+- Pass context to another agent through the run record rather than having it
+  rediscover the project. Keep only check output that recorded evidence cites;
+  remove other output this run generated.
+- When the user reports slowness or cost, time each layer (tool, checks,
+  workflow) before naming a cause. If project rules impose a measured,
+  disproportionate fixed cost, follow them and record a tiered proposal as a
+  learning candidate.
+
 ## Work, check, continue
 
 - Choose the next step that advances an unmet criterion. Read one relevant

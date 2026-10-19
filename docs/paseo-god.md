@@ -65,6 +65,22 @@ criterion needs evidence at the requested boundary. A local check proves its
 local layer; it cannot certify installed or deployed behavior. On resume, check
 current state for drift before relying on an old result.
 
+## Proportional fixed cost
+
+Mandatory reading, split implementation/review agents and full verification
+repeat on every task, so a one-line fix can cost as much as a feature. In one
+measured project, Git took 0.01 s, typecheck/tests/build about 7 s, e2e 23 s and
+a full three-width render 77 s; the long commit cycle came from rereading about
+78 KB of required documents per task, a second agent rediscovering the same
+context and repeating slow checks after each fix.
+
+God mode therefore classifies the change once and records the checks that class
+requires, reads mandatory documents once per run and keeps the applicable
+constraints in `RUN.md`, iterates with cheap checks and runs slow checks once per
+batch, and passes context through the record. It still follows project rules;
+when a measured rule cost is disproportionate, it records a tiered proposal as a
+learning candidate instead of editing the rules.
+
 ## Learning and capability limits
 
 Reusable observations can become `LEARNING-CANDIDATES.md` inside the selected
@@ -97,7 +113,9 @@ discovered in the active environment; Hermes-specific calls are not assumed.
 
 `/paseo-god`를 명시 호출하면 완료 조건을 정하고 필요한 디버깅·리뷰·실험
 절차만 읽으며, 작업별 TODO·검증 근거·재개 지점을 남깁니다. Node 도우미는
-기록 생성·조회만 합니다. 실제 실행·완료 판단은 에이전트가 근거로 수행합니다.
+기록 생성·조회만 합니다. 작업마다 반복되는 고정 비용을 줄이기 위해 변경
+등급을 한 번 정해 필요한 검사만 기록하고, 필수 문서는 실행당 한 번 읽어 적용
+제약을 기록에 남기며, 느린 검사는 묶음당 한 번만 돌립니다. 실제 실행·완료 판단은 에이전트가 근거로 수행합니다.
 학습 내용은 저장 후보이며 기존 메모리·스킬을 자동으로 수정하지 않습니다.
 로컬 검사와 임시 설치는 검증했으며, Windows/Linux·각 제공자의 실제 호출과
 작업 성과는 별도 검증 대상입니다.

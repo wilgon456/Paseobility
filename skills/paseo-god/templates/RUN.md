@@ -15,6 +15,12 @@
 Record the requested scope, applicable project instructions and existing
 authorization. Identify unrelated edits to preserve.
 
+## Change class and checks
+
+- Class: pending (for example small fix, UI, rights/data-sensitive, release).
+- Checks: cheap checks per iteration; slow checks once after the batch.
+- Project documents read once, with the constraints that apply: none yet.
+
 ## Acceptance criteria and evidence
 
 | ID | Observable criterion | Check and proven layer | Evidence / outcome | State |
