@@ -1,37 +1,38 @@
-# Cleanup evidence and manual alternative
+# Cleanup evidence and MCP fallback
 
-The adapter uses the [Paseo 0.11.2 client](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/utils/client.ts).
-It reads all pages and refuses loops, inconsistent pagination and identity changes.
-The [CLI agent list](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/commands/agent/ls.ts)
-omits workspace and permission fields and does not expose its page cursor; the
-[inspect projection](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/commands/agent/inspect.ts)
-also omits workspaceId. Neither is a substitute for a complete snapshot.
+The helper reads complete snapshots through the installed
+[Paseo client](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/utils/client.ts)
+(adapter contract: Paseo 0.11.2). The
+[CLI agent list](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/commands/agent/ls.ts)
+omits workspace and permission fields and its page cursor, and
+[inspect](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/commands/agent/inspect.ts)
+omits workspaceId, so neither replaces a complete snapshot. A changed or missing
+client, invalid page, repeated cursor, timeout or changed daemon identity makes
+the helper refuse.
 
-Node process timeouts apply to the helper's own child only. A timed-out archive
-may have completed on the daemon. Keep its exact ID, inspect a new complete
-snapshot and report the uncertainty; do not repeat the mutation automatically.
+Paseo 0.12 hides background workspaces and their agents from default lists.
+The helper asks for them when the installed client supports it (0.12+ client;
+the source of `fetchAgents`/`fetchWorkspaces` was compared statically against
+[v0.12.0](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/client/src/daemon-client.ts))
+and marks workspace rows with `background`. An older client talking to a 0.12+
+daemon cannot see them; the snapshot then reports `backgroundCovered: false`,
+and an exact ID that only exists there reads as not found.
 
-The helper snapshots do not call history, resume, provider reload, or daemon
-lifecycle operations. It closes only the client connection it opened. It preserves
-CLI target selection through the installed client's selectDaemonTarget, including
-explicit PASEO_HOST/PASEO_HOME settings, without exposing those values in errors.
+Archive dispatch goes through the same client with the exact ID (no CLI prefix
+resolution, no shell) and repeats the protection and daemon-identity checks
+inside that connection. The helper honors `PASEO_HOST`/`PASEO_HOME` via the
+client's daemon-target selection without printing them.
 
-For an authorized archive, the adapter admits only an exact agent/workspace ID,
-checks the expected server identity and current protection state, and calls the
-installed client's archive method. It returns only that target's acknowledgement.
-It has no arbitrary RPC route. Requests cross stdin as JSON; no cmd.exe/shell
-interpolation or CLI first-page ID resolution is involved. Offline tests cover
-refusal and exact-ID dispatch; live archive mutations were not performed during
-the validation run.
+A timed-out archive may still have completed on the daemon. Keep its exact ID,
+read a fresh snapshot and report the uncertainty instead of repeating it.
 
-If the internal client is unavailable, report that blocker. An authorized manual
-MCP flow can use the installed base paseo skill: read full list_agents metadata,
-resolve exact workspace ownership, reject active/unknown/permission states, archive
-one authorized ID, and re-read complete lists. Use only schema-verified tools.
-Do not replace this with broad CLI --auto cleanup or reconstruct ownership from cwd.
-Workspace archive affects all its agents and terminals and may remove its managed
-worktree, as explained in [the workspace guide](https://github.com/getpaseo/paseo/blob/v0.11.2/public-docs/workspaces.md).
+## MCP fallback
 
-The current helper proves child-agent protection; it does not prove a workspace's
-terminals are disposable. The user must explicitly authorize that exact workspace
-archive. A test-like title alone does not authorize a workspace.
+If the installed client cannot be loaded, use the base `paseo` skill's MCP
+tools: read full `list_agents` metadata (on 0.12+ pass `includeBackground: true`
+to `list_agents` and `list_workspaces`), resolve workspace ownership from
+`workspaceId` (never cwd), skip active/unknown/permission-pending agents,
+archive each selected ID with `archive_agent`, and re-read the list to confirm.
+Workspace archive affects all its agents and terminals and may remove its
+managed worktree ([workspace guide](https://github.com/getpaseo/paseo/blob/v0.11.2/public-docs/workspaces.md));
+archive only a workspace the user named.

@@ -16,9 +16,17 @@ export async function connectToDaemon(options) {
  const mode=process.env.MULTI_HOST_TEST_MODE;
  const mark=name=>fs.appendFileSync(process.env.MULTI_HOST_TEST_CALLS,name+'\\n');
  if(mode==='redact') throw Error('failed '+options.target.host+' secret-key-123');
+ const oldClient=mode.startsWith('old-client');
  return {
-  getDaemonStatus:async()=>({serverId:mode==='mismatch'?'other':'expected',version:'test'}),
+  getDaemonStatus:async()=>({serverId:mode==='mismatch'?'other':'expected',
+   version:mode==='old-client-011'?'0.11.4':mode==='old-client-012'?'0.12.0':'test'}),
+  // 0.12+ clients expose the host feature and throw if the flag reaches a host without it.
+  ...(oldClient?{}:{supportsBackgroundWorkspaces:()=>mode!=='old-host'}),
   fetchAgents:async options=>{
+   if(mode==='old-host'&&'includeBackground' in options) throw Error('Update the host to use background workspaces.');
+   if(mode==='background-busy') return {entries:[{agent:{id:'a',status:'idle'}},
+    ...(options.includeBackground?[{agent:{id:'bg',status:'running',workspaceId:'wks_bg'}}]:[])],
+    pageInfo:{hasMore:false}};
    const later=!!options.page?.cursor;
    const multi=['pages-idle','pages-busy','loop','duplicate'].includes(mode);
    return {
@@ -133,6 +141,35 @@ class AdapterTests(unittest.TestCase):
         self.assertTrue(d['result']['acknowledged']['ack'])
         self.assertEqual(self.calls.read_text(), 'restart\n')
 
+    def test_background_workspace_agents_are_listed_and_block_restart(self):
+        p, d = self.invoke('background-busy', 'agents', 'PC')
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual([a['id'] for a in d['result']['agents']], ['a', 'bg'])
+        self.assertNotIn('warning', d['result'])
+        p, d = self.invoke('background-busy', 'restart', 'PC')
+        self.assertFalse(d['ok'])
+        self.assert_no_mutation()
+
+    def test_old_client_cannot_see_background_agents_on_012_host(self):
+        p, d = self.invoke('old-client-012', 'agents', 'PC')
+        self.assertEqual(p.returncode, 0)
+        self.assertIn('Background-workspace agents', d['result']['warning'])
+        p, d = self.invoke('old-client-012', 'restart', 'PC')
+        self.assertFalse(d['ok'])
+        self.assert_no_mutation()
+        p, d = self.invoke('old-client-012', 'restart', 'PC', '--force')
+        self.assertEqual(p.returncode, 0)
+        self.assertIn('unknown', [a['id'] for a in d['result']['interruptedAgents']])
+
+    def test_pre_012_hosts_and_clients_still_restart_when_idle(self):
+        for mode in ['old-client-011', 'old-host']:
+            with self.subTest(mode=mode):
+                if self.calls.exists():
+                    self.calls.unlink()
+                p, d = self.invoke(mode, 'restart', 'PC')
+                self.assertEqual(p.returncode, 0, d)
+                self.assertEqual(self.calls.read_text(), 'restart\n')
+
     def test_finished_attention_does_not_block_restart(self):
         p, d = self.invoke('finished', 'restart', 'PC')
         self.assertEqual(p.returncode, 0)
@@ -175,6 +212,47 @@ class AdapterTests(unittest.TestCase):
         self.assertFalse(d['ok'])
         self.assertIn('ownership', d['error'])
         self.assert_no_mutation()
+
+    def test_inline_command_dispatches_without_file(self):
+        p, d = self.invoke('idle', 'exec', 'PC', '--command', 'uname -a')
+        self.assertEqual(self.calls.read_text(), 'exec\n')
+        p = subprocess.run([sys.executable, str(SCRIPT), '--config', str(self.config), 'exec', 'PC',
+                            '--command', 'x', '--file', str(self.script)], capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+
+    def test_force_restart_reports_interrupted_agents(self):
+        p, d = self.invoke('busy', 'restart', 'PC', '--force')
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual([a['id'] for a in d['result']['interruptedAgents']], ['a'])
+        self.assertEqual(self.calls.read_text(), 'restart\n')
+        self.calls.unlink()
+        p, d = self.invoke('schema', 'restart', 'PC', '--force')
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual(d['result']['interruptedAgents'][0]['id'], 'unknown')
+
+    def test_cli_allows_daemon_status_but_not_lifecycle(self):
+        echo = shutil.which('echo')
+        os.environ['PASEO_MULTI_HOST_CLI'] = echo
+        try:
+            p, d = self.invoke('idle', 'cli', 'PC', '--', 'daemon', 'status', '--json')
+            self.assertEqual(p.returncode, 0)
+            self.assertIn('daemon status', d['result']['stdout'])
+            for cmd in (['daemon', 'stop'], ['daemon', 'restart'], ['daemon', 'pair'], ['pair']):
+                p, d = self.invoke('idle', 'cli', 'PC', '--', *cmd)
+                self.assertFalse(d['ok'])
+        finally:
+            del os.environ['PASEO_MULTI_HOST_CLI']
+        self.assert_no_mutation()
+
+    def test_import_merges_into_existing_registry(self):
+        source = self.root / 'export.json'
+        other = {**self.host, 'label': 'PC2', 'aliases': [], 'serverId': 'other'}
+        renamed = {**self.host, 'label': 'PC-RENAMED'}
+        source.write_text(json.dumps([other, renamed]))
+        p, d = self.invoke('idle', 'import-saved', str(source))
+        self.assertEqual(p.returncode, 0)
+        labels = [h['label'] for h in json.loads(self.config.read_text())['hosts']]
+        self.assertEqual(sorted(labels), ['PC-RENAMED', 'PC2'])
 
     def test_import_duplicate_alias_keeps_existing_registry(self):
         source = self.root / 'export.json'

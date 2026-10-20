@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { initRun, resumeRun } from './god-run.mjs';
+import { initRun, resumeRun, listRuns } from './god-run.mjs';
 
 const script = fileURLToPath(new URL('./god-run.mjs', import.meta.url));
 const skill = fileURLToPath(new URL('../', import.meta.url));
@@ -106,6 +106,24 @@ test('symlinked record files are refused on resume', async t => {
   assert.equal(await readFile(external, 'utf8'), 'External file');
 });
 
+test('list finds the project runs newest first with status and skips foreign or broken ones', async t => {
+  const root = await fixture(t);
+  const other = await fixture(t);
+  assert.deepEqual((await listRuns(root)).runs, []);
+  assert.deepEqual(await readdir(root), []);
+  const first = await initRun(root, 'First task');
+  await new Promise(resolve => setTimeout(resolve, 5));
+  const second = await initRun(root, 'Second task');
+  await writeFile(second.record, (await readFile(second.record, 'utf8')).replace('- Status: active', '- Status: blocked'));
+  const foreign = await initRun(other, 'Foreign');
+  await cp(path.dirname(foreign.record), path.join(root, '.paseobility/god/runs', foreign.id), { recursive: true });
+  const broken = await initRun(root, 'Broken');
+  await writeFile(path.join(path.dirname(broken.record), 'run.json'), '{broken');
+  const { runs } = await listRuns(root);
+  assert.deepEqual(runs.map(run => [run.id, run.status, run.goal]),
+    [[second.id, 'blocked', 'Second task'], [first.id, 'active', 'First task']]);
+});
+
 test('CLI provides parseable JSON and rejects unsupported or duplicate options', async t => {
   const root = await fixture(t);
   const args = ['--root', root, '--goal', 'CLI task'];
@@ -113,10 +131,14 @@ test('CLI provides parseable JSON and rejects unsupported or duplicate options',
   const resumed = JSON.parse(execFileSync(process.execPath, [script, 'resume', '--id', created.id, '--root', root], { encoding: 'utf8' }));
   assert.equal(resumed.record, created.record);
   assert.ok(resumed.content.includes('> CLI task'));
+  const listed = JSON.parse(execFileSync(process.execPath, [script, 'list', '--root', root], { encoding: 'utf8' }));
+  assert.deepEqual(listed.runs.map(run => run.id), [created.id]);
   for (const invalid of [
     ['init', '--root', root, '--root', root],
     ['init', '--root', root, '--auto-save', 'yes'],
     ['complete', '--root', root, '--id', created.id],
+    ['list', '--root', root, '--id', created.id],
+    ['constructor', '--root', root],
   ]) {
     const result = spawnSync(process.execPath, [script, ...invalid], { encoding: 'utf8' });
     assert.equal(result.status, 1);

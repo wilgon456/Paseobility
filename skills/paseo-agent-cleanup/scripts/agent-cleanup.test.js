@@ -167,10 +167,22 @@ test("a user pattern archives only matching inactive agents", () => {
   assert.equal(result.exitCode, 0);
 });
 
+test("explicit agent archive needs no --yes; workspace archive still does", () => {
+  const runner = createRunner({ agents: [idleAgent, testAgent] });
+  const result = execute(parseArgs(["--agent", testAgent.id, "--archive"]), runner.run);
+  assert.deepEqual(result.summary.agentsSelected, [testAgent.id]);
+  assert.equal(result.summary.status, "success");
+  assert.throws(
+    () => parseArgs(["--agent", testAgent.id, "--workspace", testWorkspace.workspaceId, "--archive"]),
+    /workspace --archive requires --yes/
+  );
+  assertNoDangerousCommands(runner.calls);
+});
+
 test("an active agent is never archived even when explicitly selected", () => {
   const runner = createRunner({ agents: [activeAgent] });
   const result = execute(
-    parseArgs(["--agent", activeAgent.id, "--archive", "--yes"]),
+    parseArgs(["--agent", activeAgent.id, "--archive"]),
     runner.run
   );
 
@@ -299,6 +311,7 @@ test("the default catch-all pattern and unsafe implicit archive are gone", () =>
   assert.equal(defaults.pattern, null);
   assert.equal(defaults.patternProvided, false);
   assert.throws(() => parseArgs(["--archive", "--yes"]), /requires --agent/);
+  assert.throws(() => parseArgs(["--archive"]), /requires --agent/);
 });
 
 test("initializing agents are protected as active", () => {
@@ -431,4 +444,17 @@ test("a disposable selection that changes before dispatch remains untouched", ()
   assert.equal(result.exitCode,1);
   assert.match(result.summary.actions[0].reason,/selection no longer/);
   assert.equal(runner.calls.length,0);
+});
+
+test("hidden background workspaces are reported instead of implying absence", () => {
+  const hidden = (command) => command === "snapshot"
+    ? {status: 0, stdout: JSON.stringify({complete: true, serverId: "server-test", backgroundCovered: false,
+      agents: [idleAgent], workspaces: []}), stderr: ""}
+    : assert.fail("must not archive");
+  const result = execute(parseArgs(["--archive", "--agent", "agent-background"]), hidden);
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.summary.verification.backgroundCovered, false);
+  assert.match(result.summary.validationErrors[0], /agent-background.*background-workspace records are not visible/);
+  const covered = execute(parseArgs([]), createRunner({agents: [idleAgent]}).run);
+  assert.equal(covered.summary.verification.backgroundCovered, true);
 });

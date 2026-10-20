@@ -15,15 +15,16 @@ function usage() {
   agent-cleanup.js
   agent-cleanup.js --dry-run [--pattern <regex>] [--include-workspaces]
   agent-cleanup.js --auto [--pattern <regex> | --agent <id>]
-  agent-cleanup.js --agent <id> [--agent <id>] --archive --yes
+  agent-cleanup.js --agent <id> [--agent <id>] --archive
+  agent-cleanup.js --pattern <regex> --archive
   agent-cleanup.js --workspace <id> [--workspace <id>] --archive --yes
 
 Options:
   --auto                 Archive inactive agents selected by an explicit ID,
                          a user pattern, or a disposable/test marker.
   --dry-run              Show candidates without changing state. This is the default.
-  --archive              Archive selected candidates. Requires --yes.
-  --yes                  Confirm explicit archive execution.
+  --archive              Archive selected candidates (agent archive is a soft delete).
+  --yes                  Required for workspace archive, which can remove a managed worktree.
   --pattern <regex>      Select inactive agents by a user-supplied regex.
   --agent <id>           Explicit agent ID to consider.
   --workspace <id>       Explicit workspace ID to consider.
@@ -95,8 +96,8 @@ function parseArgs(argv) {
   if (opts.auto && (opts.workspaceIds.length || opts.includeWorkspaces)) {
     throw new Error("--auto never archives workspaces; use explicit --workspace <id> --archive --yes");
   }
-  if (opts.archive && !opts.auto && !opts.yes) {
-    throw new Error("--archive requires --yes");
+  if (opts.archive && opts.workspaceIds.length && !opts.yes) {
+    throw new Error("workspace --archive requires --yes");
   }
   if (
     opts.archive &&
@@ -321,11 +322,14 @@ function execute(opts, runCommand = run) {
     ? workspaceRows.filter((row) => row.explicit)
     : workspaceRows.filter((row) => row.selected);
 
+  // Paseo 0.12+ hides background workspaces from older clients; say so instead of implying absence.
+  const backgroundCovered = initial.backgroundCovered !== false;
+  const hiddenHint = backgroundCovered ? "" : " (background-workspace records are not visible to the installed Paseo client)";
   const validationErrors = [];
   const missingAgentIds = requestedIdsMissing(agents, opts.agentIds, "agent");
   const missingWorkspaceIds = requestedIdsMissing(workspaces, opts.workspaceIds, "workspace");
-  if (missingAgentIds.length) validationErrors.push(`agent IDs not found: ${missingAgentIds.join(", ")}`);
-  if (missingWorkspaceIds.length) validationErrors.push(`workspace IDs not found: ${missingWorkspaceIds.join(", ")}`);
+  if (missingAgentIds.length) validationErrors.push(`agent IDs not found: ${missingAgentIds.join(", ")}${hiddenHint}`);
+  if (missingWorkspaceIds.length) validationErrors.push(`workspace IDs not found: ${missingWorkspaceIds.join(", ")}${hiddenHint}`);
   for (const id of opts.agentIds) {
     if (agents.filter(agent => matchesId(agent, id)).length > 1)
       validationErrors.push(`ambiguous agent ID: ${id}; use a full ID`);
@@ -351,6 +355,7 @@ function execute(opts, runCommand = run) {
       workspaceListRechecked: false,
       historyOrResumeUsed: false,
       completeSnapshots: true,
+      backgroundCovered,
       preArchiveRechecks: 0,
     },
   };
@@ -469,6 +474,8 @@ function printHuman(result) {
   if (summary.pattern) console.log(`pattern: ${summary.pattern}`);
   printTable("Agents", agentRows, "agent");
   printTable("Workspaces", workspaceRows, "workspace");
+  if (!summary.verification.backgroundCovered)
+    console.log("\nnote: background workspaces and their agents are not visible to the installed Paseo client.");
 
   if (summary.mode === "dry-run") {
     console.log("\n[dry-run] No changes made. Ordinary idle agents are preserved.");

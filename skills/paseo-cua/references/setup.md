@@ -1,22 +1,18 @@
 # Cua Driver setup
 
-Load this only when `paseo-cua` work is requested and the host is not ready.
-The skill itself installs nothing; without the driver, report the prerequisite
-and stop.
+Load when the driver is missing or the host is not ready.
 
 ## Check the host
 
-- `cua-driver --version` — confirm the binary is installed.
+- `cua-driver --version` — binary installed.
 - `cua-driver doctor` — platform and entry-point readiness.
-- `cua-driver permissions status` — report already-granted OS permissions.
+- `cua-driver permissions status` — OS permissions already granted.
 
-If the binary is missing, report the prerequisite and a recovery instruction:
-reinstall through the Paseobility installer (it auto-ensures the driver when
-`paseo-cua` is selected) or install the driver manually. A later, explicit
-install/setup request authorizes a normal reviewed installation; do not repeat
-approval prompts once that request exists.
+If the binary is missing, rerun the Paseobility installer with `paseo-cua`
+selected (it ensures the driver) or use the official installer below. Run it
+when the user asks for setup or agrees; one yes is enough.
 
-## Install (user-authorized)
+## Install
 
 These official entry points resolve the current release at run time, so they are
 rolling examples rather than pinned artifacts:
@@ -33,19 +29,15 @@ is skipped by default for a custom skills `--target-home` / `-TargetHome`;
 (macOS still writes `/Applications/CuaDriver.app` and `~/.cua-driver`), and
 `--skip-cua-driver` / `-SkipCuaDriver` copies skills only.
 
-A future, explicit install request authorizes a normal reviewed installation.
 Prefer the release channel over source builds. Reviewed behavior comes from the
 pinned source at the commit below, not from a moving endpoint.
 
 ## Permissions
 
 - macOS: Accessibility and Screen Recording are required and are granted by
-  the human. `cua-driver permissions grant` opens the correct identity so the
-  Settings entries match the driver, not the terminal. `permissions status`
-  is read-only; if Accessibility is `false`, stop and ask the user to grant it.
-  `unknown` is not `false`: it means the driver could not confirm its own
-  identity/readiness, not that the grant was denied. Re-check after the driver
-  app is running; do not assert a specific cause.
+  the human. `cua-driver permissions grant` opens the driver's own identity in
+  Settings (not the terminal's); ask the user to approve. `unknown` is not
+  `false` — re-check after the driver app is running; do not assert a cause.
 - Windows: the daemon must run on an interactive user desktop, not Session 0.
 - Linux: the daemon must share the graphical session and the AT-SPI session bus.
 
@@ -55,50 +47,46 @@ The Paseobility installer only prepares the pinned binary. It does not start the
 daemon and does not grant permissions. On a Mac:
 
 1. Record the installed version: `cua-driver --version`. The Paseobility
-   installer now pins `0.34.1` (verified upstream stable release as of 2026-10-13) for a fresh
-   install, but a working existing driver is reused as-is — do not downgrade or
-   replace it just to match the pin. The pin is a source/schema-reviewed
+   installer now pins `0.36.0` (upstream stable release, reviewed and installed
+   on 2026-10-20) for a fresh install, but a working existing driver is reused
+   as-is — do not downgrade or replace it just to match the pin. The pin is a source/schema-reviewed
    contract; `0.28.2` remains the last version exercised end-to-end in the
    [platform validation record](https://github.com/wilgon456/Paseobility/blob/main/docs/cua-platform-validation.md).
 2. Start the driver app so it runs under its own app identity, not the terminal:
-   `open -n -g -a CuaDriver --args serve`
-3. Grant permissions as the human (cannot be scripted):
-   `cua-driver permissions grant`, then confirm with
-   `cua-driver permissions status`. `true` under the `driver-daemon` identity
-   confirms the OS grants **only**; it is not proof the driver can act. Verify
-   the real target with a snapshot and one action before treating it as ready.
-4. Register MCP only if you want a persistent connection (see below). The
-   printed snippet is guidance; merge it into your actual client config.
+   `open -n -g -a CuaDriver --args serve`. From 0.36.0 a daemon started from a
+   bare binary outside `CuaDriver.app` refuses background clicks, drags and
+   window-addressed keys (`windowserver_connection_invalid`). The installer's
+   `~/.local/bin/cua-driver` symlink into the bundle is fine; a copied binary
+   is not, and the Paseobility helper warns about it.
+3. The human grants permissions (cannot be scripted):
+   `cua-driver permissions grant`, then `cua-driver permissions status`. `true`
+   confirms the OS grants only; the first real action confirms the driver works.
+4. For a persistent connection, merge the MCP snippet (see below).
 5. Start a new agent session, or reload integrations, so the client re-reads its
    config.
 
 Notes:
 
-- Stop or reopen this driver only when it is safe: no live sessions from this
-  driver's own tasks and no unrelated use. Prefer `cua-driver stop`, then
-  `open -n -g -a CuaDriver --args serve`. **Never restart Paseo to apply this.**
-- Existing Paseo sessions may keep the provider they already loaded. A new
-  session or an integration reload **may be needed** to pick up the change, but a
-  refreshed long-lived provider is not guaranteed — this path was not tested.
-  Confirm the tools appear in the actual fresh client instead of assuming it.
+- Restart the driver (`cua-driver stop`, then
+  `open -n -g -a CuaDriver --args serve`) only when no other session is using
+  it. **Never restart Paseo to apply this.**
+- Existing Paseo sessions may keep the provider they already loaded; a new
+  session or integration reload may be needed. Check the tools appear in the
+  fresh client.
 
 ## Optional persistent connection
 
-`cua-driver mcp-config --client <client>` only prints a config snippet; it does
-**not** register anything. This skill does not auto-register MCP either. The
-snippet's key is client-specific — the OpenCode form nests under an `mcp` key,
-while Codex uses `mcp_servers` and Claude uses `mcpServers`. Use the schema the
-command actually prints for the client you run; do not paste one client's key
-into another. For a persistent multi-call connection, merge that entry into the
-real client config while preserving existing entries, then start a new session.
-One-off calls do not need it. Verify with the client's own list or status command
-rather than assuming the edit took effect.
+`cua-driver mcp-config --client <client>` only prints a snippet; it registers
+nothing. Keys are client-specific — OpenCode nests under `mcp`, Codex uses
+`mcp_servers`, Claude uses `mcpServers` — so use what the command prints for
+your client. When a multi-call flow needs it, merge the entry into the real
+client config (keep existing entries), start a new session, and check with the
+client's own list/status command. One-off calls do not need it.
 
 ## Telemetry
 
 The driver reports content-free product telemetry **enabled by default**; the
-installer does not change this. Inspect or disable it yourself — this skill
-never changes the setting:
+installer does not change this. Inspect it, or disable it when the user asks:
 
 ```bash
 cua-driver telemetry status      # current setting + install-id presence
@@ -112,12 +100,12 @@ source is authoritative.
 ## Source
 
 Pinned upstream: [`trycua/cua`](https://github.com/trycua/cua) @
-[`0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`](https://github.com/trycua/cua/tree/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc)
-(the `cua-driver-rs-v0.34.1` release tag),
-skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/Skills/cua-driver),
-Cua Driver version 0.34.1. The pinned installers resolve/download a release and
+[`6d6c734c127025fb39ad5d585a10382808b39dc1`](https://github.com/trycua/cua/tree/6d6c734c127025fb39ad5d585a10382808b39dc1)
+(the `cua-driver-rs-v0.36.0` release tag),
+skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/rust/Skills/cua-driver),
+Cua Driver version 0.36.0. The pinned installers resolve/download a release and
 stop stale daemons; they never start one. Reviewed implementation:
-[`src/cli.rs`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
+[`src/cli.rs`](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
 (`run_mcp_config` prints a snippet; it writes no config).
 Upstream source files are MIT licensed (Copyright (c) 2025 Cua AI, Inc.).
 Docs: [cua.ai/docs/cua-driver](https://cua.ai/docs/cua-driver)

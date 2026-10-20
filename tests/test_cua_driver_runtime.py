@@ -14,6 +14,7 @@ shebang semantics. The Windows PowerShell installer path is covered by
 import hashlib
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -21,6 +22,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "scripts/paseobility-cua-driver.sh"
+DRIVER_PS1 = ROOT / "scripts/paseobility-cua-driver.ps1"
+UNBUNDLED_WARNING = "outside CuaDriver.app"
 INIT = ROOT / "scripts/paseobility-init.sh"
 
 WORKING_BINARY = "#!/usr/bin/env bash\necho 'cua-driver 0.28.2 (fake)'\n"
@@ -223,6 +226,75 @@ class CuaDriverRuntimeTests(unittest.TestCase):
         result = self.run_driver("--bin-dir", str(self.bin_dir), env=env)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("verified pinned digest for install.sh", result.stdout)
+
+    # --- pins + macOS app-bundle rule (Cua Driver 0.36.0+) ----------------
+
+    def test_shell_and_powershell_helpers_pin_the_same_release(self):
+        sh = DRIVER.read_text()
+        ps1 = DRIVER_PS1.read_text()
+        sh_version = re.search(r'PASEOBILITY_CUA_PIN_VERSION:-([0-9.]+)\}', sh).group(1)
+        sh_sha = re.search(r'PASEOBILITY_CUA_PIN_SHA:-([0-9a-f]{40})\}', sh).group(1)
+        ps1_version = re.search(
+            r'PASEOBILITY_CUA_PIN_VERSION \} else \{ "([0-9.]+)" \}', ps1).group(1)
+        ps1_sha = re.search(
+            r'PASEOBILITY_CUA_PIN_SHA \} else \{ "([0-9a-f]{40})" \}', ps1).group(1)
+        self.assertEqual(sh_version, ps1_version)
+        self.assertEqual(sh_sha, ps1_sha)
+        self.assertIn(f"(default {sh_version})", sh)
+
+    def make_bundle_binary(self, bundle="CuaDriver.app"):
+        macos_dir = self.base / "Applications" / bundle / "Contents" / "MacOS"
+        macos_dir.mkdir(parents=True)
+        binary = macos_dir / "cua-driver"
+        binary.write_text(WORKING_BINARY)
+        binary.chmod(0o755)
+        return binary
+
+    def test_macos_symlink_into_app_bundle_is_not_warned(self):
+        target = self.make_bundle_binary()
+        self.bin_dir.mkdir()
+        (self.bin_dir / "cua-driver").symlink_to(target)
+        result = self.run_driver("--bin-dir", str(self.bin_dir),
+                                 env=self.env(PASEOBILITY_CUA_HOST_OS="Darwin"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("present:", result.stdout)
+        self.assertNotIn(UNBUNDLED_WARNING, result.stderr)
+        self.assertEqual(self.reads(), "")
+
+    def test_macos_relative_symlink_into_local_bundle_is_not_warned(self):
+        self.make_bundle_binary("CuaDriverLocal.app")
+        self.bin_dir.mkdir()
+        (self.bin_dir / "cua-driver").symlink_to(
+            Path("..") / "Applications/CuaDriverLocal.app/Contents/MacOS/cua-driver")
+        result = self.run_driver("--check", "--bin-dir", str(self.bin_dir),
+                                 env=self.env(PASEOBILITY_CUA_HOST_OS="Darwin"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn(UNBUNDLED_WARNING, result.stderr)
+
+    def test_macos_bare_binary_is_reused_with_warning(self):
+        binary = self.write_binary(WORKING_BINARY)
+        result = self.run_driver("--bin-dir", str(self.bin_dir),
+                                 env=self.env(PASEOBILITY_CUA_HOST_OS="Darwin"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("present:", result.stdout)
+        self.assertIn(UNBUNDLED_WARNING, result.stderr)
+        self.assertIn("open -n -g -a CuaDriver --args serve", result.stderr)
+        self.assertEqual(binary.read_text(), WORKING_BINARY)
+        self.assertEqual(self.reads(), "")
+
+    def test_macos_fresh_install_of_bare_binary_warns(self):
+        result = self.run_driver("--bin-dir", str(self.bin_dir),
+                                 env=self.env(PASEOBILITY_CUA_HOST_OS="Darwin"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("installed:", result.stdout)
+        self.assertIn(UNBUNDLED_WARNING, result.stderr)
+
+    def test_non_macos_bare_binary_is_not_warned(self):
+        self.write_binary(WORKING_BINARY)
+        result = self.run_driver("--bin-dir", str(self.bin_dir),
+                                 env=self.env(PASEOBILITY_CUA_HOST_OS="Linux"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn(UNBUNDLED_WARNING, result.stderr)
 
     # --- installer selection + isolation ----------------------------------
 

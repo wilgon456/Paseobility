@@ -105,16 +105,22 @@ def main():
     imp = sub.add_parser('import-saved')
     imp.add_argument('file', type=Path)
     imp.add_argument('--replace', action='store_true')
-    for action in ('status', 'agents', 'restart'):
+    for action in ('status', 'agents'):
         sub.add_parser(action).add_argument('host')
+    rst = sub.add_parser('restart')
+    rst.add_argument('host')
+    rst.add_argument('--force', action='store_true',
+                     help='Restart even with active agents (only when the user asked for that)')
     cli = sub.add_parser('cli')
     cli.add_argument('host')
     cli.add_argument('args', nargs=argparse.REMAINDER)
     exe = sub.add_parser('exec')
     exe.add_argument('host')
-    exe.add_argument('--file', type=Path, required=True)
+    src = exe.add_mutually_exclusive_group(required=True)
+    src.add_argument('--file', type=Path)
+    src.add_argument('--command', help='Inline script text instead of --file')
     exe.add_argument('--shell', choices=['bash', 'powershell'])
-    exe.add_argument('--wait', type=int, choices=range(0, 46), default=10, metavar='0..45')
+    exe.add_argument('--wait', type=int, choices=range(0, 301), default=10, metavar='0..300')
     exe.add_argument('--workspace', help='Remote workspace ID, for daemons that require one per terminal')
     for action in ('capture', 'close'):
         p = sub.add_parser(action)
@@ -124,8 +130,6 @@ def main():
     args = parser.parse_args()
     config = args.config.expanduser().resolve()
     if args.action == 'import-saved':
-        if config.exists() and not args.replace:
-            raise ValueError('Registry exists; use --replace only for an intended replacement.')
         data = json.loads(args.file.read_text(encoding='utf-8'))
         if isinstance(data, list) and len(data) == 1 and isinstance(data[0], list):
             data = data[0]
@@ -133,6 +137,10 @@ def main():
             data = data.get('hosts')
         if not isinstance(data, list):
             raise ValueError('Unsupported saved-host export.')
+        if config.exists() and not args.replace:
+            # Merge: an imported host replaces the entry with the same serverId.
+            incoming = {h.get('serverId') for h in data if isinstance(h, dict)}
+            data = [h for h in load_hosts(config) if h['serverId'] not in incoming] + data
         candidate = config.with_name(config.name + '.candidate')
         try:
             private_write(candidate, {'hosts': data})
@@ -147,7 +155,8 @@ def main():
                  'platform': h.get('platform', 'unknown'), 'serverId': h['serverId']} for h in hosts]
     if args.action == 'runs':
         return [json.loads(p.read_text(encoding='utf-8')) for p in sorted((config.parent / 'runs').glob('*.json'))]
-    req = {'action': args.action, 'stateDir': str(config.parent / 'runs')}
+    req = {'action': args.action, 'stateDir': str(config.parent / 'runs'),
+           'force': getattr(args, 'force', False)}
     if args.action in ('capture', 'close'):
         import uuid
         run_id = str(uuid.UUID(args.run_id))
@@ -163,7 +172,8 @@ def main():
         shell = args.shell or {'macos': 'bash', 'linux': 'bash', 'windows': 'powershell'}.get(host.get('platform'))
         if shell is None:
             raise ValueError('Unknown target platform: supply --shell after verifying it.')
-        req.update(script=args.file.read_text(encoding='utf-8'), shell=shell, wait=args.wait)
+        script = args.command if args.command is not None else args.file.read_text(encoding='utf-8')
+        req.update(script=script, shell=shell, wait=args.wait)
         if args.workspace:
             req['workspaceId'] = args.workspace
     if args.action == 'cli':
@@ -171,8 +181,9 @@ def main():
         if not commands or commands[0].startswith('-') or any(
                 a.split('=')[0] in ('--host', '--home') for a in commands):
             raise ValueError('CLI command required; target overrides are not allowed.')
-        if commands[0] in ('daemon', 'restart', 'start', 'onboard', 'pair'):
-            raise ValueError('Use guarded restart or an authorized host-side lifecycle script.')
+        if commands[0] in ('restart', 'start', 'onboard', 'pair') or (
+                commands[0] == 'daemon' and commands[1:2] not in (['status'], ['reload'])):
+            raise ValueError('Use guarded restart or a host-side lifecycle script.')
         req['args'] = commands
         override = os.environ.get('PASEO_MULTI_HOST_CLI')
         if override:

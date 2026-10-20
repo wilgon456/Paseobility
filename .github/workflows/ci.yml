@@ -60,6 +60,9 @@ jobs:
       - name: God run records
         run: node --test skills/paseo-god/scripts/god-run.test.mjs
 
+      - name: Browser leftover sweep
+        run: node --test skills/paseo-browser/scripts/browser-sweep.test.mjs
+
       - name: Node share suite
         run: node skills/paseo-share/scripts/paseo-share.test.js
 
@@ -150,6 +153,9 @@ jobs:
 
       - name: God run records
         run: node --test skills/paseo-god/scripts/god-run.test.mjs
+
+      - name: Browser leftover sweep
+        run: node --test skills/paseo-browser/scripts/browser-sweep.test.mjs
 
       - name: Node share suite
         run: node skills/paseo-share/scripts/paseo-share.test.js

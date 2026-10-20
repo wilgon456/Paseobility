@@ -1,12 +1,12 @@
 ---
 name: paseo-share
 description: >-
-  Share small Paseo artifacts through a dedicated private Git repository and
-  return clickable preview/download links, with automatic first-use GitHub
-  onboarding to the authenticated account’s private paseo_share repository.
-  Use when the user asks to share, upload, publish, find, list, preview, open,
-  or fetch documents, code files, PDFs, or images across Paseo computers or on
-  mobile. Triggers include
+  Share Paseo files (up to 50 MiB each) through a dedicated private Git
+  repository and return clickable preview/download links, with automatic
+  first-use GitHub onboarding to the authenticated account’s private
+  paseo_share repository. Use when the user asks to share, upload, publish,
+  find, list, preview, open, or fetch documents, code, PDFs, images, archives,
+  or other files across Paseo computers or on mobile. Triggers include
   "share this file", "upload this result", "show the file from my other
   computer", "latest shared artifact", "공유해줘", "올려줘", "다른 컴퓨터
   파일", and "공유한 파일 가져와".
@@ -14,159 +14,98 @@ description: >-
 
 # Paseo Share
 
-Use a dedicated private Git repository as a small artifact inbox. Run the
-bundled Node.js CLI for deterministic Git operations. It uses only local
-`git fetch`/`rebase`/`commit`/`push`; it never creates or runs GitHub Actions.
+A dedicated private Git repository is the user's file inbox across computers
+and phone. The bundled Node.js CLI does all Git work with plain
+`fetch`/`rebase`/`commit`/`push`; no daemon, no GitHub Actions, and no
+dependency on Paseo's daemon or MCP tools.
 
-This feature is intentionally independent of Paseo's daemon, MCP tool names,
-agent profiles, and workspace lifecycle. Paseo compatibility depends only
-on the skill being installed and discovered; sharing continues through the
-bundled CLI.
+Needs `node` and `git` on every computer, and GitHub CLI (`gh`) for automatic
+onboarding. Custom remotes (Forgejo etc.) use `setup <repo-url>` with SSH or
+the OS credential manager; never put a token in the URL. Use one repository
+per person or fully trusted device group. State and the clone live under
+`~/.paseo/share/` (`PASEO_SHARE_HOME` overrides, for tests).
 
-## Requirements
-
-- Require `node` and `git` on every computer.
-- Require GitHub CLI (`gh`) for automatic GitHub onboarding. Keep explicit
-  `setup <repo-url>` support for Forgejo or another dedicated remote.
-- Use one dedicated private repository for all computers.
-- Use one repository per person or fully trusted device group. Do not treat it
-  as a multi-tenant exchange for mutually untrusted collaborators.
-- Let automatic onboarding configure local Git authentication through `gh`.
-  For custom remotes, use SSH or the operating system credential manager.
-  Never put a token in the repository URL.
-- Expect mobile viewers to be signed in to the Git host for private links.
-
-The CLI stores machine-local configuration and its clone under
-`~/.paseo/share/` by default. Override this only for testing with
-`PASEO_SHARE_HOME`.
-
-## Command runner
-
-Resolve this skill's installed directory and run:
+## Commands
 
 ```bash
 node <skill-dir>/scripts/paseo-share.js <command> [arguments]
 ```
 
-Commands:
-
 ```text
 onboard [--machine <name>] [--branch <name>]
 setup <repo-url> [--machine <name>] [--branch <name>]
-publish <file> [--note <text>]
+publish <file...> [--note <text>]
 list [--limit <number>]
 latest
 fetch <artifact-id|latest> [--output <directory>] [--force]
 status
 ```
 
-Add `--json` to `publish`, `list`, `latest`, `fetch`, or `status` when
-machine-readable output helps.
+`--json` works on `publish`, `list`, `latest`, `fetch` and `status`.
 
-## First-time setup
+## First use
 
-1. Run `status` first.
-2. Treat the user’s first actual Paseo Share request as authorization to run
-   `onboard`; installation alone must remain side-effect free.
-3. If `gh` is missing or unauthenticated, ask the user to install it or run
-   `gh auth login --hostname github.com`, then retry. GitHub Connector access
-   alone does not prove that local `git push` is authenticated.
-4. Let `onboard` configure local Git authentication, resolve the authenticated
-   login, and target `<login>/paseo_share` with private visibility.
-5. Create the repository when absent. Reuse it only when it is private and
-   either empty or already contains a recognized Paseo Share artifact tree.
-6. Refuse automatic setup when the fixed-name repository is public, contains
-   unrelated data, cannot be completely inspected, or local Git authentication
-   fails. Never change visibility, rename, delete, or overwrite repository
-   contents automatically.
-7. For Forgejo or a user-selected custom repository, obtain its URL and run
-   `setup <repo-url>` instead of `onboard`.
-8. Let the CLI infer the machine name unless the user wants a stable friendly
-   name such as `macbook`, `desktop`, or `laptop`. Report the repository,
-   machine name, branch, and checkout path without exposing credentials.
+Installation stays side-effect free; the first real share request authorizes
+onboarding.
 
-Run the same setup on every computer using the same repository URL and a
-different machine name. For the same GitHub account, `onboard` discovers and
-reuses the same valid private repository. Setup initializes an empty repository
-safely.
+1. Run `status`; if unconfigured, run `onboard`.
+2. If `gh` is missing or unauthenticated, ask the user to install it or run
+   `gh auth login --hostname github.com`, then retry. A GitHub connector alone
+   does not prove local `git push` works.
+3. `onboard` sets up Git auth through `gh` and targets `<login>/paseo_share`
+   as a private repository. It creates it when absent and reuses it only when
+   it is private and empty or already a Paseo Share tree. It refuses a public,
+   unrelated, or incompletely inspected same-name repository, and never
+   changes visibility, renames, deletes, or overwrites one. Relay that refusal
+   and offer `setup <repo-url>` with another private repository.
+4. Report repository, machine name, branch and checkout path. Each computer
+   runs the same onboarding; the CLI infers the machine name unless the user
+   wants a friendly one (`--machine macbook`).
 
-## Publish a file
+## Share
 
-Treat requests such as "share this", "upload this result", or "휴대폰에서
-보게 올려줘" as authorization to publish the named file.
+"Share this", "upload this result", "휴대폰에서 보게 올려줘" authorize
+publishing the files the user means.
 
-1. Resolve the exact file. If multiple files plausibly match, ask which one.
-2. Run `publish` for one file at a time.
-3. Return the artifact ID and clickable Markdown links from the CLI output:
-   `[미리보기](...)` and `[다운로드](...)`.
-4. Mention that a private link requires GitHub/Forgejo login on mobile.
+- Pass every requested file to one `publish` call; they land in one commit,
+  each with its own ID. If a name could match several files, take the one the
+  context points to (usually the most recent output) and say which.
+- Reply with each artifact ID and the CLI's links as `[미리보기](...)` and
+  `[다운로드](...)`. Private links need GitHub/Forgejo login on mobile.
+- Any file type up to 50 MiB (GitHub's large-file warning) is accepted. For a
+  folder, zip it first.
+- The CLI refuses secret-looking names (`.env`, `*.pem`, `*.key`, SSH keys,
+  `credentials`, `secrets`) and text content with private-key or access-token
+  signatures. Never rename or edit a refused file to get it through; Git
+  history keeps everything ever pushed. Binary contents are not scanned.
 
-The CLI allows common document, code, PDF, and image formats up to 50 MiB. It
-rejects obvious secret/key files and scans text-like files for common private
-key and access-token signatures. Do not rename or override a rejected secret
-just to publish it. Treat secret scanning as defense in depth: PDF, Office,
-image, and other binary contents are not inspected for embedded secrets.
+## Find and fetch
 
-## Find or view artifacts
+- `latest` for "the file I just shared"; `list` for broad or ambiguous
+  requests. Show a short list (ID, machine, time, name) only when several
+  artifacts fit equally.
+- Preview links are enough for viewing. When the user wants to work with an
+  artifact here, `fetch <id> --output <dir>` and use the returned path.
+- `fetch` never overwrites a different existing file: an identical file is
+  reused, otherwise it writes `name (2).ext` and reports the path. `--force`
+  overwrites only when the user asked to replace the file.
 
-- Run `latest` for "the file I just shared" or the most recent artifact.
-- Run `list` when the request is ambiguous or asks for shared files broadly.
-- Show preview links for browser/mobile viewing. Viewing does not require a
-  local download.
-- If multiple artifacts could satisfy a request, show a short list with IDs,
-  machine names, timestamps, and filenames.
+Every command syncs from the remote first. Artifacts are immutable under
+`artifacts/<machine>/<year>/<month>/<id>/` with an `artifact.json`; fetch
+verifies path, size and SHA-256 and skips malformed entries. Do not edit the
+managed clone by hand.
 
-Every read command synchronizes from the remote first, so another computer's
-completed push is visible immediately after normal network propagation.
+## Push failures
 
-## Fetch an artifact for local work
-
-When the user asks to edit, summarize, inspect, or otherwise work with an
-artifact on the current computer, do not ask them to download it manually.
-
-1. Resolve the artifact with `latest`, `list`, or its ID.
-2. Run `fetch <id> --output <appropriate-existing-directory>`.
-3. Use the returned local path for the requested work.
-4. Never overwrite an existing file unless the user explicitly asks; only
-   then pass `--force`.
-
-## Storage and conflict model
-
-Artifacts are immutable and stored in machine-specific, unique directories:
-
-```text
-artifacts/<machine>/<year>/<month>/<artifact-id>/
-```
-
-Each directory contains the shared file and `artifact.json`. Concurrent pushes
-normally touch different paths; the CLI retries only machine-readable,
-non-fast-forward/fetch-first rejections, at most four pushes, with a rebase.
-Authentication, server-hook failures and uncertain transport outcomes stop
-without automatic resubmission. Git/gh subprocesses are bounded to two minutes.
-Do not manually edit files inside the managed clone. Publish a new artifact
-instead.
-
-On fetch, validate the metadata schema, exact artifact path, portable filename,
-real filesystem containment, regular-file type, size, and SHA-256 before
-copying. New publishes calculate size and SHA-256 from the Git-staged blob so
-Git line-ending conversion cannot invalidate cross-platform fetches. Fetch also
-supports legacy text artifacts whose recorded bytes differ only by verified
-LF/CRLF conversion. Fail closed if any remote artifact is malformed or modified.
+Concurrent pushes from other computers are rebased and retried automatically.
+If a push still fails (offline, auth, hook), the commit stays in the managed
+clone and the next `list`, `latest`, `fetch` or `publish` pushes it. Retry
+with `list` once the cause is fixed; never publish the same file again just
+to retry, which would create a second ID.
 
 ## Safety
 
-- Keep the remote repository private unless the user explicitly chooses
-  public sharing.
-- Never repurpose a public or unrelated `<login>/paseo_share` repository.
+- Publish only to the configured private repository, never to a public
+  location. If the user wants a public link, say this skill does not do that.
+- Never print repository credentials or secret file contents.
 - Grant write access only to the same user or fully trusted collaborators.
-- Do not publish `.env` files, credentials, private keys, certificates,
-  executables, package archives, or files larger than the limit.
-- Remember that removing a file in a later commit does not remove it from Git
-  history. Never publish a secret; rotate it immediately if one is exposed.
-- Do not print repository credentials or sensitive file contents.
-- Do not install a background daemon or create GitHub Actions workflows.
-- If the remote is unavailable, report that the local commit remains in the
-  managed checkout and retry only when the user asks or during the next share.
-  If the push response was lost or timed out, first inspect the artifact ID and
-  remote branch to determine whether it arrived. Do not publish the same file
-  again merely to retry an existing pending commit; that creates another ID.

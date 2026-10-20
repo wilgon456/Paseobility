@@ -1,24 +1,23 @@
-# Read-only brief
+# Brief
 
-1. Confirm root, branch, and current git status. Reuse information already
-   established during this conversation; verify anything that may have changed.
-2. List files with `rg --files` if the repository shape is unknown. Read relevant
-   README/AGENTS/CLAUDE/Cursor/Copilot instructions and overview/setup docs, not
-   every source file or every document.
+1. Confirm root, branch and git status. Reuse what this conversation already
+   established; verify anything that may have changed.
+2. Use `rg --files` if the shape is unknown. Read relevant README/AGENTS/CLAUDE/
+   Cursor/Copilot instructions and overview/setup docs, not every file.
 3. Find commands in package.json, pyproject.toml, Cargo.toml, go.mod, Makefile,
-   justfile, Taskfile.yml, and paseo.json as applicable. Distinguish commands
-   found in source from commands actually executed.
-   Attach the working directory to each command. In a monorepo, check the selected
-   package and root workspace scripts rather than assuming root `npm test` runs
-   its tests. Read `packageManager`, toolchain/version files and lockfiles before
-   recommending an installer; do not generate a second lockfile.
-4. Return only requested/relevant sections: purpose, current changes, key rules,
-   install/dev/test commands, project map, risks, and useful next steps.
-5. For handoff, provide a self-contained prompt with root, goal, completed work,
-   constraints, relevant files, commands, and unresolved blockers.
-   Include branch/base or HEAD, uncommitted paths, the date of runtime evidence
-   and the next unmet criterion. Mark inherited claims that were not refreshed.
+   justfile, Taskfile.yml and paseo.json as applicable. Attach the working
+   directory to each. In a monorepo, check the selected package and root
+   workspace scripts rather than assuming root `npm test` covers it. Read
+   `packageManager`, toolchain files and lockfiles before recommending an
+   installer. Mark commands you ran versus commands you only found; run a cheap
+   one (e.g. `--version`, a fast test) when it settles a doubt.
+4. Return only relevant sections: purpose, current changes, key rules,
+   install/dev/test commands, project map, risks, next steps.
+5. For handoff, write a self-contained prompt: root, goal, completed work,
+   constraints, relevant files, commands, blockers, branch/base or HEAD,
+   uncommitted paths, date of runtime evidence and the next unmet criterion.
+   Mark inherited claims you did not refresh.
 
-No dependency installs, server starts, file edits, or context generation. Do not
-run setup mode just to make a brief. When a setup summary already answers the
-request, summarize that evidence without surveying the repository again.
+When `.paseobility/` context is missing or stale, refresh it from what you just
+read (context helper with `--force`, or edit the files directly). Skip
+dependency installs and long-running servers; those belong to setup mode.

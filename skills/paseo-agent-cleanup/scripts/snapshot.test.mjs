@@ -15,15 +15,29 @@ function probe(scenario, request) {
     fs.writeFileSync(path.join(root, 'client.js'), `
       import fs from 'node:fs';
       const scenario = process.env.SCENARIO;
+      const oldClient = scenario.startsWith('old-client');
+      // A 0.12+ client throws when includeBackground reaches a host without the feature.
+      const gate = options => {if (scenario === 'old-host' && 'includeBackground' in options) throw Error('Update the host');};
       export async function connectToDaemon() {return {
-        getDaemonStatus: async () => ({serverId:'fixture-server'}),
+        getDaemonStatus: async () => ({serverId:'fixture-server',
+          version: scenario==='old-client-011'?'0.11.4':scenario==='old-client-012'?'0.12.0':'test'}),
+        ...(oldClient ? {} : {supportsBackgroundWorkspaces: () => scenario !== 'old-host'}),
         fetchAgents: async options => {
+          gate(options);
+          if (scenario === 'background') return {entries:[{agent:{id:'visible-agent',status:'idle',workspaceId:'fixture-workspace'}},
+            ...(options.includeBackground ? [{agent:{id:'background-agent',status:'idle',workspaceId:'background-workspace'}}] : [])],
+            pageInfo:{hasMore:false,nextCursor:null}};
           if (scenario === 'schema') return {entries:[],pageInfo:{}};
           const second = !!options.page.cursor;
           return {entries:[{agent:{id:second?'second-agent':'first-agent',status:scenario==='running'?'running':'idle',workspaceId:'fixture-workspace',pendingPermissions:[]}}],
             pageInfo:{hasMore:scenario==='loop'||!second,nextCursor:scenario==='inconsistent'&&second?'bad':scenario==='loop'||!second?'next':null}};
         },
-        fetchWorkspaces: async () => ({entries:[{id:'fixture-workspace',name:'test'}],pageInfo:{hasMore:false,nextCursor:null}}),
+        fetchWorkspaces: async options => {
+          gate(options);
+          return {entries:[{id:'fixture-workspace',name:'test'},
+            ...(scenario === 'background' && options.includeBackground ? [{id:'background-workspace',name:'bg',background:true}] : [])],
+            pageInfo:{hasMore:false,nextCursor:null}};
+        },
         close: async () => fs.writeFileSync(process.env.CLOSE_MARKER,'closed'),
         archiveAgent: async id => {fs.writeFileSync(process.env.ARCHIVE_MARKER,id);return {archivedAt:'2026-10-13T00:00:00Z'};},
         archiveWorkspace: async id => {fs.writeFileSync(process.env.ARCHIVE_MARKER,id);return {archivedAt:'2026-10-13T00:00:00Z'};}
@@ -66,4 +80,19 @@ for(const [scenario,kind,serverId] of [['running','agent','fixture-server'],['ru
     assert.equal(result.status,1);
     assert.equal(result.archived,false);
     assert.equal(result.closed,true);
+  });
+test('snapshot includes background workspaces and their agents on Paseo 0.12+', () => {
+  const result = probe('background');
+  assert.equal(result.status,0);
+  assert.equal(result.payload.backgroundCovered,true);
+  assert.deepEqual(result.payload.agents.map(agent=>agent.id),['visible-agent','background-agent']);
+  assert.deepEqual(result.payload.workspaces.map(w=>[w.workspaceId,w.background]),
+    [['fixture-workspace',false],['background-workspace',true]]);
+});
+for (const [scenario,covered] of [['old-client-011',true],['old-client-012',false],['old-host',true]])
+  test(`snapshot reports background coverage for ${scenario}`, () => {
+    const result = probe(scenario);
+    assert.equal(result.status,0);
+    assert.equal(result.payload.complete,true);
+    assert.equal(result.payload.backgroundCovered,covered);
   });

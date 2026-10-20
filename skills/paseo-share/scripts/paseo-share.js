@@ -20,18 +20,6 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const WINDOWS_RESERVED_NAME_PATTERN = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const INVALID_PORTABLE_FILENAME_PATTERN = /[<>:"/\\|?*\u0000-\u001f\u007f]/;
 const BOOLEAN_OPTIONS = new Set(["json", "force", "help"]);
-const ALLOWED_EXTENSIONS = new Set([
-  ".astro", ".bash", ".c", ".cc", ".cfg", ".clj", ".cljs", ".conf",
-  ".cpp", ".cs", ".css", ".csv", ".cxx", ".dart", ".diff", ".docx",
-  ".erl", ".ex", ".exs", ".fish", ".gif", ".go", ".gql", ".gradle",
-  ".graphql", ".groovy", ".h", ".hpp", ".hrl", ".htm", ".html",
-  ".ini", ".java", ".jpeg", ".jpg", ".js", ".json", ".jsx", ".kt",
-  ".kts", ".less", ".lua", ".md", ".mjs", ".mts", ".nix", ".patch",
-  ".pdf", ".php", ".png", ".proto", ".ps1", ".py", ".r", ".rb",
-  ".rs", ".sass", ".scala", ".scss", ".sh", ".sql", ".svelte", ".svg",
-  ".swift", ".tf", ".tfvars", ".toml", ".ts", ".tsx", ".txt", ".vue",
-  ".webp", ".xlsx", ".xml", ".yaml", ".yml", ".zsh"
-]);
 const TEXT_EXTENSIONS = new Set([
   ".astro", ".bash", ".c", ".cc", ".cfg", ".clj", ".cljs", ".conf",
   ".cpp", ".cs", ".css", ".csv", ".cxx", ".dart", ".diff", ".erl",
@@ -42,9 +30,6 @@ const TEXT_EXTENSIONS = new Set([
   ".r", ".rb", ".rs", ".sass", ".scala", ".scss", ".sh", ".sql",
   ".svelte", ".svg", ".swift", ".tf", ".tfvars", ".toml", ".ts",
   ".tsx", ".txt", ".vue", ".xml", ".yaml", ".yml", ".zsh"
-]);
-const SAFE_EXTENSIONLESS_NAMES = new Set([
-  "dockerfile", "gemfile", "justfile", "makefile", "procfile", "rakefile"
 ]);
 const SECRET_NAME_PATTERNS = [
   /^\.env(?:\.|$)/i,
@@ -247,15 +232,14 @@ function validateArtifactNamePolicy(name) {
   if (SECRET_NAME_PATTERNS.some((pattern) => pattern.test(name))) {
     throw validationError(`refusing secret-looking file name: ${name}`);
   }
-  const extension = path.extname(name).toLowerCase();
-  if (
-    extension &&
-    !ALLOWED_EXTENSIONS.has(extension) &&
-    !SAFE_EXTENSIONLESS_NAMES.has(name.toLowerCase())
-  ) {
-    throw validationError(`unsupported file type ${extension}; share documents, code, PDFs, or images only`);
-  }
-  return extension;
+  return path.extname(name).toLowerCase();
+}
+
+// Scan anything that reads as text, whatever its extension.
+function assertNoSecretContent(buffer, extension, message) {
+  if (!TEXT_EXTENSIONS.has(extension) && buffer.subarray(0, 8192).includes(0)) return;
+  const content = buffer.toString("utf8");
+  assertValid(!SECRET_CONTENT_PATTERNS.some((pattern) => pattern.test(content)), message);
 }
 
 function pathKey(value) {
@@ -601,18 +585,12 @@ function validateArtifact(filePath, config) {
   if (stat.size > (config.maxBytes || MAX_BYTES)) {
     throw validationError(`file exceeds the ${Math.floor((config.maxBytes || MAX_BYTES) / 1024 / 1024)} MiB limit`);
   }
-  const basename = path.basename(filePath);
-  const extension = validateArtifactNamePolicy(basename);
-  if (!extension && !SAFE_EXTENSIONLESS_NAMES.has(basename.toLowerCase())) {
-    const sample = fs.readFileSync(filePath).subarray(0, 8192);
-    if (sample.includes(0)) throw validationError("unsupported extensionless binary file");
-  }
-  if (TEXT_EXTENSIONS.has(extension) || !extension) {
-    const content = fs.readFileSync(filePath, "utf8");
-    if (SECRET_CONTENT_PATTERNS.some((pattern) => pattern.test(content))) {
-      throw validationError("refusing file containing a private-key or access-token signature");
-    }
-  }
+  const extension = validateArtifactNamePolicy(path.basename(filePath));
+  assertNoSecretContent(
+    fs.readFileSync(filePath),
+    extension,
+    `refusing ${path.basename(filePath)}: it contains a private-key or access-token signature`
+  );
   return stat;
 }
 
@@ -668,17 +646,11 @@ function verifyPayloadBuffer(value, metadata, config) {
     legacyLineEndings = true;
   }
 
-  const extension = validateArtifactNamePolicy(metadata.name);
-  if (!extension && !SAFE_EXTENSIONLESS_NAMES.has(metadata.name.toLowerCase())) {
-    assertValid(!verifiedValue.subarray(0, 8192).includes(0), "unsupported extensionless binary file");
-  }
-  if (TEXT_EXTENSIONS.has(extension) || !extension) {
-    const content = verifiedValue.toString("utf8");
-    assertValid(
-      !SECRET_CONTENT_PATTERNS.some((pattern) => pattern.test(content)),
-      "refusing artifact containing a private-key or access-token signature"
-    );
-  }
+  assertNoSecretContent(
+    verifiedValue,
+    validateArtifactNamePolicy(metadata.name),
+    "refusing artifact containing a private-key or access-token signature"
+  );
   return { buffer: verifiedValue, legacyLineEndings };
 }
 
@@ -738,19 +710,37 @@ function pushWithRetry(config, runGit = git) {
 
 function commandPublish(positionals, options) {
   const config = loadConfig();
-  const sourceArgument = positionals[0];
-  if (!sourceArgument) fail("usage: publish <file> [--note <text>]");
+  if (positionals.length === 0) fail("usage: publish <file...> [--note <text>]");
   const note = options.note || "";
   assertValid(
     typeof note === "string" && note.length <= MAX_NOTE_LENGTH,
     `artifact note must be at most ${MAX_NOTE_LENGTH} characters`
   );
-  const sourcePath = path.resolve(sourceArgument);
-  if (!fs.existsSync(sourcePath)) fail(`file not found: ${sourcePath}`);
-  validateArtifact(sourcePath, config);
+  // Validate every file before touching the checkout, so one bad file publishes nothing.
+  const sourcePaths = positionals.map((item) => {
+    const sourcePath = path.resolve(item);
+    if (!fs.existsSync(sourcePath)) fail(`file not found: ${sourcePath}`);
+    validateArtifact(sourcePath, config);
+    return sourcePath;
+  });
   sync(config);
 
   const createdAt = new Date();
+  const published = sourcePaths.map((sourcePath) => stageArtifact(config, sourcePath, createdAt, note));
+  const subject = published.length === 1
+    ? `Share ${published[0].name} (${published[0].id})`
+    : `Share ${published.length} files (${published.map((item) => item.id).join(", ")})`;
+  git(["commit", "-m", subject], config.checkoutPath);
+  pushWithRetry(config);
+  if (options.json) {
+    const results = published.map((item) => artifactWithLinks(item, config));
+    process.stdout.write(`${JSON.stringify(results.length === 1 ? results[0] : results, null, 2)}\n`);
+    return;
+  }
+  for (const metadata of published) printArtifact(metadata, config, false);
+}
+
+function stageArtifact(config, sourcePath, createdAt, note) {
   const id = `psh_${compactTimestamp(createdAt)}_${crypto.randomBytes(3).toString("hex")}`;
   const artifactDirectory = path.join(
     config.checkoutPath,
@@ -781,11 +771,20 @@ function commandPublish(positionals, options) {
   const metadataPath = path.join(artifactDirectory, "artifact.json");
   validateArtifactMetadata(metadata, config, metadataPath);
   writeJson(metadataPath, metadata);
-  const relativeDirectory = relativeArtifactPath(config, artifactDirectory);
-  git(["add", "--", relativeDirectory], config.checkoutPath);
-  git(["commit", "-m", `Share ${metadata.name} (${id})`], config.checkoutPath);
-  pushWithRetry(config);
-  printArtifact(metadata, config, options.json);
+  git(["add", "--", relativeArtifactPath(config, artifactDirectory)], config.checkoutPath);
+  return metadata;
+}
+
+// A commit whose push failed earlier is pushed by the next read command.
+function flushPending(config) {
+  const ahead = git(["rev-list", "--count", `origin/${config.branch}..HEAD`], config.checkoutPath, true);
+  if (!ahead.ok || ahead.stdout === "0") return;
+  try {
+    pushWithRetry(config);
+    process.stderr.write(`paseo-share: pushed ${ahead.stdout} pending commit(s)\n`);
+  } catch (error) {
+    process.stderr.write(`paseo-share: ${error.message}\n`);
+  }
 }
 
 // One unreadable or no-longer-accepted entry (for example a file type an older
@@ -875,6 +874,7 @@ function printArtifact(metadata, config, json) {
 function commandList(options, latestOnly = false) {
   const config = loadConfig();
   sync(config);
+  flushPending(config);
   const parsedLimit = Number.parseInt(options.limit || (latestOnly ? "1" : "20"), 10);
   if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 200) {
     fail("--limit must be an integer from 1 to 200");
@@ -907,6 +907,7 @@ function commandFetch(positionals, options) {
   const selector = positionals[0];
   if (!selector) fail("usage: fetch <artifact-id|latest> [--output <directory>] [--force]");
   sync(config);
+  flushPending(config);
   const metadata = resolveArtifact(collectArtifacts(config), selector);
   if (!metadata) fail(`artifact not found: ${selector}`);
   const sourcePath = resolveWithin(config.checkoutPath, metadata.relativePath, "artifact relative path");
@@ -920,27 +921,44 @@ function commandFetch(positionals, options) {
   } else if (!options.output) {
     destinationPath = resolveWithin(process.cwd(), metadata.name, "artifact destination name");
   }
+  let reused = false;
   if (fs.existsSync(destinationPath)) {
     const destinationStat = fs.lstatSync(destinationPath);
     if (destinationStat.isSymbolicLink()) fail(`destination cannot be a symbolic link: ${destinationPath}`);
     if (!destinationStat.isFile()) fail(`destination is not a regular file: ${destinationPath}`);
-    if (!options.force) {
-      fail(`destination already exists: ${destinationPath}; use --force only with user approval`);
+    if (fs.readFileSync(destinationPath).equals(verifiedPayload.buffer)) {
+      reused = true;
+    } else if (!options.force) {
+      destinationPath = freeSiblingPath(destinationPath);
     }
   }
-  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-  fs.writeFileSync(destinationPath, verifiedPayload.buffer, { flag: options.force ? "w" : "wx" });
+  if (!reused) {
+    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+    fs.writeFileSync(destinationPath, verifiedPayload.buffer, { flag: options.force ? "w" : "wx" });
+  }
   const result = {
     ...artifactWithLinks(metadata, config),
     localPath: destinationPath,
+    alreadyPresent: reused,
     legacyLineEndings: verifiedPayload.legacyLineEndings
   };
   if (options.json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {
-    process.stdout.write(`Fetched: ${metadata.id}\nLocal path: ${destinationPath}\n`);
+    process.stdout.write(`Fetched: ${metadata.id}\nLocal path: ${destinationPath}${reused ? " (already present)" : ""}\n`);
     if (result.previewUrl) process.stdout.write(`Preview: ${result.previewUrl}\n`);
   }
+}
+
+// "report.pdf" -> "report (2).pdf": never overwrite a different existing file.
+function freeSiblingPath(filePath) {
+  const extension = path.extname(filePath);
+  const stem = filePath.slice(0, filePath.length - extension.length);
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${stem} (${index})${extension}`;
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+  fail(`no free file name next to ${filePath}`);
 }
 
 function commandStatus(options) {
@@ -968,7 +986,7 @@ function printHelp() {
   process.stdout.write(`Usage:\n`);
   process.stdout.write(`  paseo-share.js onboard [--machine <name>] [--branch <name>] [--json]\n`);
   process.stdout.write(`  paseo-share.js setup <repo-url> [--machine <name>] [--branch <name>]\n`);
-  process.stdout.write(`  paseo-share.js publish <file> [--note <text>] [--json]\n`);
+  process.stdout.write(`  paseo-share.js publish <file...> [--note <text>] [--json]\n`);
   process.stdout.write(`  paseo-share.js list [--limit <number>] [--json]\n`);
   process.stdout.write(`  paseo-share.js latest [--json]\n`);
   process.stdout.write(`  paseo-share.js fetch <artifact-id|latest> [--output <path>] [--force] [--json]\n`);
