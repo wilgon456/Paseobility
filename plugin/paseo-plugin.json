@@ -1,0 +1,9 @@
+{
+  "id": "paseobility",
+  "name": "Paseobility",
+  "description": "Shows the Paseobility skill pack for Paseo agents and whether each skill is installed on the daemon host",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.11.4"
+  }
+}

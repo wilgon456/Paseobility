@@ -1252,3 +1252,7 @@ paseobility.json
 <strong>Use the browser like a hand, and run agents like a team.</strong>
 
 </div>
+
+## Paseo plugin
+
+The [`plugin/`](plugin/) directory is a Paseo plugin (`paseo-plugin.json`, `index.client.tsx`, `index.server.ts`). It adds a Paseobility screen to the Paseo sidebar that lists the ten skills and shows whether each is installed in `~/.agents/skills` or `~/.claude/skills` on the daemon host. It is read-only and makes no network requests. Install it directly from Git with `paseo plugin add git:wilgon456/Paseobility:plugin`.
