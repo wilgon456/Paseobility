@@ -445,3 +445,16 @@ test("a disposable selection that changes before dispatch remains untouched", ()
   assert.match(result.summary.actions[0].reason,/selection no longer/);
   assert.equal(runner.calls.length,0);
 });
+
+test("hidden background workspaces are reported instead of implying absence", () => {
+  const hidden = (command) => command === "snapshot"
+    ? {status: 0, stdout: JSON.stringify({complete: true, serverId: "server-test", backgroundCovered: false,
+      agents: [idleAgent], workspaces: []}), stderr: ""}
+    : assert.fail("must not archive");
+  const result = execute(parseArgs(["--archive", "--agent", "agent-background"]), hidden);
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.summary.verification.backgroundCovered, false);
+  assert.match(result.summary.validationErrors[0], /agent-background.*background-workspace records are not visible/);
+  const covered = execute(parseArgs([]), createRunner({agents: [idleAgent]}).run);
+  assert.equal(covered.summary.verification.backgroundCovered, true);
+});

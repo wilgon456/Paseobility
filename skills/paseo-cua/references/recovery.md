@@ -21,6 +21,13 @@ up.
   `cua-driver stop` and start it again
   (`open -n -g -a CuaDriver --args serve`) when no other agent or user session
   is using the driver. If you cannot tell, ask first.
+- `background_unavailable` with reason `windowserver_connection_invalid` (or a
+  failing `windowserver_connection` check in `health_report`) means the daemon
+  runs from a bare binary outside `CuaDriver.app`. Restart it through the app
+  bundle as above, under the same no-other-session rule.
+- If every window returns an empty tree with `ax_window_unresolved`, check
+  whether the screen is locked or asleep (a locked session was observed to
+  return this for every window). Ask the user to unlock instead of retrying.
 - **Never restart Paseo to apply this.** It can kill running agents.
 
 ## Targets

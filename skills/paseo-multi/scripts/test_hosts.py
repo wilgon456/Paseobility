@@ -16,9 +16,17 @@ export async function connectToDaemon(options) {
  const mode=process.env.MULTI_HOST_TEST_MODE;
  const mark=name=>fs.appendFileSync(process.env.MULTI_HOST_TEST_CALLS,name+'\\n');
  if(mode==='redact') throw Error('failed '+options.target.host+' secret-key-123');
+ const oldClient=mode.startsWith('old-client');
  return {
-  getDaemonStatus:async()=>({serverId:mode==='mismatch'?'other':'expected',version:'test'}),
+  getDaemonStatus:async()=>({serverId:mode==='mismatch'?'other':'expected',
+   version:mode==='old-client-011'?'0.11.4':mode==='old-client-012'?'0.12.0':'test'}),
+  // 0.12+ clients expose the host feature and throw if the flag reaches a host without it.
+  ...(oldClient?{}:{supportsBackgroundWorkspaces:()=>mode!=='old-host'}),
   fetchAgents:async options=>{
+   if(mode==='old-host'&&'includeBackground' in options) throw Error('Update the host to use background workspaces.');
+   if(mode==='background-busy') return {entries:[{agent:{id:'a',status:'idle'}},
+    ...(options.includeBackground?[{agent:{id:'bg',status:'running',workspaceId:'wks_bg'}}]:[])],
+    pageInfo:{hasMore:false}};
    const later=!!options.page?.cursor;
    const multi=['pages-idle','pages-busy','loop','duplicate'].includes(mode);
    return {
@@ -132,6 +140,35 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(p.returncode, 0)
         self.assertTrue(d['result']['acknowledged']['ack'])
         self.assertEqual(self.calls.read_text(), 'restart\n')
+
+    def test_background_workspace_agents_are_listed_and_block_restart(self):
+        p, d = self.invoke('background-busy', 'agents', 'PC')
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual([a['id'] for a in d['result']['agents']], ['a', 'bg'])
+        self.assertNotIn('warning', d['result'])
+        p, d = self.invoke('background-busy', 'restart', 'PC')
+        self.assertFalse(d['ok'])
+        self.assert_no_mutation()
+
+    def test_old_client_cannot_see_background_agents_on_012_host(self):
+        p, d = self.invoke('old-client-012', 'agents', 'PC')
+        self.assertEqual(p.returncode, 0)
+        self.assertIn('Background-workspace agents', d['result']['warning'])
+        p, d = self.invoke('old-client-012', 'restart', 'PC')
+        self.assertFalse(d['ok'])
+        self.assert_no_mutation()
+        p, d = self.invoke('old-client-012', 'restart', 'PC', '--force')
+        self.assertEqual(p.returncode, 0)
+        self.assertIn('unknown', [a['id'] for a in d['result']['interruptedAgents']])
+
+    def test_pre_012_hosts_and_clients_still_restart_when_idle(self):
+        for mode in ['old-client-011', 'old-host']:
+            with self.subTest(mode=mode):
+                if self.calls.exists():
+                    self.calls.unlink()
+                p, d = self.invoke(mode, 'restart', 'PC')
+                self.assertEqual(p.returncode, 0, d)
+                self.assertEqual(self.calls.read_text(), 'restart\n')
 
     def test_finished_attention_does_not_block_restart(self):
         p, d = self.invoke('finished', 'restart', 'PC')

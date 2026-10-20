@@ -24,6 +24,10 @@
 # -NoPathUpdate, so the installer registers no autostart Scheduled Task and
 # starts no daemon on a clean host; it only downloads the release and retargets
 # directory junctions. OS permission grants stay manual.
+# The Cua Driver 0.36.0+ app-bundle rule (a bare binary outside CuaDriver.app
+# has no WindowServer connection) is macOS-only; the shell helper warns about
+# it. Windows has no app bundle: the published .exe copies are the real
+# binaries, so publication here is unchanged.
 # Source-reviewed on macOS; not runtime-executed there. The offline fixture
 # tests in tests/test_cua_driver_runtime.ps1 exercise it on Windows.
 [CmdletBinding()]
@@ -31,12 +35,12 @@ param(
   [switch]$Check,
   [switch]$DryRun,
   [string]$BinDir = $(if ($env:PASEOBILITY_CUA_BIN_DIR) { $env:PASEOBILITY_CUA_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }),
-  [string]$Version = $(if ($env:PASEOBILITY_CUA_PIN_VERSION) { $env:PASEOBILITY_CUA_PIN_VERSION } else { "0.34.1" })
+  [string]$Version = $(if ($env:PASEOBILITY_CUA_PIN_VERSION) { $env:PASEOBILITY_CUA_PIN_VERSION } else { "0.36.0" })
 )
 
 $ErrorActionPreference = "Stop"
 
-$PinSha = $(if ($env:PASEOBILITY_CUA_PIN_SHA) { $env:PASEOBILITY_CUA_PIN_SHA } else { "0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc" })
+$PinSha = $(if ($env:PASEOBILITY_CUA_PIN_SHA) { $env:PASEOBILITY_CUA_PIN_SHA } else { "6d6c734c127025fb39ad5d585a10382808b39dc1" })
 $RawBase = $(if ($env:PASEOBILITY_CUA_RAW_BASE) { $env:PASEOBILITY_CUA_RAW_BASE } else { "https://raw.githubusercontent.com/trycua/cua/$PinSha/libs/cua-driver/scripts" })
 $InstallerDir = $env:PASEOBILITY_CUA_INSTALLER_DIR
 $DriverBin = $env:PASEOBILITY_CUA_DRIVER_BIN

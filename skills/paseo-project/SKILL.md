@@ -36,7 +36,8 @@ which one each command targets.
 
 Inspect Paseo runtime only when the request concerns it: `paseo --version`,
 `paseo daemon status --json`, `paseo project ls --json`,
-`paseo workspace ls --json`. Do not infer workspace identity from `pwd` alone;
+`paseo workspace ls --json` (0.12+ hides background workspaces unless
+`--background` is added; 0.11 rejects that flag). Do not infer workspace identity from `pwd` alone;
 aliases/symlinks may differ. If `paseo script ls --cwd <path> --json` reports
 `WORKSPACE_NOT_FOUND`, resolve the existing workspace and use
 `--workspace <id>`; do not create a duplicate record. An empty script list is

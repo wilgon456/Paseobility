@@ -16,13 +16,22 @@ try {
   const daemon = await client.getDaemonStatus({timeout: 10000});
   if (request.action === 'archive' && (!request.serverId || request.serverId !== daemon.serverId))
     throw Error('Daemon identity changed');
+  // Paseo 0.12 hides background workspaces and their agents unless asked. A 0.12+
+  // client gates the flag on the host feature (and throws without it); an older
+  // client cannot send it, so on a 0.12+ host background records stay invisible.
+  // backgroundCovered says whether the snapshot can contain every such record.
+  const newClient = typeof client.supportsBackgroundWorkspaces === 'function';
+  const scope = newClient && client.supportsBackgroundWorkspaces() === true ? {includeBackground: true} : {};
+  const hostVersion = /^(\d+)\.(\d+)/.exec(String(daemon.version ?? ''));
+  const backgroundCovered = newClient ||
+    (!!hostVersion && Number(hostVersion[1]) === 0 && Number(hostVersion[2]) < 12);
   const deadline = Date.now() + 30000;
   async function collect(fetch) {
     const rows = [], cursors = new Set();
     let cursor;
     for (let page = 0; page < 50; page++) {
       if (Date.now() > deadline) throw Error('Snapshot deadline exceeded');
-      const result = await fetch({page: {limit: 200, ...(cursor ? {cursor} : {})}});
+      const result = await fetch({...scope, page: {limit: 200, ...(cursor ? {cursor} : {})}});
       if (!Array.isArray(result.entries) || !result.pageInfo || typeof result.pageInfo.hasMore !== 'boolean')
         throw Error('Unknown pagination schema');
       rows.push(...result.entries);
@@ -45,7 +54,7 @@ try {
   });
   const workspaces = (await collect(options => client.fetchWorkspaces(options))).map(w => ({
     workspaceId: w.id, name: w.name, project: w.projectDisplayName, cwd: w.workspaceDirectory,
-    isolation: w.workspaceKind,
+    isolation: w.workspaceKind, background: w.background === true,
   }));
   if (request.action === 'archive') {
     if (!['agent', 'workspace'].includes(request.kind) || typeof request.id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(request.id)) throw Error('Invalid exact target');
@@ -64,7 +73,7 @@ try {
     console.log(JSON.stringify({[request.kind === 'agent' ? 'agentId' : 'workspaceId']: request.id,
       status:'archived', archivedAt: result.archivedAt}));
   } else {
-    console.log(JSON.stringify({complete: true, serverId: daemon.serverId, agents, workspaces}));
+    console.log(JSON.stringify({complete: true, serverId: daemon.serverId, backgroundCovered, agents, workspaces}));
   }
 } catch {
   console.log(JSON.stringify({error: 'Installed Paseo client could not complete the guarded request. Check compatibility and fresh state before retrying.'}));

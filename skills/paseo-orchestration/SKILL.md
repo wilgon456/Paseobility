@@ -27,7 +27,10 @@ verified context instead of having each agent rediscover it.
 ## Launch contract
 
 Read the installed base **paseo** skill for active tool schemas (baseline Paseo
-0.10.2; discover capabilities rather than assuming them from the version).
+0.10.2, schemas statically checked against 0.12.0; discover capabilities rather
+than assuming them from the version). On 0.12+, `create_agent` rejects a
+`background` argument and messages to a running agent steer its turn; see
+[Pattern 6](references/coordination.md#pattern-6-blocking-askreply).
 
 1. Read `list_profiles` and notes. Follow a user-named profile or pick one that
    fits the role.
@@ -44,7 +47,9 @@ Read the installed base **paseo** skill for active tool schemas (baseline Paseo
 Give each writer an owned path/module and tell it to preserve others' changes.
 For isolated writers, record the base commit and each workspace/branch. If
 creation times out, check the workflow's agents before retrying; a lost reply
-can still have created a child.
+can still have created a child. On 0.12+, `list_agents` and `list_workspaces`
+hide background workspaces unless `includeBackground: true`, and a workspace
+created from a background workspace inherits that flag.
 
 ## Runtime and safety
 

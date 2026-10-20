@@ -33,7 +33,7 @@ Each invocation is independent, so run several hosts concurrently.
 
 - `exec` runs Bash on macOS/Linux and PowerShell on Windows (`--shell` overrides). Use the remote machine's paths. Any command the user's task needs is fine, including installs and file changes.
 - `--wait` observes up to 300 seconds. A timeout means `running`, not failure: `capture` later, then `close` once completed. If a response or connection is lost mid-mutation, `capture` or check the resulting state before rerunning it.
-- Some daemons need a workspace for terminals ("workspaceId is required"): get one from `cli HOST -- workspace ls --json` and pass `exec --workspace ID`.
+- Some daemons need a workspace for terminals ("workspaceId is required"): get one from `cli HOST -- workspace ls --json` and pass `exec --workspace ID`. On 0.12+ hosts, `ls` and `workspace ls` hide background workspaces unless given `--background` (0.11 rejects that flag).
 - The terminal keeps the script in its command line until `close`. A script carrying a credential gets `close RUN_ID --interrupt` right after it completes.
 - Capture is a terminal screen (wide characters may gain spaces), not raw bytes. Use checksums or encoded output for byte-exact data. Very large Windows scripts are refused before dispatch; stage a file on the host instead.
 - Agents, projects, workspaces and schedules: `cli HOST -- ...` with installed `paseo ... --help` or the Paseo skill. Use the user's chosen provider/profile. `cli` allows `daemon status`/`daemon reload` but routes other daemon lifecycle commands to `restart`.
@@ -42,7 +42,7 @@ Each invocation is independent, so run several hosts concurrently.
 
 The user's request and target list authorize the steps needed inside it; do not re-ask for an update they already asked for. Ask first before a disruptive action the user did not ask for: daemon restart or reboot, stopping/deleting agents that are not yours, deleting user data. Inspecting or listing PCs does not authorize restarting them. Preserve settings, credentials and unrelated work.
 
-`restart` reads the complete agent snapshot and defers when any agent is running, waiting for permission, or in an unknown state (only `idle`, `error`, `closed` count as inactive). If the user said to apply after current work, use a host-local one-time idle watcher ([updates.md](references/updates.md)). If the user asked to restart now regardless, use `restart --force`; it reports the agents it interrupted. A restart acknowledgment does not prove the daemon came back: reconnect and check `status`.
+`restart` reads the complete agent snapshot, including agents in Paseo 0.12 background workspaces, and defers when any agent is running, waiting for permission, or in an unknown state (only `idle`, `error`, `closed` count as inactive). An installed client older than 0.12 cannot see background agents on a 0.12+ host, so `restart` defers there too and `agents` adds a warning. If the user said to apply after current work, use a host-local one-time idle watcher ([updates.md](references/updates.md)). If the user asked to restart now regardless, use `restart --force`; it reports the agents it interrupted. A restart acknowledgment does not prove the daemon came back: reconnect and check `status`.
 
 ## Safety
 
@@ -53,4 +53,4 @@ The user's request and target list authorize the steps needed inside it; do not 
 
 Per PC: done, pending, failed or unreachable. For updates, separate installed app/CLI version from live daemon version, verified by a fresh connection.
 
-The adapter is verified with macOS and Windows controllers on Paseo 0.11.2; Linux is unverified. It imports Paseo's internal client; if a release changes that interface it fails with a dependency error. Runtime configuration: [connections.md](references/connections.md).
+The adapter is verified with macOS and Windows controllers on Paseo 0.11.2; Linux is unverified. Its client calls were compared statically with 0.12.0 source, not run against a 0.12 host. It imports Paseo's internal client; if a release changes that interface it fails with a dependency error. Runtime configuration: [connections.md](references/connections.md).

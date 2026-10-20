@@ -322,11 +322,14 @@ function execute(opts, runCommand = run) {
     ? workspaceRows.filter((row) => row.explicit)
     : workspaceRows.filter((row) => row.selected);
 
+  // Paseo 0.12+ hides background workspaces from older clients; say so instead of implying absence.
+  const backgroundCovered = initial.backgroundCovered !== false;
+  const hiddenHint = backgroundCovered ? "" : " (background-workspace records are not visible to the installed Paseo client)";
   const validationErrors = [];
   const missingAgentIds = requestedIdsMissing(agents, opts.agentIds, "agent");
   const missingWorkspaceIds = requestedIdsMissing(workspaces, opts.workspaceIds, "workspace");
-  if (missingAgentIds.length) validationErrors.push(`agent IDs not found: ${missingAgentIds.join(", ")}`);
-  if (missingWorkspaceIds.length) validationErrors.push(`workspace IDs not found: ${missingWorkspaceIds.join(", ")}`);
+  if (missingAgentIds.length) validationErrors.push(`agent IDs not found: ${missingAgentIds.join(", ")}${hiddenHint}`);
+  if (missingWorkspaceIds.length) validationErrors.push(`workspace IDs not found: ${missingWorkspaceIds.join(", ")}${hiddenHint}`);
   for (const id of opts.agentIds) {
     if (agents.filter(agent => matchesId(agent, id)).length > 1)
       validationErrors.push(`ambiguous agent ID: ${id}; use a full ID`);
@@ -352,6 +355,7 @@ function execute(opts, runCommand = run) {
       workspaceListRechecked: false,
       historyOrResumeUsed: false,
       completeSnapshots: true,
+      backgroundCovered,
       preArchiveRechecks: 0,
     },
   };
@@ -470,6 +474,8 @@ function printHuman(result) {
   if (summary.pattern) console.log(`pattern: ${summary.pattern}`);
   printTable("Agents", agentRows, "agent");
   printTable("Workspaces", workspaceRows, "workspace");
+  if (!summary.verification.backgroundCovered)
+    console.log("\nnote: background workspaces and their agents are not visible to the installed Paseo client.");
 
   if (summary.mode === "dry-run") {
     console.log("\n[dry-run] No changes made. Ordinary idle agents are preserved.");

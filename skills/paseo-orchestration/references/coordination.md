@@ -78,8 +78,16 @@ and delete operations.
 
 For a new specialist, create an asynchronous query agent and use its completion
 notification. For a short follow-up to an existing agent, call
-`send_agent_prompt` with `background: false`. Do not use blocking mode for work
-that may take minutes.
+`send_agent_prompt` and wait for its finish notification (agent callers get one
+by default; top-level callers read `get_agent_status`). Paseo 0.12 removed the blocking `background: false` mode: the call
+returns after dispatch, and `create_agent` rejects a `background` argument.
+On 0.11.x, `background: false` still blocks; do not use it for work that may
+take minutes.
+
+Sending to a worker that is mid-turn: on 0.12+, an agent caller's message
+steers the running turn (response `disposition: "steered"`). Pass
+`activeTurnBehavior: "interrupt"` only to replace the turn, such as a changed
+assignment. On 0.11.x every send interrupts the running turn.
 
 ## Pattern 7: Workspace script verification
 

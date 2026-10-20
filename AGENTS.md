@@ -117,11 +117,11 @@ broken and left untouched (non-zero exit), never overwritten. Selecting only
 other skills has no driver side effects.
 
 - The helper fetches the pinned installer scripts (commit
-  `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`, Cua Driver `0.34.1`) and runs
+  `6d6c734c127025fb39ad5d585a10382808b39dc1`, Cua Driver `0.36.0`) and runs
   them from a temp directory. It never edits PATH or registers MCP config, and
   it never starts the daemon: the pinned `install.sh` / `_install-rust.sh` only
   resolve/download a release and stop stale daemons
-  (https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/).
+  (https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/scripts/).
   An explicit `CUA_DRIVER_RS_VERSION` pin outranks the installer's baked
   version, and the pinned installer refuses withdrawn releases. The pin is a
   source/schema-reviewed contract; `0.28.2` remains the last version exercised
@@ -257,7 +257,10 @@ unless `-NoBackup` is passed.
 Paseo CLI is useful for diagnosis but not required for copying skills.
 The current local compatibility baseline is Paseo 0.10.2; see
 `docs/compatibility-0.10.2.md` for verified layers and limitations (the
-`docs/compatibility-0.9.0-beta.2.md` record is retained as history). When a CLI is found, run
+`docs/compatibility-0.9.0-beta.2.md` record is retained as history). Paseo
+0.12.0 was checked statically only (v0.11.4..v0.12.0 source diff and the
+published 0.12.0 CLI's `--help`; no 0.12 daemon was run); the resulting fixes
+and open items are in `docs/compatibility-0.12.0.md`. When a CLI is found, run
 `paseo --version` and report the detected version; do not downgrade, update, or
 restart Paseo as part of skill installation. A future version is not by itself
 an install failure, but behavior-sensitive validation should use the tool names

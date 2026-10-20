@@ -47,13 +47,17 @@ The Paseobility installer only prepares the pinned binary. It does not start the
 daemon and does not grant permissions. On a Mac:
 
 1. Record the installed version: `cua-driver --version`. The Paseobility
-   installer now pins `0.34.1` (verified upstream stable release as of 2026-10-13) for a fresh
-   install, but a working existing driver is reused as-is — do not downgrade or
-   replace it just to match the pin. The pin is a source/schema-reviewed
+   installer now pins `0.36.0` (upstream stable release, reviewed and installed
+   on 2026-10-20) for a fresh install, but a working existing driver is reused
+   as-is — do not downgrade or replace it just to match the pin. The pin is a source/schema-reviewed
    contract; `0.28.2` remains the last version exercised end-to-end in the
    [platform validation record](https://github.com/wilgon456/Paseobility/blob/main/docs/cua-platform-validation.md).
 2. Start the driver app so it runs under its own app identity, not the terminal:
-   `open -n -g -a CuaDriver --args serve`
+   `open -n -g -a CuaDriver --args serve`. From 0.36.0 a daemon started from a
+   bare binary outside `CuaDriver.app` refuses background clicks, drags and
+   window-addressed keys (`windowserver_connection_invalid`). The installer's
+   `~/.local/bin/cua-driver` symlink into the bundle is fine; a copied binary
+   is not, and the Paseobility helper warns about it.
 3. The human grants permissions (cannot be scripted):
    `cua-driver permissions grant`, then `cua-driver permissions status`. `true`
    confirms the OS grants only; the first real action confirms the driver works.
@@ -96,12 +100,12 @@ source is authoritative.
 ## Source
 
 Pinned upstream: [`trycua/cua`](https://github.com/trycua/cua) @
-[`0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc`](https://github.com/trycua/cua/tree/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc)
-(the `cua-driver-rs-v0.34.1` release tag),
-skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/Skills/cua-driver),
-Cua Driver version 0.34.1. The pinned installers resolve/download a release and
+[`6d6c734c127025fb39ad5d585a10382808b39dc1`](https://github.com/trycua/cua/tree/6d6c734c127025fb39ad5d585a10382808b39dc1)
+(the `cua-driver-rs-v0.36.0` release tag),
+skill [`libs/cua-driver/rust/Skills/cua-driver/`](https://github.com/trycua/cua/tree/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/rust/Skills/cua-driver),
+Cua Driver version 0.36.0. The pinned installers resolve/download a release and
 stop stale daemons; they never start one. Reviewed implementation:
-[`src/cli.rs`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
+[`src/cli.rs`](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/rust/crates/cua-driver/src/cli.rs)
 (`run_mcp_config` prints a snippet; it writes no config).
 Upstream source files are MIT licensed (Copyright (c) 2025 Cua AI, Inc.).
 Docs: [cua.ai/docs/cua-driver](https://cua.ai/docs/cua-driver)

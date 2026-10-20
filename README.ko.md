@@ -20,7 +20,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.10.0.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 10개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md).
+**현재 패키지: v2.10.0.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 10개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. Paseo 0.12.0은 소스와 배포된 CLI로 정적 확인만 했고 영향받는 스킬을 고쳤으며, 0.12 데몬은 실행하지 않았습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md).
 
 ## 한 줄 요약
 
@@ -68,7 +68,10 @@ share는 private 유지, God·orchestration은 토큰 비용 때문에 명시 �
 자동 전환, `/paseo-cua`는 GUI가 필요한 작업이면 사용, `/paseo-multi` `all`
 대상·`exec --command`·`restart --force`, `/paseo-share` 50 MiB 이하 모든 파일
 형식·여러 파일 동시 공유, `/paseo-god` `list`로 최근 실행 이어가기. 브라우저
-런타임은 `cloakbrowser@0.6.3`, `playwright-core@1.64.1`로 올렸습니다.
+런타임은 `cloakbrowser@0.6.3`, `playwright-core@1.64.1`로, Cua Driver는 0.36.0으로 올렸습니다
+([의존성 검증](docs/dependency-validation-2026-10-20.md)). Paseo 0.12.0 변경(백그라운드
+워크스페이스, 제거된 `background` 인자)은 정적으로 점검해 반영했으며 실제 0.12
+daemon에서 실행하지는 않았습니다([0.12.0 호환성](docs/compatibility-0.12.0.md)).
 
 ## 2026-10-19 — God 모드 고정 비용 비례화 (v2.9.4)
 
@@ -319,8 +322,8 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 이미 동작하는 드라이버가 있으면 다시 설치하지 않고 재사용하며 자동
 업그레이드하지 않습니다.
 
-- 고정 소스: trycua/cua `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc` 커밋
-  (`cua-driver-rs-v0.34.1` 릴리스 태그), Cua Driver `0.34.1`. 이 고정값은
+- 고정 소스: trycua/cua `6d6c734c127025fb39ad5d585a10382808b39dc1` 커밋
+  (`cua-driver-rs-v0.36.0` 릴리스 태그), Cua Driver `0.36.0`. 이 고정값은
   소스/스키마 검토 계층이며, 아래 검증 기록에서 E2E로 실행된 마지막 버전은
   여전히 `0.28.2`입니다. 동작하는 기존 드라이버는 재사용하고 자동 업그레이드하지
   않습니다.
@@ -338,9 +341,9 @@ v2.8.0에서 `paseo-cua`를 추가했습니다. 이 스킬은 사용자가 **try
 - 드라이버 단계는 macOS에서 코드 서명을 검증하고, PATH를 수정하지 않으며
   (`--no-modify-path` / `-NoPathUpdate`), 셸 rc와 MCP 설정을 건드리지 않습니다.
   고정 installer는 릴리스 해석·다운로드와 오래된 데몬 중지만 하며 데몬을 시작하지
-  않습니다([`install.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/install.sh),
-  [`_install-rust.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/_install-rust.sh)).
-  명시적 `CUA_DRIVER_RS_VERSION=0.34.1` 고정은 installer의 baked 버전보다
+  않습니다([`install.sh`](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/scripts/install.sh),
+  [`_install-rust.sh`](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/scripts/_install-rust.sh)).
+  명시적 `CUA_DRIVER_RS_VERSION=0.36.0` 고정은 installer의 baked 버전보다
   우선하며, 고정 installer는 철회된 릴리스(`0.28.3`)를 거부합니다.
 - 런타임 단계가 실패하면 installer는 0이 아닌 코드로 종료하고, 스킬은 복사되었
   지만 런타임 설정이 실패했음(설치가 불완전할 수 있음)을 알립니다.
@@ -1089,7 +1092,7 @@ Paseo의 비활성 agent와 테스트 workspace를 안전하게 정리합니다.
 
 확인하는 것:
 
-- `paseo ls --json`의 agent 목록
+- 설치된 Paseo 클라이언트로 읽은 전체 agent·workspace 스냅샷 (daemon이 지원하면 백그라운드 워크스페이스 포함)
 - `paseo workspace ls --json`의 workspace 목록
 - 명시적 ID, 사용자 지정 `--pattern`, 또는 disposable/test/validation 표식으로 제한된 inactive agent
 - 보존해야 할 일반 idle agent와 보호되는 active agent
@@ -1295,6 +1298,7 @@ scripts/                     # installers, doctor (.sh/.ps1/.py), context helper
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template + validator
 .github/workflows/ci.yml     # macOS + Windows 오프라인 스위트
+docs/compatibility-0.12.0.md         # 정적 확인(0.12.0)
 docs/compatibility-0.10.2.md
 docs/compatibility-0.9.0-beta.2.md   # 과거 기록(0.9.0-beta.2)
 docs/cua-platform-validation.md

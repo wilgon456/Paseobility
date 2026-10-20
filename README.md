@@ -20,7 +20,7 @@ Ten reusable skills for projects, browsers, artifacts and computers connected th
 
 ## At a glance
 
-**Current package: v2.10.0.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md).
+**Current package: v2.10.0.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all ten skills were verified on 0.11.2. Paseo 0.12.0 was checked statically against its source and published CLI, and the affected skills were adjusted; no 0.12 daemon was run. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md).
 
 ## One-line summary
 
@@ -69,7 +69,11 @@ login profiles, state-changing JS and backend fallback; `/paseo-cua` triggers
 when a task needs a native GUI; `/paseo-multi` `all` targets, `exec --command`,
 `restart --force`; `/paseo-share` any file type up to 50 MiB and multi-file
 publish; `/paseo-god` `list` to resume recent runs. Browser runtime pins move to
-`cloakbrowser@0.6.3` with `playwright-core@1.64.1`.
+`cloakbrowser@0.6.3` with `playwright-core@1.64.1`, and Cua Driver to 0.36.0
+([dependency validation](docs/dependency-validation-2026-10-20.md)). Paseo 0.12.0
+changes were checked statically and handled (background workspaces, removed
+`background` arguments) without a live 0.12 daemon run
+([0.12.0 compatibility](docs/compatibility-0.12.0.md)).
 
 ## 2026-10-19 — proportional God mode costs (v2.9.4)
 
@@ -325,11 +329,11 @@ v2.8.0 adds `paseo-cua`. It is used only when the user **explicitly asks to driv
 
 Selecting `paseo-cua`, or installing the full package, also prepares the trycua Cua Driver runtime. If a working driver already exists, the installer reuses it and never auto-upgrades it.
 
-- Pinned source: trycua/cua commit `0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc` (the `cua-driver-rs-v0.34.1` release tag), Cua Driver version `0.34.1`. This pin is a source/schema-reviewed contract; the last runtime exercised end-to-end in the validation records below remains `0.28.2`, and an existing working driver is reused, never auto-upgraded.
+- Pinned source: trycua/cua commit `6d6c734c127025fb39ad5d585a10382808b39dc1` (the `cua-driver-rs-v0.36.0` release tag), Cua Driver version `0.36.0`. This pin is a source/schema-reviewed contract; the last runtime exercised end-to-end in the validation records below remains `0.28.2`, and an existing working driver is reused, never auto-upgraded.
 - The installer downloads the upstream install scripts at the pinned commit and runs them from a temporary directory (never `curl | bash`). The pinned `_install-rust.sh` and `_install-common.sh` (and the Windows `install.ps1` / `_install-common.psm1`) are fetched too, so the delegated script cannot silently fall back to a rolling URL.
 - `--skip-cua-driver` / `-SkipCuaDriver`: skip the runtime and copy skills only (docs-only / offline).
 - A custom `--target-home` / `-TargetHome` skips the real-host runtime by default and logs why. `--allow-host-runtime` / `-AllowHostRuntime` instead allows real host runtime installation even when the skills `--target-home` is custom. The driver is always installed at its normal host location; on macOS that still writes `/Applications/CuaDriver.app` and `~/.cua-driver`, so this is not a sandbox.
-- The driver step verifies the code signature on macOS, does not modify PATH (`--no-modify-path` / `-NoPathUpdate`), and never touches shell rc or MCP config. The pinned installer only resolves/downloads a release and stops stale daemons; it never starts a daemon ([`install.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/install.sh), [`_install-rust.sh`](https://github.com/trycua/cua/blob/0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc/libs/cua-driver/scripts/_install-rust.sh)). An explicit `CUA_DRIVER_RS_VERSION=0.34.1` pin outranks the installer's baked version, and the pinned installer refuses withdrawn releases (`0.28.3`).
+- The driver step verifies the code signature on macOS, does not modify PATH (`--no-modify-path` / `-NoPathUpdate`), and never touches shell rc or MCP config. The pinned installer only resolves/downloads a release and stops stale daemons; it never starts a daemon ([`install.sh`](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/scripts/install.sh), [`_install-rust.sh`](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/scripts/_install-rust.sh)). An explicit `CUA_DRIVER_RS_VERSION=0.36.0` pin outranks the installer's baked version, and the pinned installer refuses withdrawn releases (`0.28.3`).
 - If the runtime step fails, the installer exits non-zero and reports that skills were copied but the runtime setup failed (installation may be incomplete).
 - macOS Accessibility and Screen Recording permissions are granted by the human. A binary being installed is not the same as permissions being ready.
 - The Cua Driver ships product telemetry **enabled by default** (the installer does not change it). You can inspect or disable it yourself with `cua-driver telemetry status` / `cua-driver telemetry disable`; Paseobility never changes that setting. Collection details were not independently audited — see the [platform validation status](docs/cua-platform-validation.md).
@@ -1027,7 +1031,7 @@ Safely cleans up Paseo's inactive agents and test workspaces.
 
 What it checks:
 
-- the agent list from `paseo ls --json`
+- a complete agent and workspace snapshot read through the installed Paseo client (including background workspaces when the daemon supports them)
 - the workspace list from `paseo workspace ls --json`
 - inactive agents limited by an explicit ID, a user-specified `--pattern`, or a disposable/test/validation marker
 - ordinary idle agents to preserve and active agents that are protected
@@ -1224,6 +1228,7 @@ scripts/                     # installers, doctor (.sh/.ps1/.py), context, cua-d
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template
 .github/workflows/ci.yml     # macOS + Windows offline suites
+docs/compatibility-0.12.0.md         # static check (0.12.0)
 docs/compatibility-0.10.2.md
 docs/compatibility-0.9.0-beta.2.md   # historical (0.9.0-beta.2)
 docs/cua-platform-validation.md

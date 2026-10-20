@@ -16,14 +16,23 @@
 #   daemon-stop helpers (`stop_cua_driver_daemons`, `show_cua_driver_daemon_survivors`);
 #   neither starts a daemon, so this helper cannot either. OS permission grants
 #   stay manual, and binary presence is not permission readiness.
+#
+# macOS app-bundle rule (Cua Driver 0.36.0+): a daemon started from a bare
+# binary outside CuaDriver.app has no WindowServer connection, so background
+# clicks, drags and window-addressed keys refuse. Upstream decides "bundled" on
+# the canonical executable path, so the installer's ~/.local/bin/cua-driver
+# symlink into /Applications/CuaDriver.app/Contents/MacOS/ counts as bundled.
+# This helper warns (never fails, never rewrites) when the driver it reuses or
+# installs resolves outside the bundle, e.g. a copied binary.
 set -euo pipefail
 
-PIN_VERSION="${PASEOBILITY_CUA_PIN_VERSION:-0.34.1}"
-PIN_SHA="${PASEOBILITY_CUA_PIN_SHA:-0c69d9a2c8abbb5051a2df4a23f0fa166d5385dc}"
+PIN_VERSION="${PASEOBILITY_CUA_PIN_VERSION:-0.36.0}"
+PIN_SHA="${PASEOBILITY_CUA_PIN_SHA:-6d6c734c127025fb39ad5d585a10382808b39dc1}"
 RAW_BASE="${PASEOBILITY_CUA_RAW_BASE:-https://raw.githubusercontent.com/trycua/cua/${PIN_SHA}/libs/cua-driver/scripts}"
 BIN_DIR="${PASEOBILITY_CUA_BIN_DIR:-$HOME/.local/bin}"
 INSTALLER_DIR="${PASEOBILITY_CUA_INSTALLER_DIR:-}"
 DRIVER_BIN="${PASEOBILITY_CUA_DRIVER_BIN:-}"
+HOST_OS="${PASEOBILITY_CUA_HOST_OS:-$(uname -s 2>/dev/null || echo unknown)}"
 # Optional expected SHA-256 digests for the pinned installer scripts. When set,
 # a mismatch aborts before execution. Upstream publishes no checksums, so these
 # are only checked when an operator supplies them out of band.
@@ -48,7 +57,7 @@ Options:
   --check         Report presence only; do not install (exit 3 when missing)
   --dry-run       Print the install plan without downloading or executing
   --bin-dir DIR   Visible binary directory (default ~/.local/bin)
-  --version V     Pinned Cua Driver version to install (default 0.34.1)
+  --version V     Pinned Cua Driver version to install (default 0.36.0)
 
 Test hooks (environment):
   PASEOBILITY_CUA_INSTALLER_DIR   Use this directory's installer scripts
@@ -59,6 +68,7 @@ Test hooks (environment):
   PASEOBILITY_CUA_INSTALL_SHA256  Expected digest of install.sh.
   PASEOBILITY_CUA_RUST_SHA256     Expected digest of _install-rust.sh.
   PASEOBILITY_CUA_COMMON_SHA256   Expected digest of _install-common.sh.
+  PASEOBILITY_CUA_HOST_OS         Override `uname -s` for the macOS bundle check.
 EOF
 }
 
@@ -98,6 +108,38 @@ driver_version() {
   out="$("$1" --version 2>/dev/null | head -n 1)" || out=""
   [ -n "$out" ] || return 1
   printf '%s\n' "$out"
+}
+
+# Canonical path of "$1": follow symlinks on the final component, then resolve
+# the directory physically. Portable (no `readlink -f` / `realpath` needed).
+resolve_path() {
+  local p="$1" link dir hops=0
+  while [ -L "$p" ] && [ "$hops" -lt 40 ]; do
+    link="$(readlink "$p")" || break
+    case "$link" in
+      /*) p="$link" ;;
+      *) p="$(dirname "$p")/$link" ;;
+    esac
+    hops=$((hops + 1))
+  done
+  if dir="$(cd -P "$(dirname "$p")" 2>/dev/null && pwd -P)"; then
+    printf '%s/%s\n' "$dir" "$(basename "$p")"
+  else
+    printf '%s\n' "$p"
+  fi
+}
+
+# macOS only: warn when the driver does not resolve into an app bundle. Warning
+# only; the reuse/install result and exit code are unchanged.
+warn_if_unbundled() {
+  local candidate="$1" real
+  [ "$HOST_OS" = "Darwin" ] || return 0
+  real="$(resolve_path "$candidate")"
+  case "$real" in
+    */CuaDriver.app/Contents/MacOS/*|*/CuaDriverLocal.app/Contents/MacOS/*) return 0 ;;
+  esac
+  printf '[cua-driver] warning: %s resolves to %s, outside CuaDriver.app.\n' "$candidate" "$real" >&2
+  printf '[cua-driver] since 0.36.0 a daemon started from a bare binary refuses background actions; run the app-bundle daemon (`open -n -g -a CuaDriver --args serve`) or point cua-driver at /Applications/CuaDriver.app/Contents/MacOS/cua-driver.\n' >&2
 }
 
 sha256_of() {
@@ -149,6 +191,7 @@ report_digests() {
 if candidate="$(detect_driver)"; then
   if version="$(driver_version "$candidate")"; then
     printf '[cua-driver] present: %s (%s)\n' "$candidate" "$version"
+    warn_if_unbundled "$candidate"
     exit 0
   fi
   printf '[cua-driver] %s exists but `cua-driver --version` failed; treating it as broken and leaving it untouched.\n' "$candidate" >&2
@@ -205,6 +248,7 @@ fi
 if candidate="$(detect_driver)"; then
   if version="$(driver_version "$candidate")"; then
     printf '[cua-driver] installed: %s (%s)\n' "$candidate" "$version"
+    warn_if_unbundled "$candidate"
     exit 0
   fi
   printf '[cua-driver] runtime setup failed: cua-driver exists at %s but `--version` failed; installation may be incomplete (partial files possible).\n' "$candidate" >&2

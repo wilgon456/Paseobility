@@ -10,6 +10,14 @@ omits workspaceId, so neither replaces a complete snapshot. A changed or missing
 client, invalid page, repeated cursor, timeout or changed daemon identity makes
 the helper refuse.
 
+Paseo 0.12 hides background workspaces and their agents from default lists.
+The helper asks for them when the installed client supports it (0.12+ client;
+the source of `fetchAgents`/`fetchWorkspaces` was compared statically against
+[v0.12.0](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/client/src/daemon-client.ts))
+and marks workspace rows with `background`. An older client talking to a 0.12+
+daemon cannot see them; the snapshot then reports `backgroundCovered: false`,
+and an exact ID that only exists there reads as not found.
+
 Archive dispatch goes through the same client with the exact ID (no CLI prefix
 resolution, no shell) and repeats the protection and daemon-identity checks
 inside that connection. The helper honors `PASEO_HOST`/`PASEO_HOME` via the
@@ -21,7 +29,8 @@ read a fresh snapshot and report the uncertainty instead of repeating it.
 ## MCP fallback
 
 If the installed client cannot be loaded, use the base `paseo` skill's MCP
-tools: read full `list_agents` metadata, resolve workspace ownership from
+tools: read full `list_agents` metadata (on 0.12+ pass `includeBackground: true`
+to `list_agents` and `list_workspaces`), resolve workspace ownership from
 `workspaceId` (never cwd), skip active/unknown/permission-pending agents,
 archive each selected ID with `archive_agent`, and re-read the list to confirm.
 Workspace archive affects all its agents and terminals and may remove its

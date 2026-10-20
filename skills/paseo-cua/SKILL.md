@@ -42,14 +42,18 @@ releases:
 ## Core loop
 
 1. Find the window (`list_windows`) or launch the app (`launch_app`).
-2. `get_window_state` for the accessibility tree plus screenshot. Act on its
-   opaque `element_token` (0.34.1 no longer accepts `element_index`); use pixel
-   coordinates from the same snapshot when the tree cannot reach the target.
+2. `get_window_state` for the accessibility tree plus screenshot; narrow it with
+   `query` / `max_elements` first. Row `[N]` is acted on as `element_token`
+   `<snapshot_id>:N` (e.g. `"s0000002a:11"`, not `"11"`); `element_index` is
+   not an input. Use pixel coordinates from the same snapshot only when the tree
+   cannot reach the target.
 3. Act: `click`, `type_text`, `press_key`, `set_value`, `invoke_menu`,
-   `set_window_frame`, `scroll`. Chain several actions from one snapshot while
-   the UI does not change; take a fresh snapshot after it does (tokens go stale).
-4. Verify the final result with a fresh read (`verify_state` or the tree).
-   A tool reply alone is not proof.
+   `set_window_frame`, `scroll`. Batch known actions with `run_steps`
+   (`observe:{}` returns what changed) or `run_script` when the flow needs a
+   loop or branch, if the installed schema advertises them. A new snapshot
+   stales old tokens; re-read with `since:"latest"` for a diff.
+4. Verify the final result at checkpoints with a fresh read (`verify_state` or
+   the tree). A tool reply alone is not proof.
 5. Background delivery is the default. If an action does not land, switch to
    `delivery_mode: "foreground"` and mention it — it takes the user's focus.
 
