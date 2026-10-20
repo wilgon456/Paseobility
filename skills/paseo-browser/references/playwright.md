@@ -100,7 +100,11 @@ is a real failure to report, not a silent fallback.
   own session.
 - Close only the session this task opened. **Never** run `close-all` or
   `kill-all`, which would kill unrelated sessions.
-- A headless session self-terminates after one hour idle; re-run `open`.
+- Sessions do **not** reliably exit on their own: a forgotten headless session
+  was observed alive 50 days after its working directory was deleted. Close
+  yours before replying, even after a failure — run multi-step flows in one
+  shell with `trap 'npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" close' EXIT`.
+  Leftovers from earlier tasks: `scripts/browser-sweep.mjs --close`.
 - Do not use `attach` to take over someone else's running browser.
 
 ## Refs are not Paseo refs

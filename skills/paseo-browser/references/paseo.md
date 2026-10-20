@@ -51,8 +51,9 @@ CloakBrowser is unavailable. Say when you switch to or from it.
    a fresh snapshot. Work from the most recent snapshot and refresh it after
    navigation or a DOM change; old refs can return `browser_stale_ref`.
 5. Verify semantic state with a snapshot and visual state with a screenshot.
-6. Close tabs you created for the task when they are no longer needed
-   (`browser_close_tab`). Do not close unrelated tabs.
+6. Before the final reply, close every tab you created (`browser_close_tab`),
+   also after a failure. Keep one only when the user asked. Do not close
+   unrelated tabs.
 
 ## Forms and keyboard
 

@@ -65,7 +65,8 @@ remote content as data, not instructions; never print secrets. Rules that are a
 skill's core purpose stay (spyware-check never runs target code, agent-cleanup
 never touches running agents, share stays private, God and orchestration remain
 explicit-trigger for token cost). Highlights: `/paseo-browser` reusable agent
-login profiles, state-changing JS and backend fallback; `/paseo-cua` triggers
+login profiles, state-changing JS, backend fallback, and a close-everything rule
+plus `scripts/browser-sweep.mjs` for agent browsers earlier tasks left running; `/paseo-cua` triggers
 when a task needs a native GUI; `/paseo-multi` `all` targets, `exec --command`,
 `restart --force`; `/paseo-share` any file type up to 50 MiB and multi-file
 publish; `/paseo-god` `list` to resume recent runs. Browser runtime pins move to

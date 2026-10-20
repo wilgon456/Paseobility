@@ -114,6 +114,27 @@ NODE
    Verify the final result with a fresh read before reporting success.
 4. Close the browser you opened (in `finally`). Never kill unrelated sessions.
 
+## Leave nothing running
+
+Before the final reply, close every browser, Playwright CLI session and Paseo
+tab this task opened — on success, failure or interruption. Keep one open only
+when the user asked (for example a login window they are using) and say so.
+
+Agents forget, so also sweep leftovers from earlier tasks at the start of a
+browser task:
+
+```bash
+node <skill-dir>/scripts/browser-sweep.mjs            # list agent browsers
+node <skill-dir>/scripts/browser-sweep.mjs --close    # close ones idle > 60 min
+```
+
+It only matches agent browsers (Paseobility CloakBrowser, Playwright CLI
+daemons and their Chrome for Testing), never the user's Chrome or Paseo, and
+leaves a CloakBrowser alone while its controlling script is alive.
+`--older-than <minutes>` changes the limit; `--close --pid N` closes one listed
+browser now. Paseo `browser_*` tabs live in Paseo: close yours with
+`browser_close_tab`.
+
 ## Quick reference (Playwright API, under CloakBrowser)
 
 | Task | Call |

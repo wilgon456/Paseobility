@@ -65,7 +65,8 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 코드를 실행하지 않음, agent-cleanup은 실행 중인 에이전트를 건드리지 않음,
 share는 private 유지, God·orchestration은 토큰 비용 때문에 명시 호출).
 주요 변경: `/paseo-browser` 재사용 에이전트 로그인 프로필·상태 변경 JS·백엔드
-자동 전환, `/paseo-cua`는 GUI가 필요한 작업이면 사용, `/paseo-multi` `all`
+자동 전환·작업 후 브라우저 닫기 규칙과 남은 에이전트 브라우저를 정리하는
+`scripts/browser-sweep.mjs`, `/paseo-cua`는 GUI가 필요한 작업이면 사용, `/paseo-multi` `all`
 대상·`exec --command`·`restart --force`, `/paseo-share` 50 MiB 이하 모든 파일
 형식·여러 파일 동시 공유, `/paseo-god` `list`로 최근 실행 이어가기. 브라우저
 런타임은 `cloakbrowser@0.6.3`, `playwright-core@1.64.1`로, Cua Driver는 0.36.0으로 올렸습니다
