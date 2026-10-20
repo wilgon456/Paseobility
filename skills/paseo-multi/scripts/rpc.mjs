@@ -120,12 +120,15 @@ async function main() {
     version: status.version, pid: status.pid, startedAt: status.startedAt, providers: status.providers};
   if (req.action === 'agents') return {host: req.host.label, agents: await agents()};
   if (req.action === 'restart') {
-    const rows = await agents();
+    // --force still reports what it interrupts; an unreadable snapshot is reported as unknown.
+    const rows = req.force ? await agents().catch(() => [{id: 'unknown', status: 'snapshot unavailable'}]) : await agents();
     const blocked = rows.filter(a => !['idle', 'error', 'closed'].includes(a.status) ||
       a.attentionReason === 'permission' ||
       (a.requiresAttention && a.attentionReason !== 'finished') || a.pendingPermissionCount > 0);
-    if (blocked.length) throw Error('Restart deferred: active/unknown agent state or attention required.');
+    if (blocked.length && !req.force)
+      throw Error('Restart deferred: active/unknown agent state or attention required (use --force only if the user asked).');
     return {host: req.host.label, acknowledged: await client.restartServer('cli_restart', undefined, {timeout: 30000}),
+      interruptedAgents: blocked.map(a => ({id: a.id, title: a.title, status: a.status})),
       verification: 'Reconnect and verify daemon version separately.'};
   }
   if (req.action === 'cli') return runCli(req.args);
@@ -163,10 +166,10 @@ async function main() {
       throw Error('Remote terminal creation failed.' + (reason ? ' ' + reason + '.' : '') + hint);
     }
     run.terminalId = r.terminal.id;
-    const deadline = Date.now() + req.wait * 1000;
+    const started = Date.now(), deadline = started + req.wait * 1000;
     let result;
     do {
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, Date.now() - started < 10000 ? 500 : 2000));
       result = await capture(run);
     } while (result.status === 'running' && Date.now() < deadline);
     return result;

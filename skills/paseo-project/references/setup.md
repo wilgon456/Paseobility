@@ -1,14 +1,15 @@
 # Setup and context generation
 
-Use for requested initial setup, environment repair, skill installation, or
-context generation. Skip unrelated steps; installing skills does not also
-require generating project context.
+Use for initial setup, environment repair, skill installation, or context
+generation. Do what the outcome needs: install dependencies with the declared
+manager, run builds/tests, and start servers to verify, then stop the ones you
+started. Skill installation alone does not require generating context.
 
 ## Available helpers
 
 Use helpers from a verified Paseobility checkout, not a guessed path relative
-to an installed skill. If that checkout is unavailable, inspect the relevant
-sources directly and report which helper operations were not run.
+to an installed skill. Without one, do the equivalent work directly and say
+which helpers were not run.
 
 | Helper | Purpose |
 | --- | --- |
@@ -17,26 +18,22 @@ sources directly and report which helper operations were not run.
 | `scripts/paseobility-init.sh --no-context` | Install skills with overwrite backups |
 | `scripts/paseobility-install.ps1` | Native Windows installation |
 
-For context generation, reuse existing files after checking freshness. The
-helper preserves existing files unless `--force` is requested; do not call an
-unchanged old artifact freshly generated. Read only output sections needed for
-the requested work instead of rereading every source excerpt.
+The context helper skips existing files; pass `--force` when they are stale,
+and do not call an unchanged old file freshly generated. Improve its output by
+hand where it is thin: it copies bounded excerpts, not a full monorepo audit.
+It prefers a declared `packageManager` over lockfiles and emits no guessed
+install command when they conflict.
 
-The helper includes nested `AGENTS.md` and prefers a declared `packageManager`
-over lockfile inference. Conflicting lockfiles or an unresolved manager produce
-no guessed install command. It copies bounded excerpts, not a complete
-instruction/monorepo audit.
-Inspect current nested instructions and selected package manifests directly.
-Before requested setup, choose the repository's declared package manager/runtime
-and lockfile. Describe install, build, test and installed/runtime results
-separately; package installation or a healthy daemon alone does not prove the
-requested repair. Do not install dependencies solely to prepare a read-only brief.
+Use the repository's declared package manager, runtime and lockfile; never
+generate a second lockfile. Report install, build, test and runtime results
+separately; an install or a healthy daemon alone does not prove the repair.
 
 ## Installation or update
 
 - Read the checkout's `AGENTS.md` for installation-specific requirements.
-- Use `--skill <name>` / `-Skill <name>` for a selected skill. Install Claude
-  copies only when requested or updating existing Claude copies in scope.
+- Use `--skill <name>` / `-Skill <name>` for a selected skill. Add Claude
+  copies (`--with-claude` / `-WithClaude`) when requested or when Claude Code
+  is in use (`~/.claude/skills` exists).
 - `--migrate-skills` / `-MigrateSkills` moves selected predecessor directories
   into backup after installing replacements. It preserves private library state.
 - For isolated validation use `--target-home <temporary-directory> --no-context
@@ -46,11 +43,9 @@ requested repair. Do not install dependencies solely to prepare a read-only brie
 
 ## Platform boundaries
 
-On macOS/Linux, check OS/architecture and CLI availability only as relevant.
-On Windows use the PowerShell installer. Bash doctor/context scripts require a
-compatible shell; otherwise inspect README, applicable agent instructions,
-relevant docs, and command manifests directly. Do not claim native PowerShell
-context generation or a successful environment repair without evidence.
+On Windows use the PowerShell installer. Bash doctor/context scripts need a
+compatible shell; without one, write the context files directly from README,
+agent instructions and manifests. Do not claim a repair without evidence.
 
 Report what changed, generated artifacts, verified commands/runtime identity,
-backups, and remaining setup issues. Do not append a separate brief workflow.
+backups and remaining setup issues.

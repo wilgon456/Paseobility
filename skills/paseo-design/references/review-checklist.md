@@ -1,6 +1,6 @@
 # Review checklist: what to look at in the screenshots
 
-`design-check` measures geometry and style discipline. These are the judgments it cannot make. Go through them on the `-sheet.png` and the `-marked.png` of every width, and answer each line in one sentence in your report. "Looked fine" is not an answer.
+`design-check` measures geometry and style discipline. These are the judgments it cannot make. Look for them on the `-sheet.png` and the `-marked.png` of every width; report what you found and fixed, not a line-by-line answer sheet.
 
 ## Concept and appeal
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Local record creation/resumption only; no tools, model calls or task execution.
+// Local record creation/listing/resumption only; no tools, model calls or task execution.
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, stat, lstat, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, stat, lstat, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,21 +73,42 @@ export async function resumeRun(root, id) {
   return { id, projectRoot, record, content };
 }
 
-const usage = 'Usage: god-run.mjs init --root <project> --goal <text> | resume --root <project> --id <uuid>';
+// Newest first; entries that fail resume's identity checks are skipped, not repaired.
+export async function listRuns(root) {
+  const projectRoot = await project(root);
+  let runs;
+  try { runs = await storage(projectRoot, false); }
+  catch (error) { if (error.code === 'ENOENT') return { projectRoot, runs: [] }; throw error; }
+  const found = [];
+  for (const entry of await readdir(runs, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !uuid.test(entry.name)) continue;
+    try {
+      const { id, record, content } = await resumeRun(projectRoot, entry.name);
+      const metadata = JSON.parse(await readFile(path.join(path.dirname(record), 'run.json'), 'utf8'));
+      const status = content.match(/^- Status:[ \t]*(\S+)/m)?.[1] ?? 'unknown';
+      found.push({ id, createdAt: metadata.createdAt, status, goal: metadata.goal, record });
+    } catch { /* not a valid run for this project */ }
+  }
+  found.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  return { projectRoot, runs: found };
+}
+
+const usage = 'Usage: god-run.mjs init --root <project> --goal <text> | resume --root <project> --id <uuid> | list --root <project>';
 async function main(args) {
   if (args.length === 1 && ['--help', '-h'].includes(args[0])) { process.stdout.write(usage + '\n'); return; }
   const [command, ...rest] = args;
-  const allowed = command === 'init' ? ['--root', '--goal'] : command === 'resume' ? ['--root', '--id'] : [];
-  if (!allowed.length || rest.length !== 4) throw new Error(usage);
+  const commands = { init: ['--root', '--goal'], resume: ['--root', '--id'], list: ['--root'] };
+  const allowed = Object.hasOwn(commands, command) ? commands[command] : [];
+  if (!allowed.length || rest.length !== allowed.length * 2) throw new Error(usage);
   const options = {};
   for (let i = 0; i < rest.length; i += 2) {
     const key = rest[i];
     if (!allowed.includes(key) || key in options || !rest[i + 1]?.trim()) throw new Error(usage);
     options[key] = rest[i + 1];
   }
-  const result = command === 'init'
-    ? await initRun(options['--root'], options['--goal'])
-    : await resumeRun(options['--root'], options['--id']);
+  const result = command === 'init' ? await initRun(options['--root'], options['--goal'])
+    : command === 'resume' ? await resumeRun(options['--root'], options['--id'])
+    : await listRuns(options['--root']);
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 }
 

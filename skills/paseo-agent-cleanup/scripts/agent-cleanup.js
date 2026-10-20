@@ -15,15 +15,16 @@ function usage() {
   agent-cleanup.js
   agent-cleanup.js --dry-run [--pattern <regex>] [--include-workspaces]
   agent-cleanup.js --auto [--pattern <regex> | --agent <id>]
-  agent-cleanup.js --agent <id> [--agent <id>] --archive --yes
+  agent-cleanup.js --agent <id> [--agent <id>] --archive
+  agent-cleanup.js --pattern <regex> --archive
   agent-cleanup.js --workspace <id> [--workspace <id>] --archive --yes
 
 Options:
   --auto                 Archive inactive agents selected by an explicit ID,
                          a user pattern, or a disposable/test marker.
   --dry-run              Show candidates without changing state. This is the default.
-  --archive              Archive selected candidates. Requires --yes.
-  --yes                  Confirm explicit archive execution.
+  --archive              Archive selected candidates (agent archive is a soft delete).
+  --yes                  Required for workspace archive, which can remove a managed worktree.
   --pattern <regex>      Select inactive agents by a user-supplied regex.
   --agent <id>           Explicit agent ID to consider.
   --workspace <id>       Explicit workspace ID to consider.
@@ -95,8 +96,8 @@ function parseArgs(argv) {
   if (opts.auto && (opts.workspaceIds.length || opts.includeWorkspaces)) {
     throw new Error("--auto never archives workspaces; use explicit --workspace <id> --archive --yes");
   }
-  if (opts.archive && !opts.auto && !opts.yes) {
-    throw new Error("--archive requires --yes");
+  if (opts.archive && opts.workspaceIds.length && !opts.yes) {
+    throw new Error("workspace --archive requires --yes");
   }
   if (
     opts.archive &&

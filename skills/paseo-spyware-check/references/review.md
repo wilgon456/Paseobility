@@ -1,40 +1,13 @@
 # Extended scanner and manual review workflow
 
-This skill checks a GitHub URL or local repo for suspicious code before the user
-installs or runs it. It is a risk triage workflow, not a guarantee that code is
-safe.
+Risk triage, not a guarantee. The shell and PowerShell helpers are the broader
+human-review workflow and may use optional third-party scanners (not vendored).
+They never execute target code; neither may you: no install, build, test,
+lifecycle or app commands, no sourcing scripts or importing modules from the
+target. Clone GitHub URLs into a temporary directory.
 
-The scanner is intentionally independent of Paseo's daemon, MCP tool names,
-agent profiles, and workspace lifecycle. Paseo compatibility depends only
-on the skill being installed and discovered; scanning remains a local,
-read-only helper workflow.
+## Classification
 
-## Third-party scanners
-
-This skill integrates with external open-source scanner CLIs when they are
-installed locally. Paseobility does not vendor or redistribute those scanner
-binaries or rule sets.
-
-`scripts/spyware-check.py` is the dependency-free, cross-platform scanner.
-Scanner schema v2 produces an integrity-digested JSON receipt, a versioned
-local security-policy decision, an immutable GitHub commit/tree/path or local
-snapshot, severity counts, stable finding IDs, and explicit scan/truncation
-metadata. The shell and PowerShell helpers provide the broader human-review
-workflow and may use optional third-party scanners.
-
-## Core rules
-
-- Default to read-only inspection.
-- Do not run the target repo's install, build, test, postinstall, prepare,
-  setup, bootstrap, or app commands.
-- Do not install scanner tools until the user explicitly approves the exact
-  package-manager command.
-- Clone GitHub URLs into a temporary directory unless the user provided a local
-  path.
-- Do not source scripts, import project modules, execute package scripts, or
-  run generated binaries from the target repo.
-- Do not print secret values. Report only file paths, key names, line numbers,
-  and redacted snippets.
 - Distinguish `confirmed secret`, `high-risk behavior`, `suspicious pattern`,
   and `needs manual review`.
 - Treat Markdown/README/docs/examples as documentation: dangerous examples are
@@ -116,14 +89,8 @@ Optional scanners are detected automatically:
 If optional tools are missing, continue with the fallback scan and clearly say
 which tools were not available.
 
-To add the recommended OSS scanner set on macOS/Linux, first show the user the
-plan:
-
-```bash
-bash <skill-dir>/scripts/install-scanners.sh --dry-run
-```
-
-Only after approval, run:
+To add the recommended OSS scanner set on macOS/Linux (`--dry-run` shows the
+plan first):
 
 ```bash
 bash <skill-dir>/scripts/install-scanners.sh --yes
@@ -145,13 +112,7 @@ The PowerShell helper follows the same safety model: clone or inspect, do not
 execute target project code, run optional scanners only when installed, and
 write `report.md` with the same `Finding Summary` and classified findings table.
 
-To preview Windows scanner installation commands:
-
-```powershell
-.\<skill-dir>\scripts\install-scanners.ps1 -DryRun
-```
-
-Only after approval:
+To add scanners on Windows (`-DryRun` shows the plan first):
 
 ```powershell
 .\<skill-dir>\scripts\install-scanners.ps1 -Yes
@@ -319,8 +280,8 @@ do not treat the helper's verdict hint as final without reviewing the evidence.
 - TruffleHog retains `--no-verification`; do not validate discovered credentials
   against external services. Its JSON can contain raw secrets.
 - Inspect tool versions/help when an installed tool rejects these flags. Record
-  that tool as failed/incompatible, never count it as a clean pass or install a
-  replacement silently. Incomplete/offline database coverage stays explicit.
+  that tool as failed/incompatible, never count it as a clean pass. Mention any
+  replacement you install. Incomplete/offline database coverage stays explicit.
 - Raw matches, logs and third-party JSON are private local evidence. The helper
   report omits source-line content, but URLs/paths/tool logs can still be sensitive;
   review and redact them before sharing. Do not upload the report directory wholesale.

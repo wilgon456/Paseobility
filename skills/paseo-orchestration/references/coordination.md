@@ -13,24 +13,19 @@ Use for independent subtasks.
    calls. Pass the returned `workspaceId` when isolation is needed.
 4. Let completion notifications arrive; collect final evidence with
    `get_agent_activity` when needed.
-5. Synthesize results. Retry a transient failure at most once with a changed
-   approach; escalate permission, requirement, or destructive-action blockers.
-
-Never let multiple agents edit the same checkout concurrently.
+5. Synthesize results. Retry failures with a changed approach or another
+   profile; escalate only requirement gaps or actions on the ask-first floor.
 
 ## Integrate an isolated writer
 
-Confirm its actual workspace directory, branch and base commit. Review the
-task diff and its changed paths; do not merge an entire branch containing
-unrelated commits. Within existing authorization, integrate only the reviewed
-commits or patch into the coordinator's target. Preserve target-side edits and
-resolve conflicts using both implementations' intent. Test the integrated
-result: tests in a worker's isolated tree do not prove the combined tree.
+Confirm its workspace directory, branch and base commit. Integrate only the
+reviewed task commits or patch, not a whole branch with unrelated commits.
+Preserve target-side edits and resolve conflicts using both sides' intent. Test
+the integrated tree; a worker's isolated tests do not prove the combination.
 
-Keep a worktree with unique/uncommitted work or active agents. Git worktrees
-share repository objects and branch refs even though their working files differ;
-isolation does not authorize force updates or forced removal. Track scripts
-already running before this workflow and stop only those it started.
+Keep a worktree that has uncommitted/unique work or active agents. Worktrees
+share objects and branch refs: no force updates or forced removal. Stop only
+scripts this workflow started.
 
 ## Pattern 2: Task DAG
 
@@ -40,9 +35,9 @@ Use when each step depends on the previous result.
 Step 1 implementation -> Step 2 test -> Step 3 review -> decision
 ```
 
-Launch only ready nodes. Include the predecessor's output and evidence in the
-next agent's prompt. A completion notification is not proof of success: compare
-the reported output with the node's acceptance criteria before advancing.
+Launch every ready node at once. Include the predecessor's output and evidence
+in the next prompt. Check each node's output against its criteria before
+advancing; a completion notification is not proof.
 
 ## Pattern 3: Hybrid split/merge
 
@@ -53,9 +48,8 @@ Split work                  -> synthesis -> independent review
 ```
 
 Fan out isolated work, collect results, and synthesize them in the coordinator.
-Create a separate review agent only when independent review is part of the
-requested workflow or needed for a substantive unresolved risk. Keep that
-agent analysis-only unless the user explicitly asks it to edit.
+Add a review agent only when review is requested or a substantive risk remains;
+keep it analysis-only by default so its judgment stays independent.
 
 ## Pattern 4: Decision gate
 
@@ -71,11 +65,9 @@ Do not advance on a vague or missing gate result.
 
 ## Pattern 5: Coordinator heartbeat
 
-Use completion notifications for agent progress. Use `create_heartbeat` only
-when the user requests recurring monitoring or a required external condition
-has no completion notification; do not add one merely because workers run.
-Always set `maxRuns` or `expiresIn`, preferably both. When complete, call
-`delete_heartbeat`.
+Use `create_heartbeat` only for requested recurring monitoring or an external
+condition with no completion notification. Always set `maxRuns` or
+`expiresIn`, preferably both, and `delete_heartbeat` when complete.
 
 MCP intentionally has no heartbeat update tool. Delete and recreate a heartbeat
 when its cadence or prompt changes. Use `create_schedule` instead when each run

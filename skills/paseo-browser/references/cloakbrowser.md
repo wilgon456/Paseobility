@@ -3,17 +3,17 @@
 `paseo-browser` drives pages with **CloakBrowser** — a stealth Chromium binary
 wrapped by the `cloakbrowser` package's Playwright API. Load this for setup,
 diagnostics, and full recipes. Paseo `browser_*` ([paseo.md](paseo.md)) and the
-Microsoft Playwright CLI ([playwright.md](playwright.md)) are optional
-compatibility backends; they are not substituted when CloakBrowser fails.
+Microsoft Playwright CLI ([playwright.md](playwright.md)) are alternate
+backends to switch to (and name) when CloakBrowser fails.
 
 ## Source and pinned version
 
-- Package: **`cloakbrowser@0.6.2`** (npm, supports **ESM and CommonJS**). `dist.integrity`
-  `sha512-/37JlfgvBbjfCPfUWiowPvg3aA436o6ZBLSqfdxgChnkG5oK2rR50ZadzbJyS9X+rv4PSuhMvs8PZQhICdljzg==`,
-  shasum `8f1be5e8157211a0da61309d25bebe45dccaf0a5`.
-- Source: <https://github.com/CloakHQ/CloakBrowser>, release tag `v0.6.2`,
-  immutable commit `4a1b8f9c89adb43d7b1f853055ac41e3e59876ab` (== npm `gitHead`).
-- Playwright peer: `playwright-core@1.64.0` (peer range `>=1.53.0`; pinned for
+- Package: **`cloakbrowser@0.6.3`** (npm, supports **ESM and CommonJS**). `dist.integrity`
+  `sha512-mkogz/HHYPsd01rhRyLfU5raXeGbZVv2m5bmVr+6qAqlN8zK6gA5NOaNcaGhj2wCPeJc/xT/Rxglu9MCF8ZqQw==`,
+  shasum `fe46fc35997bb73e5e597dcbe183bb6d402a29b9`.
+- Source: <https://github.com/CloakHQ/CloakBrowser>, release tag `v0.6.3`,
+  immutable commit `fbf005bc199920b592df17ac4d489324e29d56d8` (== npm `gitHead`).
+- Playwright peer: `playwright-core@1.64.1` (peer range `>=1.53.0`; pinned for
   reproducibility).
 - **Node.js ^20.19.0 or >=22.12.0** (the package engine range). Recipes use
   dynamic `import()`; CommonJS is also supported. Verified on Node 22.23.2.
@@ -21,7 +21,7 @@ compatibility backends; they are not substituted when CloakBrowser fails.
 
 ## Latest wrapper ≠ latest browser binary, and current binary terms
 
-The npm tag `0.6.2` is the **wrapper** version; it does **not** imply the
+The npm tag `0.6.3` is the **wrapper** version; it does **not** imply the
 newest browser binary.
 
 - **Keyless free binary** — what a launch with no license key downloads, pinned
@@ -42,16 +42,18 @@ key, and never prints key material. If a task needs the latest keyed binary, the
 user supplies the key out of band (`CLOAKBROWSER_LICENSE_KEY`); otherwise use the
 keyless free binary and report exactly which binary ran.
 
-## Upgrade notes for 0.6.2
+## Upgrade notes for 0.6.3
 
-Update `cloakbrowser` and `playwright-core` together. CloakBrowser 0.6.2 fixes
-humanized actions with Playwright 1.64; the older 0.5.11/1.63.0 pair was tested
-separately. Keep the runtime's exact pins and lockfile.
+Update `cloakbrowser` and `playwright-core` together. 0.6.3 reworks humanized
+typing/mouse/scroll (five humanize settings are now ignored in JS) and fixes
+humanized clicks inside scrollers and navigating `selectOption`; playwright-core
+1.64.1 is a patch release. Neither changes the free binary pins. Keep the
+runtime's exact pins and lockfile.
 
 In 0.6.x, humanized locators use strict matching and raise errors instead of
 silently falling back. Use a more specific locator for multiple matches.
 Persistent contexts now save one fingerprint seed per profile; keep that file
-with the task-owned profile. Binary downloads stage atomically for concurrent
+with the profile directory. Binary downloads stage atomically for concurrent
 first launches. No persistent profile or licensed browser is needed by the
 ordinary incognito fixture recipes below.
 
@@ -62,7 +64,7 @@ Installed here (exact pins, own lockfile) — **not** a global npm install and
 
 ```text
 $HOME/.local/share/paseobility/browser/cloakbrowser/
-  package.json        # cloakbrowser 0.6.2 + playwright-core 1.64.0 (exact)
+  package.json        # cloakbrowser 0.6.3 + playwright-core 1.64.1 (exact)
   package-lock.json   # lockfile
   node_modules/
   cache/              # CLOAKBROWSER_CACHE_DIR: verified stealth-Chromium binary
@@ -74,7 +76,7 @@ Reproduce on another machine:
 RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
 mkdir -p "$RUNTIME" && cd "$RUNTIME"
 npm init -y >/dev/null
-npm install --save-exact --no-audit --no-fund cloakbrowser@0.6.2 playwright-core@1.64.0
+npm install --save-exact --no-audit --no-fund cloakbrowser@0.6.3 playwright-core@1.64.1
 ```
 
 Load from the runtime path with dynamic `import()` (respects a custom
@@ -232,11 +234,11 @@ console.log(await page.locator('main').ariaSnapshot());
 ```
 
 For a DOM update, use a bounded predicate on the expected visible result, like
-the adder recipe above. Keep evaluate/predicates read-only and scoped; never
-read credentials. If the project already uses Playwright Test, its auto-retrying
+the adder recipe above. `evaluate` may change page state when that is the
+quickest way to do the task; never print credential values. If the project already uses Playwright Test, its auto-retrying
 `expect(locator).toHaveText(...)` is appropriate; these standalone recipes do
-not add that dependency just for assertions. Avoid fixed waits and `networkidle`
-for readiness. See [Playwright best practices](https://playwright.dev/docs/best-practices)
+not add that dependency just for assertions. Prefer a real signal over fixed
+waits or `networkidle`; a short sleep is fine when the page gives none. See [Playwright best practices](https://playwright.dev/docs/best-practices)
 and [the Page API](https://playwright.dev/docs/api/class-page#page-wait-for-function).
 
 ### Console / network diagnostics (scoped)
@@ -261,19 +263,68 @@ await context.tracing.stop({ path: path.join(outDir, 'trace.zip') });
 await page.pdf({ path: path.join(outDir, 'page.pdf') });   // Chromium only, headless
 ```
 
-### Persistent profile (explicitly requested only)
+### Agent profiles
 
-```js
-const { launchPersistentContext } = await import(pathToFileURL(path.join(R, 'node_modules/cloakbrowser/dist/index.js')).href);
-const ctx = await launchPersistentContext({ userDataDir: path.join(TASK_DIR, 'profile'), headless: true });
+A reusable, agent-owned login profile under
+`$PASEOBILITY_BROWSER_PROFILES/<name>` (default
+`~/.local/share/paseobility/browser/profiles/<name>`). It keeps cookies and the
+CloakBrowser fingerprint seed between tasks, so a site signed in once stays
+signed in.
+
+First login — headed, the user signs in (or the agent uses credentials the user
+gave for this task), then the window is closed:
+
+```bash
+node --input-type=module - "$PROFILE" "https://github.com/login" <<'NODE'
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+const R = process.env.RUNTIME;
+const [profile, url] = process.argv.slice(2);
+const { launchPersistentContext } = await import(
+  pathToFileURL(path.join(R, 'node_modules/cloakbrowser/dist/index.js')).href
+);
+const ctx = await launchPersistentContext({ userDataDir: profile, headless: false });
+try {
+  const page = ctx.pages()[0] ?? await ctx.newPage();
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  console.log('Sign in in the opened window, then close it.');
+  // macOS keeps Chromium alive after the last window, so also watch the tabs.
+  await new Promise(resolve => {
+    ctx.on('close', resolve);
+    const check = () => { if (ctx.pages().length === 0) resolve(); };
+    ctx.on('page', p => p.on('close', check));
+    ctx.pages().forEach(p => p.on('close', check));
+  });
+} finally {
+  await ctx.close().catch(() => {});
+}
+NODE
 ```
 
-Task-owned directory only; never the user's real profile.
+Later runs reuse it headless and log write actions:
+
+```js
+import fs from 'node:fs';
+const ctx = await launchPersistentContext({ userDataDir: profile, headless: true });
+const logAction = (site, action) => fs.appendFileSync(
+  path.join(profile, 'actions.log'), `${new Date().toISOString()} ${site} ${action}\n`);
+try {
+  const page = ctx.pages()[0] ?? await ctx.newPage();
+  // ... task steps ...
+  logAction('github.com', 'opened PR #12 review and approved');
+} finally {
+  await ctx.close();
+}
+```
+
+One process per profile at a time; Chromium locks the directory. If a site
+logged the profile out, rerun the headed login.
 
 ## Error handling
 
-- Missing runtime/binary: the process exits non-zero with a clear message; report
-  it and stop — **no fallback backend**.
+- Missing runtime/binary: the process exits non-zero with a clear message;
+  mention it and continue with another backend (Paseo `browser_*` or the
+  Playwright CLI), naming it.
 - Failed navigation/action/screenshot: caught, reported, `process.exitCode = 4`,
   and the browser is still closed in `finally` (no leaked child process).
 - A mismatched/failed binary download aborts on signature/checksum failure.
@@ -282,8 +333,9 @@ Task-owned directory only; never the user's real profile.
 
 ## Scope and policy
 
-- Explicit invocation for a stated browser task; default headless; isolated
-  sessions; never share login/cookies/refs with Paseo or the user's Chrome.
+- Headless by default, headed whenever it helps. Incognito for one-off pages,
+  agent profiles for signed-in work. Never import the user's personal Chrome
+  cookies or storage.
 - No new MCP server, no alias skill, no new default runtime effects in the
   installers, no global npm installs, no PaaS/cloud/proxy infrastructure.
 - Distinguish the wrapper CLI (`npx cloakbrowser login|info|update`, which manages

@@ -387,9 +387,9 @@ test("accepts a valid artifact and verifies its payload", (t) => {
 
 test("listing skips an invalid artifact instead of hiding every valid one", (t) => {
   const value = fixture(t);
-  // An entry an older release accepted (.mp4) but the current validator rejects.
+  // An entry the current validator rejects (secret-looking name).
   const legacyId = "psh_20260812T010101Z_aaaaaa";
-  const legacyName = "clip.mp4";
+  const legacyName = "server.pem";
   const legacyRelative = `artifacts/machine-a/2026/08/${legacyId}/${legacyName}`;
   const legacyPayload = resolveWithin(value.checkoutPath, legacyRelative, "legacy payload path");
   fs.mkdirSync(path.dirname(legacyPayload), { recursive: true });
@@ -408,7 +408,7 @@ test("listing skips an invalid artifact instead of hiding every valid one", (t) 
   const found = collectArtifacts(value.config, (message) => warnings.push(message));
   assert.deepEqual(found.map((item) => item.id), [value.metadata.id]);
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /skipped invalid artifact metadata .*unsupported file type \.mp4/);
+  assert.match(warnings[0], /skipped invalid artifact metadata .*secret-looking file name: server\.pem/);
 });
 
 test("rejects traversal and absolute artifact paths", (t) => {
@@ -495,4 +495,66 @@ test("rejects a symbolic-link payload", (t) => {
     () => validateFetchedPayload(value.payloadPath, value.metadata, value.config),
     /symbolic link/
   );
+});
+
+test("end to end: multi-file publish, any type, secret refusal, fetch fallback and pending push", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-share-e2e-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const remote = path.join(root, "remote.git");
+  const gitEnv = { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
+  assert.equal(spawnSync("git", ["init", "--bare", "--initial-branch=main", remote], { env: gitEnv }).status, 0);
+  const env = {
+    PASEO_SHARE_HOME: path.join(root, "home"),
+    GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid",
+    GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid"
+  };
+  const cli = (args, cwd) => spawnSync(process.execPath, [CLI_SCRIPT, ...args], {
+    encoding: "utf8", env: { ...process.env, ...env }, cwd: cwd || root, windowsHide: true
+  });
+  const ok = (args, cwd) => {
+    const result = cli(args, cwd);
+    assert.equal(result.status, 0, result.stderr);
+    return result;
+  };
+  ok(["setup", remote, "--machine", "fixture", "--branch", "main"]);
+
+  const src = path.join(root, "src");
+  fs.mkdirSync(src);
+  fs.writeFileSync(path.join(src, "notes.txt"), "hello\n");
+  fs.writeFileSync(path.join(src, "build.zip"), Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 1, 2]));
+  fs.writeFileSync(path.join(src, "leak.log"), "token ghp_" + "a".repeat(36) + "\n");
+
+  const refused = cli(["publish", path.join(src, "notes.txt"), path.join(src, "leak.log")]);
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /leak\.log.*access-token signature/);
+  fs.writeFileSync(path.join(src, ".env"), "A=1\n");
+  assert.match(cli(["publish", path.join(src, ".env")]).stderr, /secret-looking file name/);
+
+  const published = JSON.parse(ok(["publish", path.join(src, "notes.txt"), path.join(src, "build.zip"), "--json"]).stdout);
+  assert.deepEqual(published.map((item) => item.name), ["notes.txt", "build.zip"]);
+  const listed = JSON.parse(ok(["list", "--json"]).stdout);
+  assert.equal(listed.length, 2);
+
+  const out = path.join(root, "out");
+  fs.mkdirSync(out);
+  const zipId = published[1].id;
+  const first = JSON.parse(ok(["fetch", zipId, "--output", out, "--json"]).stdout);
+  assert.equal(first.localPath, path.join(out, "build.zip"));
+  const again = JSON.parse(ok(["fetch", zipId, "--output", out, "--json"]).stdout);
+  assert.equal(again.alreadyPresent, true);
+  fs.writeFileSync(path.join(out, "build.zip"), "local edits");
+  const sibling = JSON.parse(ok(["fetch", zipId, "--output", out, "--json"]).stdout);
+  assert.equal(sibling.localPath, path.join(out, "build (2).zip"));
+  assert.equal(fs.readFileSync(path.join(out, "build.zip"), "utf8"), "local edits");
+
+  const hook = path.join(remote, "hooks", "pre-receive");
+  fs.writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  const failedPush = cli(["publish", path.join(src, "notes.txt")]);
+  assert.notEqual(failedPush.status, 0);
+  assert.match(failedPush.stderr, /push not confirmed/);
+  fs.unlinkSync(hook);
+  const flushed = ok(["list", "--json"]);
+  assert.match(flushed.stderr, /pushed 1 pending commit/);
+  const remoteLog = spawnSync("git", ["--git-dir", remote, "log", "--oneline", "main"], { encoding: "utf8" }).stdout;
+  assert.equal(remoteLog.trim().split("\n").length, 3);
 });

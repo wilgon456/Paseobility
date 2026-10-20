@@ -1,36 +1,35 @@
 # Cua Driver workflow
 
-Load for actual GUI work. The installed binary is authoritative: read
-`cua-driver list-tools` and `cua-driver describe <tool>` for exact names and
-arguments instead of assuming a schema, which changes between releases.
+The installed binary is authoritative: read `cua-driver list-tools` and
+`cua-driver describe <tool>` for exact names and arguments; the schema changes
+between releases.
 
-## Snapshot invariant
+## Snapshots
 
-Every action starts from a fresh state read and is verified afterward. Do not
-act on a cached tree, index, or coordinate after the UI changes.
+Act from the latest snapshot. Several actions may share one snapshot while the
+UI stays put; after anything that rerenders (new window, dialog, navigation),
+snapshot again — old tokens, indexes, and coordinates are stale.
 
 ## Choose the target
 
 - Prefer the window-local accessibility tree: `get_window_state(pid, window_id)`
   returns the tree plus a screenshot by default. Use the opaque `element_token`.
-- Use pixel coordinates only when the tree cannot reach the target, taking the
-  pixel from the same snapshot response.
-- Select the exact window from `list_windows` (or the `launch_app` response) by
-  `window_id`, and confirm field semantics with `cua-driver describe list_windows`
-  rather than assuming a stacking convention.
+- Use pixel coordinates when the tree cannot reach the target, taking them from
+  the same snapshot.
+- Pick the window from `list_windows` (or the `launch_app` response) by
+  `window_id`; check `cua-driver describe list_windows` for field meanings.
 
-## Escalation ladder
+## Routes, cheapest first
 
-Work from the narrowest route outward, and continue only when evidence says the
-previous route did not land:
+Move on when a route does not land; mention which one worked.
 
-0. A headless/background non-GUI outcome (API, CLI, filesystem) — read it back.
+0. A non-GUI outcome (API, CLI, `osascript`, filesystem) — read it back.
 1. A typed Cua operation (`set_window_frame`, `invoke_menu`, typed browser
-   tools, clipboard), verified with a structural read.
+   tools, clipboard).
 2. Background accessibility action.
 3. Background pixel action off the current snapshot.
-4. `delivery_mode: "foreground"` — a reaction to a verified no-op, allowed only
-   within the user's authorization, never a prediction.
+4. Keyboard shortcuts or `delivery_mode: "foreground"` — takes the user's
+   focus, so say so.
 
 ## Persistent state
 
@@ -40,8 +39,8 @@ connection; a repeated session label does not adopt another process's state.
 
 ## Verify and report
 
-Confirm the postcondition with `verify_state`; treat `unknown` as not success.
-Report what was operated, the evidence, and any refusal. Never log secrets.
+Confirm the end result with `verify_state` or an independent read of the tree
+or screenshot. Report what was operated and the evidence. Never log secrets.
 
 ## Source
 

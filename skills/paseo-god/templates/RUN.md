@@ -12,8 +12,8 @@
 
 ## Scope and constraints
 
-Record the requested scope, applicable project instructions and existing
-authorization. Identify unrelated edits to preserve.
+Record the requested scope and applicable project constraints. Note unrelated
+edits to preserve.
 
 ## Change class and checks
 

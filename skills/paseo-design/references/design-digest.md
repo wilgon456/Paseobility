@@ -1,6 +1,6 @@
 # Design digest
 
-Condensed from Anthropic's `frontend-design` (Apache-2.0) and Hermes' `claude-design` (MIT). The full texts are in `../vendor/frontend-design/GUIDE.md` and `../vendor/hermes/claude-design/GUIDE.md`; read them when you need the long form. Read this before composing anything.
+Condensed from Anthropic's `frontend-design` (Apache-2.0) and Hermes' `claude-design` (MIT). The full texts are in `../vendor/frontend-design/GUIDE.md` and `../vendor/hermes/claude-design/GUIDE.md`; read them when you need the long form.
 
 ## Concept first
 
@@ -26,7 +26,7 @@ State the surface in one line. A dashboard is Monitor, not Decide. If a screen s
 
 ## Plan, then check the plan
 
-Work in two passes. First a short plan: surface, reading order (first, second, third), the one memorable element, type roles, color posture, what stays quiet, alignment (left or centered, and why), density. Then check it against the tell list below: if any part is what you would produce for any similar brief, change it and say why. Only then write code.
+Before code, settle surface, reading order (first, second, third), the one memorable element, type roles, color posture, what stays quiet, alignment and density. If any part is what you would produce for any similar brief, change it.
 
 ## Ground the look in the subject
 
@@ -52,7 +52,7 @@ One orchestrated moment lands better than scattered effects; fade-and-slide-up o
 
 ## Content discipline
 
-No fake metrics, decorative stats, generic feature grids, placeholder testimonials, filler sections, or invented claims. Ask before adding sections or claims; mark draft copy as draft. Write from the user's side, in their words: active voice, sentence case, a button that says what happens ("Save changes", not "Submit") and keeps its name through the flow ("Publish" produces "Published"). Errors say what went wrong and how to fix it; an empty state is an invitation to act.
+No fake metrics, decorative stats, generic feature grids, placeholder testimonials, filler sections, or invented claims. Mark draft copy as draft. Write from the user's side, in their words: active voice, sentence case, a button that says what happens ("Save changes", not "Submit") and keeps its name through the flow ("Publish" produces "Published"). Errors say what went wrong and how to fix it; an empty state is an invitation to act.
 
 ## Variations
 

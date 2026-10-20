@@ -346,6 +346,11 @@ dated history.
 | Skill catalog | new session showed 5 names; `paseo-cua` / `paseo-orchestration` absent from the catalog and explicit recognition still unconfirmed; do **not** change `allow_implicit_invocation: false` |
 | Cleanup | all test resources reported cleaned up |
 
+> Note (2026-10-20): `skills/paseo-cua/agents/openai.yaml` now sets
+> `allow_implicit_invocation: true` by design, so `paseo-cua` is used whenever a
+> task needs a native app GUI. The row above records the policy at the time of
+> this run.
+
 Reported limits and clarifications:
 
 - Supplied evidence, **not independently reproduced in this review**.
@@ -404,6 +409,10 @@ Both repository YAML files set `allow_implicit_invocation: false` (verified in t
 source root), so the catalog not listing `paseo-cua` / `paseo-orchestration` is
 **not by itself** an install failure; do not change the trigger configuration
 automatically.
+
+> Note (2026-10-20): implicit invocation for `paseo-cua` is now enabled by design
+> (`allow_implicit_invocation: true`); `paseo-orchestration` stays `false`. The
+> paragraph above is the record as of 2026-09-22.
 
 ### Installer conflict and manual recovery (unresolved)
 

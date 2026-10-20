@@ -93,12 +93,12 @@ local run records only; it does not execute tasks or save native memory.
 `paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Chrome and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
-apps through the separately installed trycua Cua Driver and is explicit-only;
-ordinary web page work stays with `paseo-browser`, whose default backend is
-CloakBrowser (stealth Chromium via the pinned `cloakbrowser` package's
-Playwright API). Paseo `browser_*` and the Microsoft Playwright CLI are optional
-compatibility backends for `paseo-browser`, not the default and never silently
-substituted on failure. No duplicate alias skills are installed.
+apps through the separately installed trycua Cua Driver when a task needs a
+native app GUI; ordinary web page work stays with `paseo-browser`, whose default
+backend is CloakBrowser (stealth Chromium via the pinned `cloakbrowser`
+package's Playwright API) with reusable agent login profiles. Paseo `browser_*`
+and the Microsoft Playwright CLI are alternate backends it switches to, and
+names, when CloakBrowser fails. No duplicate alias skills are installed.
 
 For an authorized update, use `--migrate-skills` (PowerShell: `-MigrateSkills`)
 to move selected predecessors to backup after installing replacements. This

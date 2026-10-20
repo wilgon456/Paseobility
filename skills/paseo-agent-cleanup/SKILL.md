@@ -12,68 +12,49 @@ description: >-
 
 # Paseo Agent Cleanup
 
-Preview first; archive only user-selected inactive agents or clearly disposable
-sessions. Ordinary idle agents remain resumable. A bare invocation changes nothing.
-Run the bundled helper from this skill's installed directory, or use its absolute
-path from another project:
+Archive agents the user selected or that are clearly disposable. Agent archive
+is a soft delete: the record stays in Paseo (`paseo agent ls -a`). Run the
+bundled helper by its absolute path:
 
 ```bash
-node "<skill-dir>/scripts/agent-cleanup.js" --json
-node "<skill-dir>/scripts/agent-cleanup.js" --dry-run --pattern 'cleanup-validation|fixture'
-node "<skill-dir>/scripts/agent-cleanup.js" --agent <full-id> --archive --yes
-node "<skill-dir>/scripts/agent-cleanup.js" --auto --pattern 'cleanup-validation|fixture'
+node "<skill-dir>/scripts/agent-cleanup.js" --json                  # preview (default)
+node "<skill-dir>/scripts/agent-cleanup.js" --agent <full-id> --archive
+node "<skill-dir>/scripts/agent-cleanup.js" --pattern '<regex>' --archive
+node "<skill-dir>/scripts/agent-cleanup.js" --auto                  # disposable markers only
 node "<skill-dir>/scripts/agent-cleanup.js" --workspace <full-id> --archive --yes
 ```
 
-## Guards
+When the user names the agents or the pattern, archive directly; preview only
+when the selection is unclear. `--auto` picks agents with test, fixture,
+validation, temp or similar markers in their name, cwd or project.
 
-- Only confirmed `idle`, `error` or `closed` states can be selected. Running,
-  initializing, missing and unknown states stay protected, even with an exact ID.
-- Pending permissions, unknown permission counts and unfinished attention block
-  cleanup. `finished` attention alone does not block a deliberately selected
-  inactive agent.
-- `--auto` selects only exact IDs, a user-supplied pattern, or clear disposable
-  markers. It never selects agents merely because they are idle.
-- A workspace needs an exact ID and `--archive --yes`. Its active/unknown or
-  permission-pending children block archive. Ownership comes from `workspaceId`,
-  never cwd. A workspace-only request does not select unrelated agents.
+## Guards (enforced by the helper)
+
+- Only `idle`, `error` or `closed` agents can be archived. Running,
+  initializing and unknown states stay protected, even with an exact ID.
+- Pending permissions or unfinished attention block archive.
+- Idle alone never selects an agent; ordinary idle agents stay resumable.
+- Workspaces need an exact ID and `--yes`: archive takes their agents and
+  terminals and may remove the managed worktree. Any active or
+  permission-pending child blocks it. A test-like title alone does not
+  authorize a workspace.
 - Ambiguous short IDs are refused; use full IDs.
 - Never use delete, stop, kill, restart, history, timeline or resume for cleanup.
 
-## Complete state before and after
+Each archive gets a fresh precheck and a postcheck against a complete paginated
+snapshot from the installed Paseo client. An unacknowledged or unverified
+archive halts the rest; inspect fresh state instead of retrying blindly. The
+checks narrow but do not close the read-to-archive race, so do not call them
+atomic.
 
-The helper reads complete, paginated snapshots from the installed Paseo client,
-including ownership and permission metadata. CLI `ls --json` is a display
-projection and is insufficient for these guards. No SDK package is downloaded.
-The current adapter contract is Paseo 0.11.2; a changed/missing internal client,
-invalid page, repeated cursor, timeout or changed daemon identity fails closed.
+## Runtime and fallback
 
-Every archive gets a fresh precheck and immediate postcheck. Success requires
-an acknowledgement for the full ID with `status: "archived"` and `archivedAt`,
-plus removal from a new complete snapshot. A failed acknowledgement or uncertain
-postcondition stops the remaining mutations and reports partial effects. Never
-retry an uncertain archive blindly.
+Needs Node and an installed Paseo desktop app or npm CLI. For a custom install,
+set both `PASEO_CLEANUP_CLIENT_MODULE` and `PASEO_CLEANUP_NODE`. If the client
+cannot be loaded, use the MCP flow in [references/cleanup.md](references/cleanup.md)
+with the same guards.
 
-Archive dispatch uses the same installed client with a full ID and repeats the
-protection/identity checks inside that connection. It avoids CLI list-prefix
-resolution and Windows command-shell dispatch. No arbitrary client operation
-is admitted by this adapter.
+## Report
 
-The server does not expose an atomic inactive-only archive condition. These
-checks reduce the read-to-action gap; they cannot lock out a concurrent new run.
-Do not describe the guard as an atomic guarantee.
-
-## Runtime and report
-
-Require Node and an installed Paseo desktop/CLI client. Bundled Electron is used
-for app ASAR modules. A standalone npm CLI can also be discovered. For a trusted
-custom installation, set both `PASEO_CLEANUP_CLIENT_MODULE` and
-`PASEO_CLEANUP_NODE` to its actual files; do not guess an alternate SDK.
-macOS live read-only snapshots were verified. Windows runtime discovery and
-the JSON dispatch path have fixture/source coverage; a fresh Windows live run remains
-unverified. Preserve unrelated agents, workspaces and private state.
-
-Report selection sources, skipped protection reasons, each command/acknowledgement/
-postcheck result, partial effects and remaining unverified work. Use JSON for
-machine-readable evidence. For limitations and an MCP/manual alternative, read
-[references/cleanup.md](references/cleanup.md).
+What was archived (with acknowledgement and postcheck), what was skipped and
+why, and any partial or unverified effect.

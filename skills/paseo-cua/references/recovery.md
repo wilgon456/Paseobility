@@ -1,63 +1,47 @@
 # Cua Driver recovery
 
-Load this only when a `paseo-cua` flow fails or the host looks unready. Keep the
-retry budget at **one** retry per step, then stop and report.
+Load when a `paseo-cua` flow fails or the host looks unready.
 
-## Bounded retry
+## Retrying
 
-1. Re-read the current state before retrying; do not repeat a call blindly.
-2. Retry at most once. For a transient daemon-connection drop, a single fresh
-   snapshot + retry is the limit.
-3. If it fails again, stop and report the environment limitation.
+Re-read the current state before retrying instead of repeating a call blindly.
+Then try the next route (token -> pixel -> keyboard shortcut -> foreground; see
+[workflow.md](workflow.md)). Stop and report once the sensible routes are used
+up.
 
 ## macOS identity and permissions
 
 - `cua-driver permissions status` is read-only. `Accessibility: false` means
-  stop and ask the human to grant it.
-- `unknown` is **not** `false`: the driver could not confirm its own identity,
-  not that the grant was refused. **Do not assert a cause** — a wrong identity
-  is only one *possible* explanation, not a proven one.
-- Preferred grant path: ask the human to authorize, then use the driver's own
-  documented command, `cua-driver permissions grant`. It opens the correct
-  identity so the Settings entries match the driver, not the terminal. Do not
-  `open` the app with guessed arguments as a substitute.
-- A daemon restart is **not** a default fix and is never the first step. Only if
-  the human explicitly authorizes an identity relaunch, and only after you have
-  checked that **no** active Cua session exists — not just your own tasks, but
-  any user or task that may be using the driver — do a deliberate, attributed
-  `cua-driver stop` followed by the driver's own start. If identity cannot be
-  attributed, stop and report; do not restart blindly.
-- **Never restart Paseo to apply this.** Restarting Paseo can kill running
-  agents.
-- Granted permissions are not readiness. Confirm with a real snapshot and one
-  action on the exact target before treating the host as ready.
+  the human must grant it: run `cua-driver permissions grant` (it opens the
+  driver's own identity in Settings, not the terminal's) and ask the user to
+  approve. Do not `open` the app with guessed arguments instead.
+- `unknown` is not `false`: the driver could not confirm its own identity. Do
+  not assert a cause; re-check after the driver app is running.
+- If the daemon is wedged or running under the wrong identity, you may
+  `cua-driver stop` and start it again
+  (`open -n -g -a CuaDriver --args serve`) when no other agent or user session
+  is using the driver. If you cannot tell, ask first.
+- **Never restart Paseo to apply this.** It can kill running agents.
 
-## Exact UI targets
+## Targets
 
-- Select the exact window from the installed contract (`list_windows` /
-  `launch_app` response) by its window id. Do not guess window ids, stacking
-  order, or coordinates.
-- Confirm field semantics with `cua-driver describe <tool>` rather than assuming
-  a schema; the exposed set differs between driver versions.
-- Act on the opaque element token from a fresh snapshot, one action at a time.
+- Pick the window by `window_id` from `list_windows` / `launch_app`; do not
+  guess ids or stacking order.
+- Check field semantics with `cua-driver describe <tool>`; the tool set differs
+  between versions.
+- A stale `element_token` means the UI changed: take a fresh snapshot.
 
-## `verify_state` semantics
+## `verify_state`
 
-- `verify_state` returning `unknown` is **not** a pass. Record it as unknown even
-  when an independent accessibility read-back shows the expected value.
-- Escalate to `delivery_mode: "foreground"` only after a verified background
-  no-op and only within the user's authorization.
+`unknown` alone is not a pass. An independent read-back (tree value or
+screenshot) showing the expected result is enough; report which evidence you
+used.
 
 ## Browser screenshots
 
 For `screenshot_no_frame`, capture timeouts, or a `fullPage` image with repeated
 edges, use
 [`../../paseo-browser/references/screenshots.md`](../../paseo-browser/references/screenshots.md).
-The Windows `screenshot_no_frame` failure is **not** solved here, and upstream
-PR [#3197](https://github.com/getpaseo/paseo/pull/3197) is an open pull request,
-**not** part of an official install. Do not claim either as fixed.
-
-## Reporting
-
-Report what was operated, the evidence layer (semantic, visual, accessibility,
-or `verify_state`), and any refusal. Never log secrets.
+The Windows `screenshot_no_frame` failure is not solved here, and upstream PR
+[#3197](https://github.com/getpaseo/paseo/pull/3197) is open, not part of an
+official install. Do not claim either as fixed.

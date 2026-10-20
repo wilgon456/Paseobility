@@ -176,6 +176,47 @@ class AdapterTests(unittest.TestCase):
         self.assertIn('ownership', d['error'])
         self.assert_no_mutation()
 
+    def test_inline_command_dispatches_without_file(self):
+        p, d = self.invoke('idle', 'exec', 'PC', '--command', 'uname -a')
+        self.assertEqual(self.calls.read_text(), 'exec\n')
+        p = subprocess.run([sys.executable, str(SCRIPT), '--config', str(self.config), 'exec', 'PC',
+                            '--command', 'x', '--file', str(self.script)], capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+
+    def test_force_restart_reports_interrupted_agents(self):
+        p, d = self.invoke('busy', 'restart', 'PC', '--force')
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual([a['id'] for a in d['result']['interruptedAgents']], ['a'])
+        self.assertEqual(self.calls.read_text(), 'restart\n')
+        self.calls.unlink()
+        p, d = self.invoke('schema', 'restart', 'PC', '--force')
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual(d['result']['interruptedAgents'][0]['id'], 'unknown')
+
+    def test_cli_allows_daemon_status_but_not_lifecycle(self):
+        echo = shutil.which('echo')
+        os.environ['PASEO_MULTI_HOST_CLI'] = echo
+        try:
+            p, d = self.invoke('idle', 'cli', 'PC', '--', 'daemon', 'status', '--json')
+            self.assertEqual(p.returncode, 0)
+            self.assertIn('daemon status', d['result']['stdout'])
+            for cmd in (['daemon', 'stop'], ['daemon', 'restart'], ['daemon', 'pair'], ['pair']):
+                p, d = self.invoke('idle', 'cli', 'PC', '--', *cmd)
+                self.assertFalse(d['ok'])
+        finally:
+            del os.environ['PASEO_MULTI_HOST_CLI']
+        self.assert_no_mutation()
+
+    def test_import_merges_into_existing_registry(self):
+        source = self.root / 'export.json'
+        other = {**self.host, 'label': 'PC2', 'aliases': [], 'serverId': 'other'}
+        renamed = {**self.host, 'label': 'PC-RENAMED'}
+        source.write_text(json.dumps([other, renamed]))
+        p, d = self.invoke('idle', 'import-saved', str(source))
+        self.assertEqual(p.returncode, 0)
+        labels = [h['label'] for h in json.loads(self.config.read_text())['hosts']]
+        self.assertEqual(sorted(labels), ['PC-RENAMED', 'PC2'])
+
     def test_import_duplicate_alias_keeps_existing_registry(self):
         source = self.root / 'export.json'
         source.write_text(json.dumps([self.host, {**self.host, 'label': 'PC2'}]))
