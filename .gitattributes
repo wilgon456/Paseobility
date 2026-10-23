@@ -1,0 +1,2 @@
+# Pinned upstream resources are verified byte-for-byte on every platform.
+skills/paseo-toss/upstream/** -text
