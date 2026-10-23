@@ -64,3 +64,28 @@ boundary explicit rather than assuming Claude MCP settings work in Codex/Paseo.
 - This proves packaging and installation. No Toss account OAuth, real mini-app
   scaffold, bundle upload, phone run or review submission was performed by this
   installation validation.
+
+## Checkout byte preservation and repeated installation
+
+The Windows failure before v2.11.0 was caused by Git converting pinned LF
+resources to CRLF. The repository's `.gitattributes` sets
+`skills/paseo-toss/upstream/** -text`, preserving exact bytes regardless of
+`core.autocrlf` or `core.eol`. Integrity verification still compares the original
+SHA-256 values; it does not normalize data or accept changed hashes.
+
+`tests/test_toss_checkout.py` runs in both shared CI suites. It uses temporary
+repositories with isolated Git configuration to exercise four autocrlf/EOL
+combinations, fresh clones, two forced rematerializations, ZIP archives, and
+three installations into a temporary home with both Paseo and Claude targets.
+It verifies existing backups and an unrelated private marker. A negative control
+removes the protection and must reproduce the original integrity failure before
+restoring the rule and refreshing the checkout.
+
+An existing Windows checkout can retain files already converted to CRLF after
+only `.gitattributes` changes. Before installing from such a checkout, run
+`python skills/paseo-toss/scripts/verify.py`. If it reports changed resources,
+preserve local edits and use a fresh checkout or the published release ZIP;
+verify that clean source before reinstalling with the normal backup-enabled
+installer. Do not regenerate `SOURCE.json` hashes to accommodate converted files.
+The v2.11.0 fleet rollout used the release ZIP and checked every installed file,
+so it did not depend on repairing existing Git working trees.
