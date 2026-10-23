@@ -1,9 +1,9 @@
 # Microsoft Playwright CLI backend (optional)
 
 Backend label: **Microsoft Playwright CLI** (`@playwright/cli`). An alternate
-backend to **CloakBrowser** ([cloakbrowser.md](cloakbrowser.md)) and the Paseo
-`browser_*` tools. Use it when the user asks for it, when the others are
-unavailable, or when its tooling (tracing, network detail) fits the task.
+backend for requested isolated automation. Default browsing uses an existing
+Chrome task tab ([../SKILL.md](../SKILL.md)); do not switch here silently when
+that connection is unavailable.
 
 This mode does not share refs or session state with CloakBrowser or Paseo.
 Say when you switch to it.
@@ -80,8 +80,9 @@ npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$Session" open "ht
 - `npx --yes --package ...` performs a one-time npm fetch; there is **no**
   required global install. Do not run global upgrades.
 - Use a unique session name per task; never reuse a name across tasks.
-- Headless is the default. Add `--headed` whenever a visible window helps; never
-  open the user's personal profile.
+- Headless is the default. Add `--headed` only for a user-requested visible
+  session or required interactive login. Reuse the session across pages and
+  screenshots; never open the user's personal profile.
 
 ## Browser dependency (one-time, bounded)
 
@@ -104,7 +105,8 @@ is a real failure to report, not a silent fallback.
   was observed alive 50 days after its working directory was deleted. Close
   yours before replying, even after a failure — run multi-step flows in one
   shell with `trap 'npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" close' EXIT`.
-  Leftovers from earlier tasks: `scripts/browser-sweep.mjs --close`.
+  Verify the session disappeared with `list`. Inspect older leftovers with
+  `scripts/browser-sweep.mjs`; process age alone does not establish inactivity.
 - Do not use `attach` to take over someone else's running browser.
 
 ## Refs are not Paseo refs

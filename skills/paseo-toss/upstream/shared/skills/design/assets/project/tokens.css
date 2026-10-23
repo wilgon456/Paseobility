@@ -1,0 +1,55 @@
+/**
+ * 디자인 토큰 — 값의 정본은 이 파일 하나다.
+ * render-rules.md·design-guide.md는 이 파일을 가리킬 뿐 값을 다시 싣지 않는다.
+ * 중립 기본값이다 — TDS 호환·인증을 뜻하지 않고, 프로젝트가 자체 값을 정하면
+ * (Figma에서 읽어 온 토큰 포함) 그쪽이 항상 우선한다. 필요하면 이 파일을 직접
+ * 고쳐 쓴다.
+ */
+
+:root {
+  /* 텍스트 — 중립 그레이스케일. #000은 쓰지 않는다(예외는 아래 --dim). */
+  --color-text-strong: #191f28; /* 제목·금액·핵심 숫자 */
+  --color-text-default: #333d4b; /* 본문·리스트 타이틀 */
+  --color-text-subtle: #4e5968; /* 설명·부제·메타데이터 */
+  --color-text-hint: #8b95a1; /* placeholder·타임스탬프·약한 힌트 */
+  --color-text-disabled: #b0b8c1; /* 비활성·장식 라벨 */
+  --color-text-inverse: #ffffff; /* 브랜드·강조로 채운 표면 위 텍스트 */
+
+  /* 배경 */
+  --color-bg: #ffffff; /* 기본 배경 */
+  --color-bg-canvas: #f2f4f6; /* 회색 캔버스 배경 */
+
+  /* 상태색 — harness 기준(H), 공식 규격 단정 아님 */
+  --color-danger: #f04452; /* 위험·에러 상태 */
+  --color-success: #03b26c; /* 성공·완료 상태 */
+  --color-warning: #fe9800; /* 경고·주의 상태 */
+
+  /* 브랜드 강조색 — 중립 기본값이다. 브랜드 색으로 바꾸세요. */
+  --brand-primary: #191f28;
+
+  /* 타이포 스케일 — 크기는 이 6단계 안에서만 고른다. weight는 400~700만 쓴다. */
+  --font-size-display: 28px; /* Display·히어로 (26~32px 범위 안에서 조정 가능) */
+  --font-weight-display: 700;
+  --font-size-title: 20px; /* Title */
+  --font-weight-title: 700;
+  --font-size-subtitle: 15px; /* Subtitle·부제 */
+  --font-weight-subtitle: 600;
+  --font-size-body: 17px; /* Body·본문 */
+  --font-weight-body: 400;
+  --font-size-body-small: 15px; /* Body-small·보조 */
+  --font-weight-body-small: 400;
+  --font-size-caption: 13px; /* Caption·메타(메타데이터·보조 라벨 전용) */
+  --font-weight-caption: 400;
+
+  /* 간격 스케일 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* 전면 오버레이 전용 — #000 금지의 예외다. 텍스트·배경색이 아니므로 대비
+     문제를 만들지 않는다(다이얼로그·바텀시트 뒤 dim 등에만 쓴다). */
+  --dim: rgba(0, 0, 0, 0.4);
+}

@@ -1,21 +1,20 @@
 # Paseo `browser_*` backend (optional)
 
-Backend label: **Paseo `browser_*`**. An alternate backend to CloakBrowser
-([cloakbrowser.md](cloakbrowser.md)). Use it when the task is about the user's
-live Paseo workspace tabs, a site they are already signed into there, or when
-CloakBrowser is unavailable. Say when you switch to or from it.
+Backend label: **Paseo `browser_*`**. Use when the task is specifically
+about Paseo workspace tabs. These are not the user's existing Chrome windows;
+do not silently substitute them for the default Chrome task-tab workflow.
 
 ## Requirements
 
 - The agent must belong to a Paseo workspace. `browser_new_tab` and
   `browser_list_tabs` fail without workspace context.
 - A Paseo desktop browser automation host must be connected. A missing host is
-  an environment limitation; switch to CloakBrowser (an agent profile if a login
-  is needed) or the Playwright CLI and say so. A fresh session does not share
-  the user's Paseo login/tab state.
+  an environment limitation; report it and use a different backend only when
+  that alternative is authorized. A fresh session does not share the user's
+  Paseo login/tab state.
 - Browser IDs must come from `browser_new_tab` or `browser_list_tabs`.
-- New tabs open in the agent's workspace in the background; they do not switch
-  the user's visible tab.
+- Creation is handled by the connected desktop host. Do not assume "new tab"
+  means no new native window or no focus change on every host/version.
 - Navigation accepts HTTP(S) URLs; a scheme-less host is normalized to HTTP.
 
 ## Quick reference
@@ -23,8 +22,8 @@ CloakBrowser is unavailable. Say when you switch to or from it.
 | Task | Tool chain |
 | --- | --- |
 | List tabs | `browser_list_tabs` |
-| Open a URL | `browser_new_tab` |
-| Read a page | `browser_new_tab` -> `browser_snapshot` |
+| Open a URL | `browser_navigate` on this task's tab; create only if needed |
+| Read a page | `browser_snapshot` on this task's tab |
 | Click | `browser_snapshot` -> ref -> `browser_click` |
 | Fill/type | `browser_snapshot` -> ref -> `browser_fill` or `browser_type` |
 | Select | `browser_snapshot` -> ref -> `browser_select` |
@@ -42,8 +41,10 @@ CloakBrowser is unavailable. Say when you switch to or from it.
 
 ## Core workflow
 
-1. Call `browser_list_tabs` to reuse a relevant tab, or `browser_new_tab` to
-   create one.
+1. Call `browser_list_tabs` and record the baseline IDs. Reuse this task's tab
+   or a tab the user asked you to operate; otherwise create one and record its
+   ID. Use `browser_navigate` for subsequent URLs. Do not create a tab per
+   screenshot or viewport size. After a creation timeout, list before retrying.
 2. Call `browser_snapshot`. It returns an accessibility snapshot and ephemeral
    refs such as `@e12` — a separate namespace from Playwright's `e12`.
 3. Act with the latest ref and the exact `browserId`.
@@ -53,7 +54,11 @@ CloakBrowser is unavailable. Say when you switch to or from it.
 5. Verify semantic state with a snapshot and visual state with a screenshot.
 6. Before the final reply, close every tab you created (`browser_close_tab`),
    also after a failure. Keep one only when the user asked. Do not close
-   unrelated tabs.
+   unrelated tabs. Call `browser_list_tabs` again and confirm the created IDs
+   are absent. If creation opens a separate native window, stop creating more;
+   close the task-owned ID and report the placement failure.
+   If the native window remains after its tab is closed, report that host
+   behavior; do not quit Paseo or close unrelated windows to hide it.
 
 ## Forms and keyboard
 
@@ -80,9 +85,8 @@ Snapshot again after any action that can rerender the page.
 
 ## Errors and recovery
 
-- `browser_no_host`: switch to CloakBrowser or the Playwright CLI and say so;
-  if the task truly needs the user's own tabs, ask them to connect a Paseo
-  desktop browser host.
+- `browser_no_host`: report the missing Paseo desktop browser host. Do not
+  replace the requested browser with a new one silently.
 - `browser_disabled`: browser tools must be enabled on the host.
 - `browser_tab_not_found` / `browser_tab_closed`: list tabs and use a current ID.
 - `browser_stale_ref`: take a new snapshot and retry with the new ref.

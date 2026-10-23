@@ -291,7 +291,8 @@ class DoctorJsonTests(unittest.TestCase):
                     "paseo", "cua", "mcp", "manual_e2e"):
             self.assertIn(key, report)
         self.assertEqual(report["skill_source"]["status"], "ok")
-        self.assertEqual(report["skill_source"]["skills"], 10)
+        self.assertEqual(report["skill_source"]["skills"],
+                         len(json.loads((ROOT / "paseobility.json").read_text())["skills"]))
         self.assertEqual(report["cua"]["status"], "absent")
         self.assertEqual(report["paseo"]["cli"], "absent")
         self.assertEqual(report["mcp"]["status"], "not_checked")

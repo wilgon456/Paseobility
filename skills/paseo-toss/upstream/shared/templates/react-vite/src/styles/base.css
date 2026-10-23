@@ -1,0 +1,50 @@
+@import url("https://cdn.jsdelivr.net/gh/toss/tossface/dist/tossface.css");
+@import "./tokens.css";
+
+/* CDN이 막힌 환경에서는 에러 없이 시스템 이모지 폰트로 조용히 대체된다.
+   토스 앱 WebView에서 jsdelivr CDN 로드는 확인됐다(2026-10-14, iOS·Android).
+   자기 앱에서 확인하려면 /ait:test-on-device(번들 업로드 → 콘솔 컴파일 확인 → 토스 앱에서 열기). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Tossface", -apple-system, system-ui, "Malgun Gothic", sans-serif;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  letter-spacing: 0;
+  color: var(--color-text-default);
+  background: var(--color-bg);
+}
+
+/* 본문·데이터 안에 섞인 이모지를 감싸는 클래스 — Tossface 폰트 스택이 이미
+   맨 앞에 있어도, 아이콘처럼 개별 렌더를 보장해야 할 때 명시적으로 쓴다. */
+.tf {
+  font-family: "Tossface", sans-serif;
+  font-style: normal;
+}
+
+/* 화면 배경이 뷰포트 전체를 채우게 한다(1-7) — 콘텐츠가 짧아도 아래쪽에
+   빈 흰 여백이 남지 않는다. dvh를 지원하는 브라우저는 두 번째 선언이 이긴다. */
+.canvas {
+  min-height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: dvh 미지원 브라우저용 vh 폴백 — 의도된 순차 오버라이드 */
+  min-height: 100dvh;
+}
+
+/* 유틸 소수 */
+.text-hint {
+  color: var(--color-text-hint);
+}
+
+.text-inverse {
+  color: var(--color-text-inverse);
+}
+
+.bg-canvas {
+  background: var(--color-bg-canvas);
+}

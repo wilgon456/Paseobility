@@ -61,6 +61,7 @@ KNOWN_SKILLS = (
     "paseo-god",
     "paseo-share",
     "paseo-spyware-check",
+    "paseo-toss",
 )
 
 MCP_TIMEOUT_CAP = 30.0

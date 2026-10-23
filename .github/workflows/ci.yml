@@ -45,6 +45,12 @@ jobs:
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py
 
+      - name: Verify pinned Toss Harness resources
+        run: python skills/paseo-toss/scripts/verify.py
+
+      - name: Test Toss bundle integrity
+        run: python -B skills/paseo-toss/scripts/test_verify.py
+
       - name: Vendored design data
         run: python skills/paseo-design/vendor/ui-ux-pro-max/scripts/validate_data.py
 
@@ -59,6 +65,9 @@ jobs:
 
       - name: God run records
         run: node --test skills/paseo-god/scripts/god-run.test.mjs
+
+      - name: Existing Chrome tab lifecycle
+        run: python -B -m unittest discover -s skills/paseo-browser/scripts -p "test_*.py" -v
 
       - name: Browser leftover sweep
         run: node --test skills/paseo-browser/scripts/browser-sweep.test.mjs
@@ -139,6 +148,12 @@ jobs:
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py
 
+      - name: Verify pinned Toss Harness resources
+        run: python skills/paseo-toss/scripts/verify.py
+
+      - name: Test Toss bundle integrity
+        run: python -B skills/paseo-toss/scripts/test_verify.py
+
       - name: Vendored design data
         run: python skills/paseo-design/vendor/ui-ux-pro-max/scripts/validate_data.py
 
@@ -153,6 +168,9 @@ jobs:
 
       - name: God run records
         run: node --test skills/paseo-god/scripts/god-run.test.mjs
+
+      - name: Existing Chrome tab lifecycle
+        run: python -B -m unittest discover -s skills/paseo-browser/scripts -p "test_*.py" -v
 
       - name: Browser leftover sweep
         run: node --test skills/paseo-browser/scripts/browser-sweep.test.mjs

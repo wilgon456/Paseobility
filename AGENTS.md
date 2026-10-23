@@ -85,7 +85,10 @@ records for other skills.
 
 ## Consolidated skill migration
 
-The package contains ten skills. `paseo-god` is explicit-only task execution,
+The package contains eleven skills. `paseo-toss` wraps the official Toss
+Apps-in-Toss Harness for planning, scaffolding, development, phone testing and
+pre-launch review; install it alone with `--skill paseo-toss`. Console OAuth and
+provider-specific debugger setup remain separate from copying the skill. `paseo-god` is explicit-only task execution,
 verification and resumption; install it alone with
 `./scripts/paseobility-init.sh --skill paseo-god --no-context` (Windows:
 `.\scripts\paseobility-install.ps1 -Skill paseo-god`). Its Node helper creates
@@ -95,10 +98,11 @@ in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver when a task needs a
 native app GUI; ordinary web page work stays with `paseo-browser`, whose default
-backend is CloakBrowser (stealth Chromium via the pinned `cloakbrowser`
-package's Playwright API) with reusable agent login profiles. Paseo `browser_*`
-and the Microsoft Playwright CLI are alternate backends it switches to, and
-names, when CloakBrowser fails. No duplicate alias skills are installed.
+is one task tab in an already-running Chrome window, reused and explicitly
+closed after work. Its macOS `chrome-tabs.py` helper records tab ownership and
+recovers uncertain creation without opening duplicate tabs. CloakBrowser, Paseo
+`browser_*` and Playwright CLI are named, requested alternatives; they do not
+silently replace personal Chrome. No duplicate alias skills are installed.
 
 For an authorized update, use `--migrate-skills` (PowerShell: `-MigrateSkills`)
 to move selected predecessors to backup after installing replacements. This

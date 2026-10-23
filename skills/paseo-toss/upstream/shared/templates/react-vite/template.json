@@ -1,0 +1,22 @@
+{
+  "name": "react-vite",
+  "description": "React 19 + Vite + TypeScript with @apps-in-toss/devtools wired in and the design guide pre-baked (AGENTS.md/CLAUDE.md carriers, docs/design-guide.md, src/styles tokens+base, src/components/icons.tsx). --local fallback template for /ait:new (canonical scaffold path: create-ait-app).",
+  "tokens": {
+    "app_name": {
+      "description": "Human-readable app name shown in UI / metadata. Default: input verbatim.",
+      "example": "My Mini App"
+    },
+    "package_name": {
+      "description": "npm-compatible package name (kebab-case, lowercase). Default: app_name slugified.",
+      "example": "my-mini-app"
+    }
+  },
+  "substitute": {
+    "_comment": "Files in which {{tokens}} should be replaced. Token-free files are not listed.",
+    "files": [
+      "package.json",
+      "index.html",
+      "README.md"
+    ]
+  }
+}

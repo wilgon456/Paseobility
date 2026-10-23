@@ -1,0 +1,277 @@
+{
+  "repository": "https://github.com/toss/apps-in-toss-harness",
+  "commit": "255b636812d8b3a9b048d0a700644b9cbd8532c4",
+  "directory": "packages/agent-plugin",
+  "version": "0.2.6",
+  "license": "BSD-3-Clause",
+  "files": {
+    "shared/skills/debug/WORKFLOW.md": {
+      "source": "shared/skills/debug/SKILL.md",
+      "sha256": "4ef01be4e450a6116871ee673fa064e78baedda8c74feb570722a0516668026c"
+    },
+    "shared/skills/debug/references/attach-flow.md": {
+      "source": "shared/skills/debug/references/attach-flow.md",
+      "sha256": "dfb418ac7ab8ec2441aa0eee3b3a5ed21609bb2ef68890c63fde9edb27990f46"
+    },
+    "shared/skills/debug/references/attach-tools.md": {
+      "source": "shared/skills/debug/references/attach-tools.md",
+      "sha256": "36ebd3d2142a910de18f76e53a236cd359623f153a95104e10ac24e44b3cea15"
+    },
+    "shared/skills/debug/references/debug-loop.md": {
+      "source": "shared/skills/debug/references/debug-loop.md",
+      "sha256": "83129f50da61355eecfd9dd4e1bde77fcd646fb4989a14258e8c063b3479c460"
+    },
+    "shared/skills/debug/references/mode-switching.md": {
+      "source": "shared/skills/debug/references/mode-switching.md",
+      "sha256": "a694cbc194aebc3b463704923b295a593218c8f2b40a1070292f07381f7ef9f8"
+    },
+    "shared/skills/debug/references/panel-tabs.md": {
+      "source": "shared/skills/debug/references/panel-tabs.md",
+      "sha256": "c922c733777f06e7891fd62659ef9d4b157dd9d6b04b6c3209289934789454d3"
+    },
+    "shared/skills/design/WORKFLOW.md": {
+      "source": "shared/skills/design/SKILL.md",
+      "sha256": "ce51b3441722ed9e3f67f5e272d691236de7278a1407b30937708bc64032c127"
+    },
+    "shared/skills/design/assets/project/base.css": {
+      "source": "shared/skills/design/assets/project/base.css",
+      "sha256": "05d2ae945bbab2adf405cb52a297f73c120cac5518a42d9d702ea4110a5d0884"
+    },
+    "shared/skills/design/assets/project/design-guide.md": {
+      "source": "shared/skills/design/assets/project/design-guide.md",
+      "sha256": "cd15aa403cfbe2430917fc7bc6a248d18a95687313e5e0c42d930082d05a2110"
+    },
+    "shared/skills/design/assets/project/icons/chevron-down.svg": {
+      "source": "shared/skills/design/assets/project/icons/chevron-down.svg",
+      "sha256": "bfbc3652b7dec30ae8cdcc78571a24f7dd014a87bd44a2ec459d4aaee2a866a3"
+    },
+    "shared/skills/design/assets/project/icons/chevron-left.svg": {
+      "source": "shared/skills/design/assets/project/icons/chevron-left.svg",
+      "sha256": "e9cb7bda8e7bb37ed5ac1c30149995e24cfadb79124879bcd0ffc9d542122f0b"
+    },
+    "shared/skills/design/assets/project/icons/chevron-right.svg": {
+      "source": "shared/skills/design/assets/project/icons/chevron-right.svg",
+      "sha256": "bf28329a5eb05eab5df2a560764dba5430a588db7fb8aa6c8d71ec86f70b2c26"
+    },
+    "shared/skills/design/assets/project/icons/chevron-up.svg": {
+      "source": "shared/skills/design/assets/project/icons/chevron-up.svg",
+      "sha256": "8685db40897e74572402b3031fbe864e9acc7c4b09e89902bf688de133c49a4b"
+    },
+    "shared/skills/design/assets/project/icons/close.svg": {
+      "source": "shared/skills/design/assets/project/icons/close.svg",
+      "sha256": "e37d7849a3656bf3d29ab3e6651b616e0cdb689fd828043f365584ac1df06b2a"
+    },
+    "shared/skills/design/assets/project/icons/search.svg": {
+      "source": "shared/skills/design/assets/project/icons/search.svg",
+      "sha256": "7890fa0b77e08b6e9917ec09c453330cd79fb24f4bf4d804592dc2990d7a5afc"
+    },
+    "shared/skills/design/assets/project/icons.tsx": {
+      "source": "shared/skills/design/assets/project/icons.tsx",
+      "sha256": "c273fb79cb4b5413c4b0eefaba9be5e038db53b17269dc2fd3ad0599e6cd412e"
+    },
+    "shared/skills/design/assets/project/memory-digest.md": {
+      "source": "shared/skills/design/assets/project/memory-digest.md",
+      "sha256": "ad2a5a07803786c5fd00e237b460cf20f6506a77256aa1715a1dcb7a8de41ef1"
+    },
+    "shared/skills/design/assets/project/tokens.css": {
+      "source": "shared/skills/design/assets/project/tokens.css",
+      "sha256": "9fc32c8c9add225a89a345134fa063c607161323fd81876ab4aac74c4b95159f"
+    },
+    "shared/skills/design/references/build-mode.md": {
+      "source": "shared/skills/design/references/build-mode.md",
+      "sha256": "f4d28c9b7164dd87bd287e806497713c64d6a6569f6d28039233e1ea6a9ef6f2"
+    },
+    "shared/skills/design/references/docs-lookup.md": {
+      "source": "shared/skills/design/references/docs-lookup.md",
+      "sha256": "edd07ad966624d377da282e804d6b21d5935d9afb96cf18e279fc59bc6cc6130"
+    },
+    "shared/skills/design/references/project-guide.md": {
+      "source": "shared/skills/design/references/project-guide.md",
+      "sha256": "4bab8e6b43a5f7c1a394f5b168b9774bfb9a55b33c6429f386ff584ee9595c84"
+    },
+    "shared/skills/design/references/quality-bar.md": {
+      "source": "shared/skills/design/references/quality-bar.md",
+      "sha256": "3c70a562f74236410e72e86a876a4fe21259a8637decbc617b7be06ccd5f2837"
+    },
+    "shared/skills/design/references/render-rules.md": {
+      "source": "shared/skills/design/references/render-rules.md",
+      "sha256": "814dc2ceac3fabd16b7d96aca54d4658fcca75e98e596da48e492dafbe40b231"
+    },
+    "shared/skills/design/scripts/inject-project-guide.sh": {
+      "source": "shared/skills/design/scripts/inject-project-guide.sh",
+      "sha256": "e973eb2c199598d4e34ac4b8e696a6679f02d5d76375aacb3c5858309031c365"
+    },
+    "shared/skills/inject/WORKFLOW.md": {
+      "source": "shared/skills/inject/SKILL.md",
+      "sha256": "e9f91900b8bc6074cd7bd4641cabb559ca6fd1c1b6f13c93b63b85ee65c036bd"
+    },
+    "shared/skills/inject/references/debug-console.md": {
+      "source": "shared/skills/inject/references/debug-console.md",
+      "sha256": "3e953b0896c9bca493e879d2ac42e06e80508021e85174e33df6ba8a1fd1e292"
+    },
+    "shared/skills/inject/references/devtools.md": {
+      "source": "shared/skills/inject/references/devtools.md",
+      "sha256": "706586abea6f00879c60fee2b56159d53c26648dcaa14770c3c562c329e6a9dd"
+    },
+    "shared/skills/inject/references/tossface.md": {
+      "source": "shared/skills/inject/references/tossface.md",
+      "sha256": "bee98a220b4b06436d51e32a4772af23f12f8d27911c9f55188bba5939ad0fe8"
+    },
+    "shared/skills/launch/WORKFLOW.md": {
+      "source": "shared/skills/launch/SKILL.md",
+      "sha256": "cd829e9772ab0241202d1e61ea088e12bb9cc6bc4768b1ba07801fc9f5b4cc50"
+    },
+    "shared/skills/launch/references/lookup-map.md": {
+      "source": "shared/skills/launch/references/lookup-map.md",
+      "sha256": "552801643372a06382e90d270469a555edde2b029365e18e7ea2a08d808b644b"
+    },
+    "shared/skills/launch/references/server-runtime.md": {
+      "source": "shared/skills/launch/references/server-runtime.md",
+      "sha256": "e231902ab5ca8ba96249a65dfa48dd93d903e3864902f8f85c8c5dba89843d21"
+    },
+    "shared/skills/launch/scripts/launch-scan.sh": {
+      "source": "shared/skills/launch/scripts/launch-scan.sh",
+      "sha256": "4b2ca6c4eab744192dd258c27a674234d2dcb47173e50512c9f53f8f91b0dfc2"
+    },
+    "shared/skills/new-miniapp/WORKFLOW.md": {
+      "source": "shared/skills/new-miniapp/SKILL.md",
+      "sha256": "0d2ea9f8bf176f11fe630a3d72e550106987ca68f8880c8898471f215964a4f3"
+    },
+    "shared/skills/new-miniapp/references/local-template.md": {
+      "source": "shared/skills/new-miniapp/references/local-template.md",
+      "sha256": "71d11163e2320b61ab84ee3dfb2e07b9de2c41950ee48da50054a6978b659503"
+    },
+    "shared/skills/plan/WORKFLOW.md": {
+      "source": "shared/skills/plan/SKILL.md",
+      "sha256": "4d72723d4dc598306217e98ed010e588c8f15496e99e6d6308fe90f3a2fe84f5"
+    },
+    "shared/skills/plan/references/ideation.md": {
+      "source": "shared/skills/plan/references/ideation.md",
+      "sha256": "64c204d1525ef3b3017b2b921ccee6e6964cee80ef6e8d41f63e4e39d8dee90a"
+    },
+    "shared/skills/plan/references/prd-template.md": {
+      "source": "shared/skills/plan/references/prd-template.md",
+      "sha256": "12214754deee3855bf3f05149390adfbef5f4837c3ad3fd148b31ab9c53a1f9d"
+    },
+    "shared/skills/plan/references/reference-lookup.md": {
+      "source": "shared/skills/plan/references/reference-lookup.md",
+      "sha256": "88fee0441eb6ae8353e61aa2f45109f6fdbbf0ab88f1f9e96f515000dc036056"
+    },
+    "shared/skills/server/WORKFLOW.md": {
+      "source": "shared/skills/server/SKILL.md",
+      "sha256": "2cf1787b67ae288fdb2cdeeda4a8662b4f0083a728ce673d14c72f073465a032"
+    },
+    "shared/skills/setup-debugger/WORKFLOW.md": {
+      "source": "shared/skills/setup-debugger/SKILL.md",
+      "sha256": "838d7ac41514e46f9def770519b81b3676beff975e888828cdc34beeb61e7c6a"
+    },
+    "shared/skills/setup-debugger/references/upgrade-check.md": {
+      "source": "shared/skills/setup-debugger/references/upgrade-check.md",
+      "sha256": "5aab86654689ae359ff48f14d161512f71d74cd158981a7f8e83f0ccdfae2118"
+    },
+    "shared/skills/test-on-device/WORKFLOW.md": {
+      "source": "shared/skills/test-on-device/SKILL.md",
+      "sha256": "053fc84bd25514f842bb773289decddc7aab2c3b78f17c91927e90cda4e71f84"
+    },
+    "shared/skills/ux-writing/WORKFLOW.md": {
+      "source": "shared/skills/ux-writing/SKILL.md",
+      "sha256": "bb3230c4836f84b5cbacfb81ca59d362e5c647242d94e4578cf5a0c823d5629b"
+    },
+    "shared/skills/welcome/WORKFLOW.md": {
+      "source": "shared/skills/welcome/SKILL.md",
+      "sha256": "643a65d3efea3722bf42c99e75f831f87a52b60d36c663109fe62cfc1438fd32"
+    },
+    "shared/templates/README.md": {
+      "source": "shared/templates/README.md",
+      "sha256": "1c29fc58e4ea2bc5882e5d48f48eabf50cbbb1dd021d37fe560717106f64b7ed"
+    },
+    "shared/templates/react-vite/.gitignore": {
+      "source": "shared/templates/react-vite/.gitignore",
+      "sha256": "2d88e37e0d3432c8b0fda9feac5d7b202225f3f7726405df960d9fb000bb9676"
+    },
+    "shared/templates/react-vite/AGENTS.md": {
+      "source": "shared/templates/react-vite/AGENTS.md",
+      "sha256": "1684d95ecef43fd93c6326f461f79666d990f8665f8ebc3598739fbec9306e7d"
+    },
+    "shared/templates/react-vite/CLAUDE.md": {
+      "source": "shared/templates/react-vite/CLAUDE.md",
+      "sha256": "9d6d12c093b81fb866f4f1818574eee720832798dbea6a1e0c3510a599547069"
+    },
+    "shared/templates/react-vite/README.md": {
+      "source": "shared/templates/react-vite/README.md",
+      "sha256": "c2cc590e3e81057f61e552e36411994a538246910bca46773f1a55da064c073d"
+    },
+    "shared/templates/react-vite/biome.json": {
+      "source": "shared/templates/react-vite/biome.json",
+      "sha256": "17defaecc073d5a59eb79d2586730bff080182d98d57c28c259f2e9b5da39d36"
+    },
+    "shared/templates/react-vite/docs/design-guide.md": {
+      "source": "shared/templates/react-vite/docs/design-guide.md",
+      "sha256": "cd15aa403cfbe2430917fc7bc6a248d18a95687313e5e0c42d930082d05a2110"
+    },
+    "shared/templates/react-vite/index.html": {
+      "source": "shared/templates/react-vite/index.html",
+      "sha256": "311a4721f5c28d14e2c371691b8cb03d9870acda849f3ae79d8a8a317a320294"
+    },
+    "shared/templates/react-vite/package.json": {
+      "source": "shared/templates/react-vite/package.json",
+      "sha256": "9398749d65c5a7812ad7565eddb7c1c8ab4552915d5f496661ad9228cace52b3"
+    },
+    "shared/templates/react-vite/src/App.tsx": {
+      "source": "shared/templates/react-vite/src/App.tsx",
+      "sha256": "ad67359acdf04ea8807163267b7e4e353679c031a3e644f8e2b1e3684eebc35e"
+    },
+    "shared/templates/react-vite/src/components/icons.tsx": {
+      "source": "shared/templates/react-vite/src/components/icons.tsx",
+      "sha256": "c273fb79cb4b5413c4b0eefaba9be5e038db53b17269dc2fd3ad0599e6cd412e"
+    },
+    "shared/templates/react-vite/src/main.tsx": {
+      "source": "shared/templates/react-vite/src/main.tsx",
+      "sha256": "d96d7c003eedbab83e4216ddd58c261a2c8a0f4d3356220893172fe79529cec5"
+    },
+    "shared/templates/react-vite/src/styles/base.css": {
+      "source": "shared/templates/react-vite/src/styles/base.css",
+      "sha256": "05d2ae945bbab2adf405cb52a297f73c120cac5518a42d9d702ea4110a5d0884"
+    },
+    "shared/templates/react-vite/src/styles/tokens.css": {
+      "source": "shared/templates/react-vite/src/styles/tokens.css",
+      "sha256": "9fc32c8c9add225a89a345134fa063c607161323fd81876ab4aac74c4b95159f"
+    },
+    "shared/templates/react-vite/src/vite-env.d.ts": {
+      "source": "shared/templates/react-vite/src/vite-env.d.ts",
+      "sha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5"
+    },
+    "shared/templates/react-vite/template.json": {
+      "source": "shared/templates/react-vite/template.json",
+      "sha256": "75b9b5aab06aa68f063a35469aa0f098a410a3124c8c8c7abdd79fa8b1377f1c"
+    },
+    "shared/templates/react-vite/tsconfig.json": {
+      "source": "shared/templates/react-vite/tsconfig.json",
+      "sha256": "53497eae0681792d0e306fe81cd97dd0e358051780fddc2b46bf7e263dce1bab"
+    },
+    "shared/templates/react-vite/vite.config.ts": {
+      "source": "shared/templates/react-vite/vite.config.ts",
+      "sha256": "d28be5e02f1c5d01c9cffa64186bce68443836c9dadfbf5720bb69c4aeb58fca"
+    },
+    "shared/commands/inject-debug-console.md": {
+      "source": "shared/commands/inject-debug-console.md",
+      "sha256": "47f83ca656d27c31c56cb8116d3aa67760720de8c2d36da5c75c1ca48edaebbc"
+    },
+    "shared/commands/inject-devtools.md": {
+      "source": "shared/commands/inject-devtools.md",
+      "sha256": "3f4a6cd8f83492cacddf40d2505463cfa3c3c3c25c445e3cef5e9175dede3774"
+    },
+    "shared/commands/inject-tossface.md": {
+      "source": "shared/commands/inject-tossface.md",
+      "sha256": "1083ed0b1ea7557e761ef487b5061571cbeae52bf83a0620662df1b8a4679e6f"
+    },
+    "shared/commands/new.md": {
+      "source": "shared/commands/new.md",
+      "sha256": "60a45b7e154afef451a3a9a02e701e9b96c06c9ea93e5ba2f22e8d8d2c1d9fac"
+    },
+    "LICENSE": {
+      "source": "LICENSE",
+      "sha256": "330449396f757a8892ec609620d5863a3a3c622d82d0e9408f81dde6f7febea6"
+    }
+  }
+}

@@ -1,10 +1,9 @@
-# CloakBrowser backend (default)
+# CloakBrowser backend (explicit alternative)
 
-`paseo-browser` drives pages with **CloakBrowser** — a stealth Chromium binary
-wrapped by the `cloakbrowser` package's Playwright API. Load this for setup,
-diagnostics, and full recipes. Paseo `browser_*` ([paseo.md](paseo.md)) and the
-Microsoft Playwright CLI ([playwright.md](playwright.md)) are alternate
-backends to switch to (and name) when CloakBrowser fails.
+Use only when the task requests isolation/stealth/headless automation or a
+specific verification workflow requires it. The default is an existing Chrome
+window and task tab, described in [../SKILL.md](../SKILL.md). `launch()` creates
+a separate browser; it cannot implement personal Chrome tab reuse.
 
 ## Source and pinned version
 
@@ -271,8 +270,9 @@ A reusable, agent-owned login profile under
 CloakBrowser fingerprint seed between tasks, so a site signed in once stays
 signed in.
 
-First login — headed, the user signs in (or the agent uses credentials the user
-gave for this task), then the window is closed:
+First interactive login — open one headed session when user interaction is
+needed, then close it. Reuse that session; do not start another while waiting.
+If login can be completed without user interaction, use headless mode instead.
 
 ```bash
 node --input-type=module - "$PROFILE" "https://github.com/login" <<'NODE'
@@ -323,8 +323,7 @@ logged the profile out, rerun the headed login.
 ## Error handling
 
 - Missing runtime/binary: the process exits non-zero with a clear message;
-  mention it and continue with another backend (Paseo `browser_*` or the
-  Playwright CLI), naming it.
+  report it; do not silently substitute another browser for the requested one.
 - Failed navigation/action/screenshot: caught, reported, `process.exitCode = 4`,
   and the browser is still closed in `finally` (no leaked child process).
 - A mismatched/failed binary download aborts on signature/checksum failure.
@@ -333,7 +332,9 @@ logged the profile out, rerun the headed login.
 
 ## Scope and policy
 
-- Headless by default, headed whenever it helps. Incognito for one-off pages,
+- Headless by default; headed only when the user requests a visible session or
+  interactive login requires it. Reuse one context/page across task steps.
+  Incognito for one-off pages,
   agent profiles for signed-in work. Never import the user's personal Chrome
   cookies or storage.
 - No new MCP server, no alias skill, no new default runtime effects in the
