@@ -1230,4 +1230,8 @@ paseobility.json
 
 ## Paseo plugin
 
-The [`plugin/`](plugin/) directory is a Paseo plugin (`paseo-plugin.json`, `index.client.tsx`, `index.server.ts`). It adds a Paseobility screen to the Paseo sidebar that lists the eleven skills and shows whether each is installed in `~/.agents/skills` or `~/.claude/skills` on the daemon host. It is read-only and makes no network requests. Install it directly from Git with `paseo plugin add git:wilgon456/Paseobility:plugin`.
+The [`plugin/`](plugin/) directory adds a Korean skill launcher to the sidebar and a workspace panel (Paseo 0.12.0+). Choose one of the eleven skills, describe the task, preview the instruction, and explicitly select an idle agent. Browser tasks offer the default backend, Ego Lite, or an already-running Chrome window. The plugin checks the agent again before sending through the Paseo SDK and never automatically retries an uncertain send. Sending starts ordinary agent work and uses the selected model's quota.
+
+The **설치 상태** view checks skill files in `~/.agents/skills` and `~/.claude/skills`, plus Ego/Cua files in known locations on the selected daemon host. File presence does not prove permissions, login, or runtime health. The plugin neither installs tools nor restarts daemons. Existing sessions may need to be recreated after skill installation.
+
+Install with `paseo plugin add git:wilgon456/Paseobility:plugin`. Open **Paseobility** in the sidebar, or select **Paseobility 작업 실행** from the workspace Command Center. See [plugin usage and validation](plugin/OVERVIEW.md).

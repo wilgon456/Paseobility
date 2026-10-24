@@ -19,6 +19,8 @@ export const skillStatusRpc = defineRpc({
   name: "skills.status",
   input: z.object({}),
   output: z.object({
+    platform: z.string(),
+    tools: z.array(z.object({ id: z.string(), label: z.string(), detected: z.boolean() })),
     skills: z.array(
       z.object({ id: z.string(), paseo: z.boolean(), claude: z.boolean() }),
     ),

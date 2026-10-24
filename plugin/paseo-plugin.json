@@ -1,11 +1,11 @@
 {
   "id": "paseobility",
   "name": "Paseobility",
-  "description": "Shows the Paseobility skill pack for Paseo agents and whether each skill is installed on the daemon host",
+  "description": "Choose a Paseobility skill, preview your task, send it to an idle agent, and inspect host installation status",
   "media": [
     "media/screen.png"
   ],
   "requirements": {
-    "paseo": ">=0.11.4"
+    "paseo": ">=0.12.0"
   }
 }

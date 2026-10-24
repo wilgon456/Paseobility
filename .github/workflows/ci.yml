@@ -24,6 +24,14 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Plugin dependencies
+        run: npm ci --prefix plugin
+
+      - name: Plugin types and launch safety
+        run: |
+          npm --prefix plugin run typecheck
+          npm --prefix plugin test
+
       - name: Validation dependency (CI only)
         run: python -m pip install PyYAML==6.0.3
 
