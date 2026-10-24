@@ -1,8 +1,8 @@
 # CloakBrowser backend (explicit alternative)
 
 Use only when the task requests isolation/stealth/headless automation or a
-specific verification workflow requires it. The default is an existing Chrome
-window and task tab, described in [../SKILL.md](../SKILL.md). `launch()` creates
+specific verification workflow requires it. The ordinary Ego Lite / existing Chrome
+workflow is described in [../SKILL.md](../SKILL.md). `launch()` creates
 a separate browser; it cannot implement personal Chrome tab reuse.
 
 ## Source and pinned version

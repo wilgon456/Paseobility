@@ -1,9 +1,9 @@
 # Microsoft Playwright CLI backend (optional)
 
 Backend label: **Microsoft Playwright CLI** (`@playwright/cli`). An alternate
-backend for requested isolated automation. Default browsing uses an existing
-Chrome task tab ([../SKILL.md](../SKILL.md)); do not switch here silently when
-that connection is unavailable.
+backend for requested isolated automation. Ordinary browsing uses installed Ego Lite or the
+selected existing Chrome tab ([../SKILL.md](../SKILL.md)); do not switch here
+silently when that connection is unavailable.
 
 This mode does not share refs or session state with CloakBrowser or Paseo.
 Say when you switch to it.

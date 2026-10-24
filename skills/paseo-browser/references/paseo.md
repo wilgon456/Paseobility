@@ -2,7 +2,7 @@
 
 Backend label: **Paseo `browser_*`**. Use when the task is specifically
 about Paseo workspace tabs. These are not the user's existing Chrome windows;
-do not silently substitute them for the default Chrome task-tab workflow.
+do not silently substitute them for the selected Ego Lite or Chrome workflow.
 
 ## Requirements
 
