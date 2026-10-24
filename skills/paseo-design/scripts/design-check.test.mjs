@@ -84,6 +84,15 @@ try {
     assert.equal(good.failing, false);
   });
 
+  const clipped = await run([path.join(FIX, 'clipped.html'), '--out', out, '--widths', '375', '--no-sheet']);
+  check('line-clamped text and enlarged touch layers are not reported, a real overlap still is', () => {
+    const [page] = clipped.results[0].pages;
+    const overlaps = page.findings.filter((f) => f.rule === 'text-overlap');
+    assert.equal(overlaps.length, 1, `text-overlap: ${overlaps.map((f) => f.msg).join(' | ')}`);
+    assert.match(overlaps[0].msg, /진짜로 겹친 글자/);
+    assert.ok(!rules(page, 'error').has('tap-target'), 'a 20px button with a 48px touch layer is not a tiny target');
+  });
+
   const nometa = await run([path.join(FIX, 'nometa.html'), '--out', out, '--widths', '375', '--no-sheet']);
   check('a page without viewport meta is flagged on the phone width', () => {
     assert.ok(rules(nometa.results[0].pages[0], 'error').has('viewport-meta'));

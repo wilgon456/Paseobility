@@ -284,8 +284,28 @@
 
   // ---------- E: text overlap ----------
   const solid = blocks.filter((b) => !b.faint && !b.pinned);
+  // Lines hidden by an overflow-clipping box (line-clamp, max-height + overflow:hidden)
+  // are never drawn, so they cannot collide with the next element. Unintended
+  // clipping is still reported by text-clipped, which uses the unfiltered rects.
+  const clipBoxes = new Map();
+  const clipBoxOf = (el) => {
+    if (clipBoxes.has(el)) return clipBoxes.get(el);
+    const c = { x: -Infinity, y: -Infinity, r: Infinity, b: Infinity };
+    for (let e = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement || e.getRootNode().host || null) {
+      const es = S(e);
+      const hx = es.overflowX === 'hidden' || es.overflowX === 'clip';
+      const hy = es.overflowY === 'hidden' || es.overflowY === 'clip';
+      if (!hx && !hy) continue;
+      const q = R(e);
+      if (hx) { c.x = Math.max(c.x, q.x); c.r = Math.min(c.r, q.r); }
+      if (hy) { c.y = Math.max(c.y, q.y); c.b = Math.min(c.b, q.b); }
+    }
+    clipBoxes.set(el, c);
+    return c;
+  };
+  const drawn = (b, q) => { const c = clipBoxOf(b.el); return Math.min(q.b, c.b) - Math.max(q.y, c.y) > 1 && Math.min(q.r, c.r) - Math.max(q.x, c.x) > 1; };
   const flat = [];
-  solid.forEach((b, i) => b.rects.forEach((q) => flat.push({ i, q })));
+  solid.forEach((b, i) => b.rects.forEach((q) => { if (drawn(b, q)) flat.push({ i, q }); }));
   flat.sort((a, b) => a.q.y - b.q.y);
   const overlapPairs = new Set();
   for (let a = 0; a < flat.length && overlapPairs.size < 20; a++) {
@@ -353,12 +373,27 @@
   if (unknownBg) add('info', 'contrast-unmeasured', `배경이 그림이나 그라데이션이라 대비를 재지 못한 글자가 ${unknownBg}곳이다. 눈으로 확인한다.`, [], { count: unknownBg });
 
   // ---------- E/W: tap targets, tiny text ----------
+  // The finger hits the control or any of its descendants, so a small label button
+  // with an enlarged touch layer (Material's .touch, a ::before-free span) counts at
+  // the layer's size.
+  function hitRect(el) {
+    const r = el.getBoundingClientRect();
+    let x = r.left, y = r.top, rr = r.right, b = r.bottom;
+    for (const d of el.querySelectorAll('*')) {
+      const ds = S(d);
+      if (ds.pointerEvents === 'none' || ds.visibility === 'hidden' || ds.display === 'none') continue;
+      const q = d.getBoundingClientRect();
+      if (q.width < 1 || q.height < 1) continue;
+      x = Math.min(x, q.left); y = Math.min(y, q.top); rr = Math.max(rr, q.right); b = Math.max(b, q.bottom);
+    }
+    return { width: rr - x, height: b - y };
+  }
   if (MOBILE) {
     const small = [], under44 = [];
     for (const el of all) {
       if (!el.matches(INTERACTIVE_SEL) || S(el).pointerEvents === 'none') continue;
       if (el.tagName === 'A' && S(el).display === 'inline') { const pb = blockOf(el); if (pb && (pb.innerText || '').trim().length > (el.innerText || '').trim().length + 8) continue; }
-      const r = el.getBoundingClientRect();
+      const r = hitRect(el);
       if (r.width < 4 || r.height < 4) continue;
       const m = Math.min(r.width, r.height) * VSCALE;
       if (m < 24) small.push(el); else if (m < 44) under44.push(el);
