@@ -25,3 +25,40 @@ Local evidence: `/tmp/paseobility-composer-check/` and `/tmp/paseobility-compose
 The reference-driven list now has a fixed search field and result count, plain skill-name rows with short Korean descriptions, and hover/keyboard focus feedback. Existing selection/draft behavior is unchanged. The actual picker component was rendered at 375/768/1440 in light/dark: zero errors and warnings. Ego Lite verified Korean and case-insensitive English search, empty results, Tab/Enter selection, preserved multiline draft/attachment and zero sends. The prior footer produced a scroll-clipping overlap finding and was removed for a cleaner list.
 
 Evidence: `/tmp/paseobility-list-design-final/` and `plugin/media/skills.png` (mock host, actual component). Local reload reported running. Native mobile and remote hosts were not exercised for this refinement.
+
+## Native integration pass (v2.12.1, Paseo 0.12 and 0.13)
+
+Goal: the plugin should read as part of Paseo, not a page embedded in it. Measured
+from the real Paseo 0.13.0 web app: system font, 14px body, 12 to 13px secondary
+text, 24px page titles, 8px radii, theme surfaces and 1px theme borders.
+
+- Version screen: built from the host's `SettingsSection`, `SettingsCard`,
+  `SettingsRow` and `SettingsAction`, the same components as Paseo's settings
+  pages. A brand tile, host name and a status badge (up to date, update
+  available, updating, offline) replace the explanatory paragraphs. Each of the
+  eleven skills is an icon tile with its command and installed state.
+- Skill picker: matches Paseo's model selector: icon header, borderless search
+  row, divider, single-line rows with an icon, title and muted hint. Arrow keys
+  and Enter work, and the search box takes focus when the popover opens (the host
+  popover took focus away from `autoFocus` before; focus is now retried until it
+  holds).
+- Labels follow the app language on 0.13 (English or Korean) and stay Korean on
+  0.12. The `+` menu entry is the brand alone because Paseo prefixes it with an
+  English "Attach".
+- 0.12 compatibility: `Icon` exists only in the 0.13 SDK, so icons are read
+  through a namespace import and fall back to text glyphs on 0.12. A test
+  rejects named imports of 0.13-only exports and custom fonts.
+
+Verified in the published apps, not a mock: the 0.13.0 desktop web bundle
+(from the v0.13.0 release archive) against a throwaway 0.13.0 daemon, and the
+0.12.0 bundle against a throwaway 0.12.0 daemon, each with this plugin
+installed from the working tree and a real agent conversation. Screens were
+captured at 1440, 768 and 375 px in light and dark, in Korean and English. In
+the 0.13 app, typing in the picker search and pressing Enter appended
+`/paseo-design` to an existing draft, and ArrowDown twice plus Enter appended
+`/paseo-project`; nothing was sent. `plugin/media/` now holds real-app
+captures (the update-available state used a temporary local version change
+that was reverted).
+
+Not verified: the native mobile app, the Electron desktop shell itself (the
+same web bundle runs inside it), and a real update install.

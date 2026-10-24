@@ -1,10 +1,10 @@
 # Paseobility
 
-Paseobility adds version management and eleven bundled skills to Paseo. Open **Paseobility** in the sidebar to see the plugin version, verified installed-skill version when available, and the latest official release.
+Paseobility adds version management and eleven bundled skills to Paseo. Open **Paseobility** in the sidebar to see the plugin version, the verified installed-skill version when available, and the latest official release. The screen follows Paseo's own settings components, shows the installed state of every skill, and uses the app language on Paseo 0.13 (English or Korean).
 
-Above an existing conversation's input, **Paseobility** opens a searchable list of skill names and short Korean descriptions. Search matches skill IDs, task names and descriptions; Tab/Enter selection is supported. Selecting a skill appends its `/paseo-…` reference to your existing text. Your draft and attachments stay in place, repeated selection does not duplicate the reference, and you press Paseo's normal Send button yourself. The plugin never sends a message or starts an agent.
+Above an existing conversation's input, **Paseobility** opens a picker that follows Paseo's own popovers: a header row, a search row, then compact single-line skill rows with icons. Search matches skill IDs, titles and hints. On desktop the picker supports arrow keys plus Enter. Selecting a skill appends its `/paseo-…` reference to your existing text. Your draft and attachments stay in place, repeated selection does not duplicate the reference, and you press Paseo's normal Send button yourself. The plugin never sends a message or starts an agent.
 
-On native mobile clients and new-agent drafts, use **+ → Paseobility 스킬**. Paseo's attachment picker adds the skill reference as a resource and includes it when you send. Installed skills still need to be discoverable by the agent; an existing session may require a new session after installation.
+On native mobile clients and new-agent drafts, use the **+** menu entry **Attach Paseobility** (Paseo adds the English "Attach" prefix itself). Paseo's attachment picker adds the skill reference as a resource and includes it when you send. Installed skills still need to be discoverable by the agent; an existing session may require a new session after installation.
 
 **Paseobility 열기** in the Command Center (Paseo 0.12 and 0.13) opens the same version screen as the sidebar entry.
 

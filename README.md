@@ -59,7 +59,9 @@ limits. Existing version and platform reports retain their original scope.
 ## 2026-10-24 · Paseo 0.13 support (v2.12.1)
 
 The plugin now loads on Paseo 0.12.x and 0.13.x (`>=0.12.0 <0.14.0`), adds a
-Command Center entry and follows the app language on 0.13. A failure of the
+Command Center entry and follows the app language on 0.13. Its version screen
+and skill picker are rebuilt from Paseo's own settings and popover patterns,
+with skill icons, installed state, a status badge and keyboard selection. A failure of the
 private composer adapter no longer disables the version screen, updater or
 `+` menu. `paseo-multi` documents 0.13 native connected hosts, `paseo-orchestration`
 the combined report/finish message, and CI now checks every documented
