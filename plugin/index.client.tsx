@@ -3,9 +3,10 @@ import type {
   PluginSidebarItemProps,
 } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
-import { SkillsScreen, WorkspaceLauncher } from "./client/screen";
-
-function SkillsItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
+import { VersionScreen } from "./client/screen";
+import { contributePills } from "./client/pills";
+import { skillsSource } from "./shared/management";
+function VersionItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
   return (
     <SidebarRow
       icon="Sparkles"
@@ -14,33 +15,17 @@ function SkillsItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
     />
   );
 }
-
 export default function contribute(client: PluginClientContext) {
   client.addScreen({
     id: "skills",
     title: "Paseobility",
-    Component: SkillsScreen,
+    Component: VersionScreen,
   });
   client.addSidebarHeaderItem({
     id: "skills",
     title: "Paseobility",
-    Component: SkillsItem,
+    Component: VersionItem,
   });
-  client.addWorkspacePanel({
-    id: "workflows",
-    title: "Paseobility",
-    icon: "Sparkles",
-    context: "workspace",
-    Component: WorkspaceLauncher,
-  });
-  client.addCommandCenterItem({
-    id: "open-workflows",
-    title: "Paseobility 작업 실행",
-    icon: "Sparkles",
-    context: "workspace",
-    onSelect({ openPanel }) {
-      openPanel("workflows");
-    },
-  });
-  return () => {};
+  client.addAttachmentSource(skillsSource);
+  return contributePills(client);
 }

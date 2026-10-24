@@ -67,99 +67,10 @@ export const WORKFLOWS = [
   },
 ] as const;
 
-export type BrowserChoice = "auto" | "ego" | "chrome";
-export function buildPrompt(
-  skill: string,
-  task: string,
-  browser: BrowserChoice = "auto",
-): string {
+// Pure draft operation: never trim or replace existing user text.
+export function appendSkill(draft: string, skill: string): string {
   if (!WORKFLOWS.some((item) => item.id === skill))
-    throw new Error("알 수 없는 작업입니다.");
-  const body = task.trim();
-  if (!body) throw new Error("할 일을 입력해주세요.");
-  if (body.length > 12000)
-    throw new Error("작업 내용은 12,000자 이내로 입력해주세요.");
-  const backend =
-    skill === "paseo-browser"
-      ? {
-          auto: "",
-          ego: "\n브라우저는 Ego Lite를 사용해주세요.",
-          chrome:
-            "\n이미 실행 중인 Google Chrome 창의 작업 탭 하나를 재사용하고, 완료 후 그 탭만 닫아주세요.",
-        }[browser]
-      : "";
-  return `/${skill}\n${body}${backend}`;
-}
-
-export interface LaunchAgent {
-  id: string;
-  status: string;
-  workspaceId?: string;
-  archivedAt?: string | null;
-  activeTurn?: unknown;
-  pendingPermissions: readonly unknown[];
-}
-
-export function canLaunch(
-  agent: LaunchAgent | null | undefined,
-  workspaceId?: string,
-): boolean {
-  return (
-    !!agent &&
-    agent.status === "idle" &&
-    !agent.archivedAt &&
-    !agent.activeTurn &&
-    Array.isArray(agent.pendingPermissions) &&
-    agent.pendingPermissions.length === 0 &&
-    (!workspaceId || agent.workspaceId === workspaceId)
-  );
-}
-
-// Keep the in-flight lock outside React state so same-tick double clicks cannot send twice.
-// A send failure is ambiguous: lock this attempt until the user checks its target.
-export function createLauncher() {
-  let state: "ready" | "checking" | "sending" | "sent" | "uncertain" = "ready";
-  return {
-    state: () => state,
-    async launch(
-      handle: {
-        refresh(): Promise<{ agent: LaunchAgent } | null>;
-        send(
-          text: string,
-          options: { activeTurnBehavior: "steer" },
-        ): Promise<void>;
-      },
-      prompt: string,
-      workspaceId?: string,
-    ) {
-      if (state !== "ready")
-        throw new Error(
-          "이미 전송을 시도했습니다. 대상 대화에서 결과를 확인해주세요.",
-        );
-      state = "checking";
-      try {
-        const latest = await handle.refresh();
-        if (!canLaunch(latest?.agent, workspaceId))
-          throw new Error(
-            "대상이 실행 중이거나 승인 대기 중입니다. 대기 중인 다른 에이전트를 선택해주세요.",
-          );
-      } catch (error) {
-        state = "ready";
-        throw error;
-      }
-      state = "sending";
-      try {
-        // Request steering if a turn starts after refresh. The daemon can fall back
-        // to interruption for providers without steering; this is not an atomic
-        // idle-only send. The UI requires explicit target selection and refresh.
-        await handle.send(prompt, { activeTurnBehavior: "steer" });
-        state = "sent";
-      } catch {
-        state = "uncertain";
-        throw new Error(
-          "전송 결과를 확인하지 못했습니다. 중복 전송을 피하려면 대상 대화를 먼저 확인해주세요.",
-        );
-      }
-    },
-  };
+    throw new Error("알 수 없는 스킬입니다.");
+  if (new RegExp(`(^|\\s)/${skill}(?=\\s|$)`).test(draft)) return draft;
+  return draft + (draft && !draft.endsWith("\n") ? "\n" : "") + `/${skill} `;
 }

@@ -1,11 +1,11 @@
 {
   "id": "paseobility",
   "name": "Paseobility",
-  "description": "Choose a Paseobility skill, preview your task, send it to an idle agent, and inspect host installation status",
+  "description": "Paseobility versions and updates, with skills added to your existing composer draft for manual sending",
   "media": [
     "media/screen.png"
   ],
   "requirements": {
-    "paseo": ">=0.12.0"
+    "paseo": ">=0.12.0 <0.13.0"
   }
 }
