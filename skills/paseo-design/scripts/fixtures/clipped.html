@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>잘린 줄과 터치 영역</title>
+<style>
+  body { margin: 0; font-family: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 16px; line-height: 1.6; word-break: keep-all; overflow-wrap: break-word; }
+  .wrap { max-width: 360px; margin: 0 auto; padding: 16px; }
+  .card { border: 1px solid #d0d7de; border-radius: 8px; padding: 16px; }
+  .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 0 0 8px; }
+  h3.clamp { font-size: 20px; line-height: 1.32; }
+  .chip { position: relative; display: inline-block; padding: 0 16px; border: 1px solid #c4c7c5; border-radius: 20px; }
+  .chip button { position: relative; height: auto; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; line-height: 20px; color: #1f1f1f; }
+  .chip .touch { position: absolute; left: -16px; right: -16px; top: 50%; height: 48px; transform: translateY(-50%); }
+  .overlap { position: relative; height: 24px; }
+  .overlap span { position: absolute; left: 0; top: 0; }
+  .overlap span + span { top: 6px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <article class="card">
+    <h3 class="clamp">줄임 처리된 제목은 두 줄까지만 보이고 남은 줄은 숨겨지므로 다음 요소와 겹쳐 보이지 않는다 그래도 계속 이어지는 제목</h3>
+    <p class="clamp">요약문도 두 줄까지만 보인다. 숨긴 줄은 화면에 그려지지 않으므로 바로 아래 칸과 겹친다고 세면 안 된다. 계속 이어지는 요약문입니다.</p>
+  </article>
+  <p><span class="chip"><button type="button">선호하는 매체에 추가<span class="touch"></span></button></span></p>
+  <div class="overlap" id="real"><span>진짜로 겹친 글자</span><span>위에 얹힌 글자</span></div>
+</main>
+</body>
+</html>
