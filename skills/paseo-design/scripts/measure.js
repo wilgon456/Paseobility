@@ -414,7 +414,15 @@
     if (b.faint || b.lines.length < 2 || (!b.hangul && !b.heading)) continue;
     let prev = null, acc = '', lineChars = [0];
     const marks = [];
+    let prevNode = null;
     outer: for (const n of b.nodes) {
+      // whitespace-only text nodes (React's {" "}) are not collected, so look at what
+      // lies between this node and the last one: a space there is a legal break
+      if (prev && prevNode) {
+        range.setStart(prevNode, prevNode.nodeValue.length); range.setEnd(n, 0);
+        if (/\s/.test(range.toString())) prev.space = true;
+      }
+      prevNode = n;
       const t = n.nodeValue;
       for (let i = 0; i < t.length; i++) {
         const ch = t[i];
@@ -463,6 +471,9 @@
     if (b.el.tagName === 'SUMMARY') continue; // its disclosure marker is UA-drawn; the text start is not a design decision
     if (b.ownBox) { // a chip, button or callout aligns by its own edge, not by the glyphs inside
       if (rotated(b.el)) continue;
+      // an inline box inside running text (<code>, <mark>, <kbd>) starts and ends wherever
+      // the sentence puts it, and wraps with the line; its edges are text flow, not design
+      if (b.s.display === 'inline') continue;
       if (b.box.w > W * 0.96) continue;
       const nf = runNeighbour(b.el, -1), nl = runNeighbour(b.el, 1);
       if (!(nf && nl)) items.push({ el: b.el, g: groupOf(b.el), x: nf ? null : b.box.x, r: runRight(b.el, nf, nl, b.box.r), y: b.box.y, b: b.box.b, kind: 'box', label: clip(b.text, 18) });
@@ -473,6 +484,7 @@
   }
   for (const el of [...media, ...controls, ...cards]) {
     if (absolute(el) || pinned(el) || rotated(el)) continue; // a deliberately tilted object has no straight edge to align
+    if (S(el).display === 'inline' && !el.matches('img,svg,video,canvas,iframe')) continue; // boxed words in a sentence (see above)
     const notFirst = runNeighbour(el, -1), notLast = runNeighbour(el, 1);
     if (notFirst && notLast) continue;
     const q = R(el);

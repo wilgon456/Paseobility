@@ -93,6 +93,13 @@ try {
     assert.ok(!rules(page, 'error').has('tap-target'), 'a 20px button with a 48px touch layer is not a tiny target');
   });
 
+  const wrap = await run([path.join(FIX, 'inline-wrap.html'), '--out', out, '--widths', '375', '--no-sheet']);
+  check('a space in its own text node is a legal break, and wrapped inline code is not an edge', () => {
+    const e = rules(wrap.results[0].pages[0], 'error');
+    assert.ok(!e.has('hangul-break'), 'break at a separate whitespace node reported as a mid-word break');
+    assert.ok(!e.has('align-r') && !e.has('align-x'), `wrapped inline boxes reported as misaligned: ${[...e].join(', ')}`);
+  });
+
   const nometa = await run([path.join(FIX, 'nometa.html'), '--out', out, '--widths', '375', '--no-sheet']);
   check('a page without viewport meta is flagged on the phone width', () => {
     assert.ok(rules(nometa.results[0].pages[0], 'error').has('viewport-meta'));
