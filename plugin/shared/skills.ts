@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const SKILLS = [
   { id: "paseo-agent-cleanup", summary: "Preview and archive disposable Paseo agents and test workspaces." },
-  { id: "paseo-browser", summary: "Reuse a task tab in an existing Chrome window, then close only that tab." },
+  { id: "paseo-browser", summary: "Reuse an Ego Lite task space or selected Chrome tab, and verify cleanup." },
   { id: "paseo-cua", summary: "Operate native desktop apps through the Cua Driver." },
   { id: "paseo-design", summary: "Build and review interfaces, then verify them with screenshots and measured checks." },
   { id: "paseo-god", summary: "Explicit /paseo-god mode: carry a bounded task to verified completion." },

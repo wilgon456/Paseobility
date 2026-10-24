@@ -20,7 +20,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.11.0.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 아래 Paseo 0.12.0 호환성 보고서는 소스·CLI 정적 확인 범위이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md).
+**현재 패키지: v2.12.0.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 아래 Paseo 0.12.0 호환성 보고서는 소스·CLI 정적 확인 범위이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md).
 
 ## 한 줄 요약
 
@@ -56,14 +56,14 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
 기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
 
-## 2026-10-24 — Ego Lite 연동 (main)
+## 2026-10-24 — Ego Lite 연동 (v2.12.0)
 
 Ego Lite가 설치되어 있으면 일반 웹 작업에서 우선 사용합니다. 사용자 목표당
 TaskSpace 하나와 기본 탭 `p1`을 여러 실행에서 재사용하고, 성공 시
 `finish({ keep: [] })`로 정리합니다. API·제어권·오류 복구는 설치 버전의 안내를
 따릅니다. Chrome을 지정하면 기존 창 어댑터를 사용합니다.
 [Ego 실행 흐름과 검증 범위](skills/paseo-browser/references/ego.md).
-이번 변경은 main 기준이며 v2.11.0 릴리스에는 이전 Chrome 기본 정책이 담겨 있습니다.
+v2.12.0에 포함된 변경입니다. 아래 v2.11.0 기록은 이전 Chrome 기본 정책입니다.
 
 프레임·팝업·파일 업로드/다운로드와 네이티브 앱 연결 절차도 제공합니다.
 선택 실행하는 `ego-smoke.py --live --out <새-폴더>`가 실제 브라우저에서

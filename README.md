@@ -20,7 +20,7 @@ Eleven reusable skills for projects, browsers, artifacts and computers connected
 
 ## At a glance
 
-**Current package: v2.11.0.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The linked Paseo 0.12.0 compatibility report covers a static source/CLI check, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md).
+**Current package: v2.12.0.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The linked Paseo 0.12.0 compatibility report covers a static source/CLI check, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md).
 
 ## One-line summary
 
@@ -56,14 +56,14 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
 
-## 2026-10-24 — Ego Lite integration (main)
+## 2026-10-24 — Ego Lite integration (v2.12.0)
 
 When installed, Ego Lite is preferred for ordinary browser tasks. One user goal
 uses one TaskSpace and its existing `p1`, reused across rounds; successful work
 ends with `finish({ keep: [] })`. The installed runtime guide defines APIs,
 control handoff and error recovery. An explicitly selected Chrome keeps the
 existing-window adapter. [Ego workflow and verified scope](skills/paseo-browser/references/ego.md).
-This update is on main; the v2.11.0 release records the earlier Chrome default.
+Released in v2.12.0; the v2.11.0 section below records the earlier Chrome default.
 
 Advanced page work and native-app handoff now have a shared workflow: semantic
 or visual observation, iframe/popup ownership, verified download/upload artifacts,
