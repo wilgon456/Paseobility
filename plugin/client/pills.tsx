@@ -7,7 +7,14 @@ import type {
 import { useRpc, useAgent } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { WORKFLOWS } from "../shared/workflows";
 import { skillStatusRpc } from "../shared/skills";
 import { attachSkill, markerId, resolveEditor } from "./web";
@@ -37,68 +44,168 @@ export function SkillPicker(props: PluginButtonContentProps) {
     queryFn: () => fetchStatus({}),
     retry: false,
   });
+  const [search, setSearch] = useState("");
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
   const s = palette(theme);
+  const c = theme.colors;
+  const query = search.normalize("NFKC").trim().toLocaleLowerCase();
+  const visible = WORKFLOWS.filter((skill) =>
+    `${skill.id} ${skill.title} ${skill.hint}`
+      .normalize("NFKC")
+      .toLocaleLowerCase()
+      .includes(query),
+  );
+  const caption = { ...s.muted, fontSize: 12, lineHeight: 20 };
   return (
-    <ScrollView
-      style={{ maxHeight: 480 }}
-      contentContainerStyle={{ padding: 16, gap: 8 }}
+    <View
+      style={{
+        width: props.layout.compact ? "100%" : 360,
+        maxWidth: "100%",
+        maxHeight: 520,
+        padding: 12,
+        gap: 12,
+      }}
     >
-      <Text style={s.heading}>Paseobility 스킬</Text>
-      <Text style={s.muted}>
-        작성 중인 내용에 추가합니다. 전송은 직접 해주세요.
-      </Text>
-      {Platform.OS !== "web" && (
-        <Text style={s.body}>
-          이 기기에서는 입력창 + 메뉴의 Paseobility 스킬을 선택해주세요.
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <Text style={{ ...s.body, fontWeight: "600" }}>Paseobility</Text>
+        <Text style={caption} accessibilityLiveRegion="polite">
+          {visible.length}개 스킬
         </Text>
+      </View>
+      <TextInput
+        accessibilityLabel="Paseobility 스킬 검색"
+        placeholder="스킬 검색…"
+        placeholderTextColor={c.foregroundMuted}
+        value={search}
+        onChangeText={setSearch}
+        autoFocus={Platform.OS === "web"}
+        autoCorrect={false}
+        autoCapitalize="none"
+        autoComplete="off"
+        onFocus={() => setFocused("search")}
+        onBlur={() => setFocused(null)}
+        style={{
+          ...s.body,
+          height: 44,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderWidth: 1,
+          borderColor: focused === "search" ? c.foregroundMuted : c.border,
+          borderRadius: 8,
+          backgroundColor: c.surface0,
+        }}
+      />
+      {Platform.OS !== "web" && (
+        <Text style={caption}>입력창 + 메뉴에서 스킬을 추가해주세요.</Text>
+      )}
+      {status.isPending && (
+        <Text style={caption}>설치 정보를 확인하고 있습니다…</Text>
       )}
       {status.isError && (
-        <Text style={s.body}>
+        <Text accessibilityRole="alert" style={caption}>
           설치 정보를 불러오지 못했습니다. 다시 열어주세요.
         </Text>
       )}
-      {error && (
+      {!!error && (
         <Text accessibilityRole="alert" style={s.body}>
           {error}
         </Text>
       )}
-      {WORKFLOWS.map((skill) => {
-        const installed = status.data?.skills.some(
-          (item) =>
-            item.id === skill.id &&
-            (provider?.startsWith("claude") ? item.claude : item.paseo),
-        );
-        return (
-          <Pressable
-            key={skill.id}
-            accessibilityRole="button"
-            accessibilityLabel={skill.title}
-            disabled={!installed || Platform.OS !== "web"}
-            onPress={() => {
-              try {
-                attachSkill(marker, editor, skill.id);
-                close();
-              } catch (e) {
-                setError(
-                  e instanceof Error
-                    ? e.message
-                    : "스킬을 추가하지 못했습니다.",
-                );
-              }
-            }}
-            style={[s.row, { opacity: installed ? 1 : 0.65 }]}
-          >
-            <Text style={s.body}>
-              {skill.title}
-              {status.isSuccess && !installed ? " · 미설치" : ""}
-            </Text>
-            <Text style={s.muted}>/{skill.id}</Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+      <ScrollView
+        style={{ maxHeight: 344, flexShrink: 1 }}
+        contentContainerStyle={{ gap: 4 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {visible.length === 0 && (
+          <View style={{ paddingHorizontal: 8, paddingVertical: 24, gap: 4 }}>
+            <Text style={s.body}>검색 결과가 없습니다</Text>
+            <Text style={caption}>스킬명이나 작업 내용으로 검색해보세요.</Text>
+          </View>
+        )}
+        {visible.map((skill) => {
+          const installed = status.data?.skills.some(
+            (item) =>
+              item.id === skill.id &&
+              (provider?.startsWith("claude") ? item.claude : item.paseo),
+          );
+          const disabled = !installed || Platform.OS !== "web";
+          return (
+            <Pressable
+              key={skill.id}
+              accessibilityRole="button"
+              accessibilityLabel={skill.title}
+              accessibilityHint={`${skill.id}. ${skill.hint}. 입력창에 추가합니다.`}
+              accessibilityState={{ disabled }}
+              disabled={disabled}
+              onHoverIn={() => setHovered(skill.id)}
+              onHoverOut={() => setHovered(null)}
+              onFocus={() => setFocused(skill.id)}
+              onBlur={() => setFocused(null)}
+              onPress={() => {
+                try {
+                  attachSkill(marker, editor, skill.id);
+                  close();
+                } catch (e) {
+                  setError(
+                    e instanceof Error
+                      ? e.message
+                      : "스킬을 추가하지 못했습니다.",
+                  );
+                }
+              }}
+              style={({ pressed }) => ({
+                minHeight: 64,
+                paddingHorizontal: 8,
+                paddingVertical: 8,
+                gap: 0,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor:
+                  focused === skill.id ? c.foregroundMuted : "transparent",
+                backgroundColor: pressed
+                  ? c.surface2
+                  : hovered === skill.id || focused === skill.id
+                    ? c.surface1
+                    : "transparent",
+              })}
+            >
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Text
+                  style={{
+                    ...s.body,
+                    color: disabled ? c.foregroundMuted : c.foreground,
+                    fontWeight: "500",
+                    flexShrink: 1,
+                  }}
+                >
+                  {skill.id}
+                </Text>
+                {status.isSuccess && !installed && (
+                  <Text style={caption}>미설치</Text>
+                )}
+              </View>
+              <Text numberOfLines={2} style={caption}>
+                {skill.title} · {skill.hint}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
+
 export function contributePills(client: PluginClientContext) {
   return followAgentPills(client, {
     title: "Paseobility",

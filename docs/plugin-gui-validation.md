@@ -19,3 +19,9 @@ Scope: sidebar version/update screen; composer skill picker that preserves the d
 - This change updates the local plugin and repository source. It is not a new published release or a fleet rollout.
 
 Local evidence: `/tmp/paseobility-composer-check/` and `/tmp/paseobility-composer-picker-check/`. Catalog media uses a mock host, not a private workspace. These temporary evidence paths are not portable.
+
+## Skill list visual refinement
+
+The reference-driven list now has a fixed search field and result count, plain skill-name rows with short Korean descriptions, and hover/keyboard focus feedback. Existing selection/draft behavior is unchanged. The actual picker component was rendered at 375/768/1440 in light/dark: zero errors and warnings. Ego Lite verified Korean and case-insensitive English search, empty results, Tab/Enter selection, preserved multiline draft/attachment and zero sends. The prior footer produced a scroll-clipping overlap finding and was removed for a cleaner list.
+
+Evidence: `/tmp/paseobility-list-design-final/` and `plugin/media/skills.png` (mock host, actual component). Local reload reported running. Native mobile and remote hosts were not exercised for this refinement.

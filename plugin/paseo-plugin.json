@@ -3,7 +3,8 @@
   "name": "Paseobility",
   "description": "Paseobility versions and updates, with skills added to your existing composer draft for manual sending",
   "media": [
-    "media/screen.png"
+    "media/screen.png",
+    "media/skills.png"
   ],
   "requirements": {
     "paseo": ">=0.12.0 <0.13.0"
