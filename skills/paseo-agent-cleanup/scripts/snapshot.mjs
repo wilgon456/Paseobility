@@ -10,9 +10,13 @@ try {
   if (!['snapshot', 'archive'].includes(request.action)) throw Error('Unknown request');
   const modulePath = process.env.PASEO_CLEANUP_CLIENT_MODULE;
   if (!modulePath) throw Error('Installed client required');
-  const {connectToDaemon} = await import(pathToFileURL(modulePath).href);
-  const {selectDaemonTarget} = await import(pathToFileURL(path.join(path.dirname(modulePath), 'daemon-target.js')).href);
-  client = await connectToDaemon({target: selectDaemonTarget({}), timeout: 10000});
+  const clientModule = await import(pathToFileURL(modulePath).href);
+  if (typeof clientModule.connectToDaemon !== 'function')
+    throw Error('Installed Paseo client interface changed: missing connectToDaemon');
+  const targetModule = await import(pathToFileURL(path.join(path.dirname(modulePath), 'daemon-target.js')).href);
+  if (typeof targetModule.selectDaemonTarget !== 'function')
+    throw Error('Installed Paseo client interface changed: missing selectDaemonTarget');
+  client = await clientModule.connectToDaemon({target: targetModule.selectDaemonTarget({}), timeout: 10000});
   const daemon = await client.getDaemonStatus({timeout: 10000});
   if (request.action === 'archive' && (!request.serverId || request.serverId !== daemon.serverId))
     throw Error('Daemon identity changed');
@@ -75,8 +79,10 @@ try {
   } else {
     console.log(JSON.stringify({complete: true, serverId: daemon.serverId, backgroundCovered, agents, workspaces}));
   }
-} catch {
-  console.log(JSON.stringify({error: 'Installed Paseo client could not complete the guarded request. Check compatibility and fresh state before retrying.'}));
+} catch (error) {
+  const changed = /^Installed Paseo client interface changed: missing [A-Za-z]+$/.test(error?.message ?? '');
+  console.log(JSON.stringify({error: changed ? error.message
+    : 'Installed Paseo client could not complete the guarded request. Check compatibility and fresh state before retrying.'}));
   process.exitCode = 1;
 } finally {
   if (client) await client.close().catch(() => {});

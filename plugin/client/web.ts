@@ -60,15 +60,15 @@ export function resolveEditor(marker: string): Editor | null {
   }
   return null;
 }
+export const EDITOR_UNAVAILABLE =
+  "입력창을 확인할 수 없습니다. 대화를 다시 열거나 + 메뉴의 Paseobility 스킬을 이용해주세요.";
 export function attachSkill(
   marker: string,
   expected: Editor | null,
   skill: string,
 ): void {
   if (Platform.OS !== "web" || !expected || resolveEditor(marker) !== expected)
-    throw new Error(
-      "입력창을 확인할 수 없습니다. 대화를 다시 열거나 + 메뉴의 Paseobility 스킬을 이용해주세요.",
-    );
+    throw new Error(EDITOR_UNAVAILABLE);
   const next = appendSkill(expected.value, skill);
   if (next === expected.value) return;
   const setter = Object.getOwnPropertyDescriptor(

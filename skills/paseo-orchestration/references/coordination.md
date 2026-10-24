@@ -79,10 +79,13 @@ and delete operations.
 For a new specialist, create an asynchronous query agent and use its completion
 notification. For a short follow-up to an existing agent, call
 `send_agent_prompt` and wait for its finish notification (agent callers get one
-by default; top-level callers read `get_agent_status`). Paseo 0.12 removed the blocking `background: false` mode: the call
-returns after dispatch, and `create_agent` rejects a `background` argument.
-On 0.11.x, `background: false` still blocks; do not use it for work that may
-take minutes.
+by default; top-level callers read `get_agent_status`). On 0.13+, a child's report
+and its finish notification arrive as one message: handle it once and do not wait
+for a second message. A finish notification names the destination server, so
+remote children prompted with `serverId` report the same way. Paseo 0.12 removed
+the blocking `background: false` mode: the call returns after dispatch, and
+`create_agent` rejects a `background` argument. On 0.11.x, `background: false`
+still blocks; do not use it for work that may take minutes.
 
 Sending to a worker that is mid-turn: on 0.12+, an agent caller's message
 steers the running turn (response `disposition: "steered"`). Pass

@@ -6,7 +6,7 @@ import type {
 } from "@getpaseo/plugin/client";
 import { useRpc, useAgent } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -15,10 +15,12 @@ import {
   TextInput,
   View,
 } from "react-native";
+import type { TextStyle } from "react-native";
 import { WORKFLOWS } from "../shared/workflows";
 import { skillStatusRpc } from "../shared/skills";
 import { attachSkill, markerId, resolveEditor } from "./web";
-import { palette } from "./screen";
+import { useText } from "./i18n";
+import { SafeIcon, tokens } from "./ui-compat";
 function PillIcon(props: PluginButtonIconProps) {
   return (
     <View
@@ -27,16 +29,39 @@ function PillIcon(props: PluginButtonIconProps) {
         props.context === "agent" ? props.agentId : "",
       )}
     >
-      <Text style={{ color: props.color, fontSize: props.size }}>✦</Text>
+      <SafeIcon
+        name="Sparkles"
+        size={props.size}
+        color={props.color}
+        fallback="✦"
+      />
     </View>
   );
 }
+function matches(skill: (typeof WORKFLOWS)[number], query: string) {
+  return `${skill.id} ${skill.title} ${skill.hint} ${skill.en.title} ${skill.en.hint}`
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .includes(query);
+}
 export function SkillPicker(props: PluginButtonContentProps) {
   const { theme, host, close } = props;
+  const { t, locale } = useText();
   const agentId = props.context === "agent" ? props.agentId : "";
   const provider = useAgent(agentId, (agent) => agent.provider);
   const marker = markerId(host.id, agentId);
-  const [editor] = useState(() => resolveEditor(marker));
+  const [editor] = useState(() => {
+    try {
+      return resolveEditor(marker);
+    } catch (error) {
+      console.warn(
+        "[Paseobility] Could not resolve the composer editor",
+        error,
+      );
+      return null;
+    }
+  });
+  const unavailable = Platform.OS === "web" && !editor;
   const [error, setError] = useState("");
   const fetchStatus = useRpc(skillStatusRpc);
   const status = useQuery({
@@ -45,159 +70,239 @@ export function SkillPicker(props: PluginButtonContentProps) {
     retry: false,
   });
   const [search, setSearch] = useState("");
-  const [hovered, setHovered] = useState<string | null>(null);
+  const searchRef = useRef<TextInput>(null);
+  // The host popover takes focus while it animates in, which defeats autoFocus
+  // on web. Retry a few times until the search box holds focus.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const timers = [60, 200, 400, 700].map((ms) =>
+      setTimeout(() => {
+        const input = searchRef.current;
+        if (input && !input.isFocused()) input.focus();
+      }, ms),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, []);
+  const [active, setActive] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
-  const s = palette(theme);
-  const c = theme.colors;
+  const s = tokens(theme);
+  const c = s.c;
   const query = search.normalize("NFKC").trim().toLocaleLowerCase();
-  const visible = WORKFLOWS.filter((skill) =>
-    `${skill.id} ${skill.title} ${skill.hint}`
-      .normalize("NFKC")
-      .toLocaleLowerCase()
-      .includes(query),
-  );
-  const caption = { ...s.muted, fontSize: 12, lineHeight: 20 };
+  const visible = WORKFLOWS.filter((skill) => matches(skill, query));
+  const blocked = Platform.OS !== "web" || unavailable;
+  const installed = (id: string) =>
+    !!status.data?.skills.some(
+      (item) =>
+        item.id === id &&
+        (provider?.startsWith("claude") ? item.claude : item.paseo),
+    );
+  const isDisabled = (id: string) => blocked || !installed(id);
+  const notice = {
+    ...s.caption,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  };
+  const pick = (id: string) => {
+    try {
+      attachSkill(marker, editor, id);
+      close();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("addFailed"));
+    }
+  };
+  const searchInputStyle: TextStyle = {
+    ...s.body,
+    flex: 1,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+  };
   return (
     <View
       style={{
         width: props.layout.compact ? "100%" : 360,
         maxWidth: "100%",
-        maxHeight: 520,
-        padding: 12,
-        gap: 12,
+        maxHeight: 480,
+        flexDirection: "column",
       }}
     >
       <View
         style={{
+          height: 44,
+          paddingHorizontal: 12,
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "space-between",
           gap: 8,
         }}
       >
-        <Text style={{ ...s.body, fontWeight: "600" }}>Paseobility</Text>
-        <Text style={caption} accessibilityLiveRegion="polite">
-          {visible.length}개 스킬
+        <SafeIcon
+          name="Sparkles"
+          size={16}
+          color={c.foreground}
+          fallback="✦"
+        />
+        <Text style={s.label}>Paseobility</Text>
+        <View style={{ flex: 1 }} />
+        <Text style={s.caption} accessibilityLiveRegion="polite">
+          {t("pickerCount", { count: visible.length })}
         </Text>
       </View>
-      <TextInput
-        accessibilityLabel="Paseobility 스킬 검색"
-        placeholder="스킬 검색…"
-        placeholderTextColor={c.foregroundMuted}
-        value={search}
-        onChangeText={setSearch}
-        autoFocus={Platform.OS === "web"}
-        autoCorrect={false}
-        autoCapitalize="none"
-        autoComplete="off"
-        onFocus={() => setFocused("search")}
-        onBlur={() => setFocused(null)}
+      <View
         style={{
-          ...s.body,
-          height: 44,
+          height: 40,
           paddingHorizontal: 12,
-          paddingVertical: 8,
-          borderWidth: 1,
-          borderColor: focused === "search" ? c.foregroundMuted : c.border,
-          borderRadius: 8,
-          backgroundColor: c.surface0,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
         }}
-      />
+      >
+        <SafeIcon
+          name="Search"
+          size={14}
+          color={c.foregroundMuted}
+          fallback="⌕"
+        />
+        <TextInput
+          ref={searchRef}
+          accessibilityLabel={t("pickerSearch")}
+          placeholder={t("pickerSearch")}
+          placeholderTextColor={c.foregroundMuted}
+          value={search}
+          onChangeText={(text) => {
+            setSearch(text);
+            setActive(0);
+          }}
+          autoFocus={Platform.OS === "web"}
+          autoCorrect={false}
+          autoCapitalize="none"
+          autoComplete="off"
+          onKeyPress={(event) => {
+            const key = event.nativeEvent.key;
+            if (key === "ArrowDown" || key === "ArrowUp") {
+              if (visible.length) {
+                setActive((current) =>
+                  key === "ArrowDown"
+                    ? Math.min(current + 1, visible.length - 1)
+                    : Math.max(current - 1, 0),
+                );
+              }
+              if (event.preventDefault) event.preventDefault();
+              return;
+            }
+            if (key === "Enter") {
+              const skill = visible[active];
+              if (skill && !isDisabled(skill.id)) {
+                if (event.preventDefault) event.preventDefault();
+                pick(skill.id);
+              }
+            }
+          }}
+          style={[
+            searchInputStyle,
+            Platform.OS === "web"
+              ? ({ outlineStyle: "none" } as unknown as TextStyle)
+              : undefined,
+          ]}
+        />
+      </View>
+      <View style={{ height: 1, backgroundColor: c.border }} />
       {Platform.OS !== "web" && (
-        <Text style={caption}>입력창 + 메뉴에서 스킬을 추가해주세요.</Text>
+        <Text style={notice}>{t("pickerMobile")}</Text>
       )}
-      {status.isPending && (
-        <Text style={caption}>설치 정보를 확인하고 있습니다…</Text>
+      {Platform.OS === "web" && unavailable && (
+        <Text accessibilityRole="alert" style={notice}>
+          {t("editorUnavailable")}
+        </Text>
       )}
+      {status.isPending && <Text style={notice}>{t("pickerLoading")}</Text>}
       {status.isError && (
-        <Text accessibilityRole="alert" style={caption}>
-          설치 정보를 불러오지 못했습니다. 다시 열어주세요.
+        <Text accessibilityRole="alert" style={notice}>
+          {t("pickerLoadError")}
         </Text>
       )}
       {!!error && (
-        <Text accessibilityRole="alert" style={s.body}>
+        <Text
+          accessibilityRole="alert"
+          style={{ ...notice, color: c.statusDanger }}
+        >
           {error}
         </Text>
       )}
       <ScrollView
-        style={{ maxHeight: 344, flexShrink: 1 }}
-        contentContainerStyle={{ gap: 4 }}
+        style={{ flexShrink: 1 }}
+        contentContainerStyle={{ padding: 4 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {visible.length === 0 && (
-          <View style={{ paddingHorizontal: 8, paddingVertical: 24, gap: 4 }}>
-            <Text style={s.body}>검색 결과가 없습니다</Text>
-            <Text style={caption}>스킬명이나 작업 내용으로 검색해보세요.</Text>
+          <View
+            style={{
+              paddingVertical: 24,
+              paddingHorizontal: 12,
+              gap: 4,
+              alignItems: "center",
+            }}
+          >
+            <Text style={s.body}>{t("pickerEmpty")}</Text>
+            <Text style={s.caption}>{t("pickerEmptyHint")}</Text>
           </View>
         )}
-        {visible.map((skill) => {
-          const installed = status.data?.skills.some(
-            (item) =>
-              item.id === skill.id &&
-              (provider?.startsWith("claude") ? item.claude : item.paseo),
-          );
-          const disabled = !installed || Platform.OS !== "web";
+        {visible.map((skill, index) => {
+          const disabled = isDisabled(skill.id);
+          const title = locale === "ko" ? skill.title : skill.en.title;
+          const hint = locale === "ko" ? skill.hint : skill.en.hint;
+          const isActive = index === active;
           return (
             <Pressable
               key={skill.id}
               accessibilityRole="button"
-              accessibilityLabel={skill.title}
-              accessibilityHint={`${skill.id}. ${skill.hint}. 입력창에 추가합니다.`}
-              accessibilityState={{ disabled }}
+              accessibilityLabel={title}
+              accessibilityHint={`/${skill.id}. ${hint}. ${t("pickerAddHint")}`}
+              accessibilityState={{ disabled, selected: isActive }}
               disabled={disabled}
-              onHoverIn={() => setHovered(skill.id)}
-              onHoverOut={() => setHovered(null)}
+              onHoverIn={() => setActive(index)}
               onFocus={() => setFocused(skill.id)}
               onBlur={() => setFocused(null)}
-              onPress={() => {
-                try {
-                  attachSkill(marker, editor, skill.id);
-                  close();
-                } catch (e) {
-                  setError(
-                    e instanceof Error
-                      ? e.message
-                      : "스킬을 추가하지 못했습니다.",
-                  );
-                }
-              }}
+              onPress={() => pick(skill.id)}
               style={({ pressed }) => ({
-                minHeight: 64,
+                minHeight: 40,
                 paddingHorizontal: 8,
                 paddingVertical: 8,
-                gap: 0,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor:
-                  focused === skill.id ? c.foregroundMuted : "transparent",
-                backgroundColor: pressed
-                  ? c.surface2
-                  : hovered === skill.id || focused === skill.id
-                    ? c.surface1
+                borderRadius: 6,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                backgroundColor:
+                  pressed || focused === skill.id || isActive
+                    ? c.surface2
                     : "transparent",
+                opacity: disabled ? 0.55 : 1,
               })}
             >
+              <SafeIcon
+                name={skill.icon}
+                size={16}
+                color={disabled ? c.foregroundMuted : c.foreground}
+                fallback={skill.glyph}
+              />
               <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "baseline",
+                  gap: 8,
+                  minWidth: 0,
+                }}
               >
-                <Text
-                  style={{
-                    ...s.body,
-                    color: disabled ? c.foregroundMuted : c.foreground,
-                    fontWeight: "500",
-                    flexShrink: 1,
-                  }}
-                >
-                  {skill.id}
+                <Text style={{ ...s.label, flexShrink: 0 }}>{title}</Text>
+                <Text numberOfLines={1} style={{ ...s.muted, flexShrink: 1 }}>
+                  {hint}
                 </Text>
-                {status.isSuccess && !installed && (
-                  <Text style={caption}>미설치</Text>
-                )}
               </View>
-              <Text numberOfLines={2} style={caption}>
-                {skill.title} · {skill.hint}
-              </Text>
+              {status.isSuccess && !installed(skill.id) && (
+                <Text style={s.caption}>{t("notInstalled")}</Text>
+              )}
             </Pressable>
           );
         })}
@@ -207,9 +312,18 @@ export function SkillPicker(props: PluginButtonContentProps) {
 }
 
 export function contributePills(client: PluginClientContext) {
-  return followAgentPills(client, {
-    title: "Paseobility",
-    icon: PillIcon,
-    behavior: { kind: "popover", Content: SkillPicker },
-  });
+  try {
+    return followAgentPills(client, {
+      title: "Paseobility",
+      icon: PillIcon,
+      behavior: { kind: "popover", Content: SkillPicker },
+    });
+  } catch (error) {
+    // The sidebar, updater and + menu stay available without the private adapter.
+    console.warn(
+      "[Paseobility] Composer pill unavailable; use the + menu instead",
+      error,
+    );
+    return () => {};
+  }
 }

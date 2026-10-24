@@ -12,9 +12,9 @@ import uuid
 SCRIPT = Path(__file__).with_name('hosts.py')
 FAKE_CLIENT = '''
 import fs from 'node:fs';
-export async function connectToDaemon(options) {
- const mode=process.env.MULTI_HOST_TEST_MODE;
- const mark=name=>fs.appendFileSync(process.env.MULTI_HOST_TEST_CALLS,name+'\\n');
+const mode=process.env.MULTI_HOST_TEST_MODE;
+const mark=name=>fs.appendFileSync(process.env.MULTI_HOST_TEST_CALLS,name+'\\n');
+export const connectToDaemon = mode==='missing-connect' ? undefined : async (options) => {
  if(mode==='redact') throw Error('failed '+options.target.host+' secret-key-123');
  const oldClient=mode.startsWith('old-client');
  return {
@@ -47,7 +47,7 @@ export async function connectToDaemon(options) {
   killTerminal:async()=>{mark('kill');return {}},
   close:async()=>{}
  }
-}
+};
 '''
 
 
@@ -190,6 +190,13 @@ class AdapterTests(unittest.TestCase):
         p, d = self.invoke('idle', 'status', '테스트 컴퓨터')
         self.assertEqual(p.returncode, 0)
         self.assertEqual(d['result']['host'], '테스트 컴퓨터')
+
+    def test_changed_client_interface_is_named(self):
+        p, d = self.invoke('missing-connect', 'status', 'PC')
+        self.assertFalse(d['ok'])
+        self.assertEqual(d['error'],
+                         'Installed Paseo client interface changed: missing connectToDaemon')
+        self.assert_no_mutation()
 
     def test_private_connection_redacted(self):
         p, d = self.invoke('redact', 'status', 'PC')

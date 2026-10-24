@@ -6,6 +6,7 @@ import {
   writeFile,
   readFile,
   rm,
+  readdir,
   symlink,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -38,6 +39,8 @@ test("source has no agent send/creation path", async () => {
   for (const file of [
     "client/pills.tsx",
     "client/web.ts",
+    "client/ui-compat.tsx",
+    "client/i18n.ts",
     "index.client.tsx",
   ]) {
     const text = await readFile(new URL("../" + file, import.meta.url), "utf8");
@@ -344,4 +347,285 @@ test("pill lifecycle ignores stale snapshots, preserves registrations, removes a
   resolveList({ entries: [{ agent }], pageInfo: { hasMore: false } });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(adds.length, 2);
+});
+
+test("composer pill adapter failures never escape or repeat every refresh", async () => {
+  const { followAgentPills } = await import("../client/agent-pills.ts");
+  const button = {
+    title: "test",
+    icon: "Sparkles",
+    behavior: { kind: "action", onPress() {} },
+  };
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  try {
+    let update;
+    const client = {
+      paseo: {
+        agents: {
+          subscribe(fn) {
+            update = fn;
+            return () => {};
+          },
+          list: async () => ({ entries: [], pageInfo: { hasMore: false } }),
+        },
+      },
+      addComposerPill() {
+        throw new Error("draft adapter unavailable");
+      },
+    };
+    const stop = followAgentPills(client, button);
+    assert.doesNotThrow(() =>
+      update({ kind: "upsert", agent: { id: "a", workspaceId: "w" } }),
+    );
+    assert.doesNotThrow(() =>
+      update({ kind: "upsert", agent: { id: "a", workspaceId: "w" } }),
+    );
+    assert.equal(warnings.length, 1);
+    assert.match(String(warnings[0][0]), /Composer pill unavailable/);
+    assert.doesNotThrow(() => stop());
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("macOS CLI uses the app bundle when present and PATH otherwise", async () => {
+  const { resolvePaseoCli, BUNDLED_PASEO_CLI } = await import(
+    "../server/cli-path.ts"
+  );
+  assert.equal(
+    resolvePaseoCli("darwin", (path) => path === BUNDLED_PASEO_CLI),
+    BUNDLED_PASEO_CLI,
+  );
+  assert.equal(resolvePaseoCli("darwin", () => false), "paseo");
+  assert.equal(resolvePaseoCli("linux", () => true), "paseo");
+  assert.equal(resolvePaseoCli("win32", () => true), "paseo");
+});
+
+test("plugin labels provide the same keys in English and Korean", async () => {
+  const { MESSAGES } = await import("../shared/messages.ts");
+  const english = Object.keys(MESSAGES.en).sort();
+  assert.deepEqual(Object.keys(MESSAGES.ko).sort(), english);
+  for (const locale of Object.keys(MESSAGES))
+    for (const key of english)
+      assert.ok(MESSAGES[locale][key].trim(), `${locale}.${key} is empty`);
+  // Paseo renders the + menu entry as `Attach ${title}` in English on 0.12 and
+  // 0.13, so the title is the brand alone and never mixes languages.
+  assert.equal(MESSAGES.en.attachmentTitle, "Paseobility");
+  assert.equal(MESSAGES.ko.attachmentTitle, "Paseobility");
+  assert.equal(MESSAGES.en.attachmentSearchPlaceholder, "Search skills");
+  assert.equal(MESSAGES.ko.attachmentPickerTitle, "Paseobility 스킬");
+  assert.equal(MESSAGES.ko.attachmentSearchPlaceholder, "스킬 검색");
+  assert.equal(MESSAGES.ko.commandCenterTitle, "Paseobility 열기");
+});
+
+const placeholders = (text) =>
+  new Set(Array.from(text.matchAll(/\{(\w+)\}/g), (match) => match[1]));
+
+test("English and Korean messages share the same placeholders", async () => {
+  const { MESSAGES } = await import("../shared/messages.ts");
+  assert.deepEqual(Object.keys(MESSAGES.ko).sort(), Object.keys(MESSAGES.en).sort());
+  for (const key of Object.keys(MESSAGES.en))
+    assert.deepEqual(
+      [...placeholders(MESSAGES.ko[key])].sort(),
+      [...placeholders(MESSAGES.en[key])].sort(),
+      `${key} placeholders differ`,
+    );
+});
+
+test("fill substitutes known placeholders and pickLocale maps only Korean", async () => {
+  const { fill, pickLocale } = await import("../shared/messages.ts");
+  assert.equal(fill("{count} skills", { count: 11 }), "11 skills");
+  assert.equal(
+    fill("{installed} of {total} installed", { installed: 3, total: 11 }),
+    "3 of 11 installed",
+  );
+  assert.equal(fill("{known} {unknown}", { known: "yes" }), "yes {unknown}");
+  assert.equal(fill("no placeholders", {}), "no placeholders");
+  for (const locale of ["ko", "ko-KR", "KO"])
+    assert.equal(pickLocale(locale), "ko", String(locale));
+  for (const locale of ["en", "en-US", "ja", "", undefined, null])
+    assert.equal(pickLocale(locale), "en", String(locale));
+  // Konkani starts with "ko" but is not Korean.
+  assert.equal(pickLocale("kok"), "en");
+});
+
+test("withAlpha converts hex and rgb, clamps alpha and falls back", async () => {
+  const { withAlpha } = await import("../shared/color.ts");
+  assert.equal(withAlpha("#fff", 0.5, "fallback"), "rgba(255, 255, 255, 0.5)");
+  assert.equal(
+    withAlpha("#ffffff", 0.5, "fallback"),
+    "rgba(255, 255, 255, 0.5)",
+  );
+  assert.equal(withAlpha("rgb(1, 2, 3)", 0.2, "fallback"), "rgba(1, 2, 3, 0.2)");
+  assert.equal(withAlpha("#000000", 2, "fallback"), "rgba(0, 0, 0, 1)");
+  assert.equal(withAlpha("#000000", -1, "fallback"), "rgba(0, 0, 0, 0)");
+  assert.equal(withAlpha("hsl(0 0% 0%)", 0.5, "fallback"), "fallback");
+});
+
+test("workflow metadata is complete and uses verified Lucide icons", async () => {
+  const { WORKFLOWS } = await import("../shared/workflows.ts");
+  // Lucide names that exist in both the Paseo 0.12 and 0.13 bundles.
+  const icons = new Set([
+    "Globe",
+    "MousePointerClick",
+    "FolderSearch",
+    "Palette",
+    "Share2",
+    "ShieldCheck",
+    "Smartphone",
+    "MonitorSmartphone",
+    "Archive",
+    "Target",
+    "Users",
+  ]);
+  const ids = new Set();
+  for (const skill of WORKFLOWS) {
+    assert.ok(skill.id.trim(), "empty skill id");
+    assert.ok(!ids.has(skill.id), `duplicate skill id ${skill.id}`);
+    ids.add(skill.id);
+    assert.ok(icons.has(skill.icon), `${skill.id} uses unverified icon ${skill.icon}`);
+    assert.equal([...skill.glyph].length, 1, `${skill.id} glyph is one character`);
+    for (const field of ["title", "hint"])
+      assert.ok(skill[field].trim(), `${skill.id} ${field} is empty`);
+    for (const field of ["title", "hint"])
+      assert.ok(skill.en[field].trim(), `${skill.id} en.${field} is empty`);
+  }
+});
+
+const BANNED_UI_IMPORTS = new Set([
+  "Icon",
+  "Loading",
+  "Markdown",
+  "useToast",
+  "copyText",
+  "Modal",
+  "StreamedText",
+  "DocumentFrame",
+  "ScrollView",
+  "FlatList",
+  "TextInput",
+]);
+const BANNED_CLIENT_IMPORTS = new Set([
+  "defineTranslations",
+  "useTranslation",
+  "useTabState",
+  "useHosts",
+  "getPaseoClient",
+  "openExternalUrl",
+]);
+
+// Named imports from one module. Default and namespace imports are ignored.
+function namedImports(text, module) {
+  const names = [];
+  const imports = /import\s+(?:type\s+)?([^;]*?)\s+from\s+["']([^"']+)["']/g;
+  for (const match of text.matchAll(imports)) {
+    if (match[2] !== module) continue;
+    const braces = /\{([\s\S]*)\}/.exec(match[1]);
+    if (!braces) continue;
+    for (const piece of braces[1].split(",")) {
+      const entry = piece.replace(/\/\/.*$/gm, "").trim();
+      if (!entry) continue;
+      const name = entry.replace(/^type\s+/, "").split(/\s+as\s+/)[0].trim();
+      if (name) names.push(name);
+    }
+  }
+  return names;
+}
+
+async function clientSources() {
+  const root = new URL("../", import.meta.url);
+  const files = (await readdir(new URL("client/", root), { recursive: true }))
+    .filter((name) => /\.(ts|tsx|js|jsx)$/.test(name))
+    .map((name) => "client/" + name.replaceAll("\\", "/"));
+  files.push("index.client.tsx");
+  return Promise.all(
+    files.map(async (file) => ({
+      file,
+      text: await readFile(new URL(file, root), "utf8"),
+    })),
+  );
+}
+
+test("client sources avoid 0.13-only named imports so one bundle runs on 0.12", async () => {
+  for (const { file, text } of await clientSources()) {
+    for (const name of namedImports(text, "@getpaseo/plugin/client/ui"))
+      assert.ok(
+        !BANNED_UI_IMPORTS.has(name),
+        `${file} imports ${name} from @getpaseo/plugin/client/ui`,
+      );
+    for (const name of namedImports(text, "@getpaseo/plugin/client"))
+      assert.ok(
+        !BANNED_CLIENT_IMPORTS.has(name),
+        `${file} imports ${name} from @getpaseo/plugin/client`,
+      );
+  }
+});
+
+test("plugin screens use the host system font", async () => {
+  const root = new URL("../client/", import.meta.url);
+  for (const name of await readdir(root)) {
+    if (!name.endsWith(".tsx")) continue;
+    const text = await readFile(new URL(name, root), "utf8");
+    assert.doesNotMatch(
+      text,
+      /Apple SD Gothic Neo|Malgun Gothic/,
+      `${name} sets a custom font`,
+    );
+  }
+});
+
+// Units S and P are rewriting these screens to take every visible string from
+// shared/messages.ts and shared/workflows.ts. This guard fails until they land;
+// it exists so hardcoded Korean cannot come back.
+test("visible component text comes from shared messages, not hardcoded Korean", async () => {
+  for (const file of ["client/screen.tsx", "client/pills.tsx"]) {
+    const text = await readFile(new URL("../" + file, import.meta.url), "utf8");
+    assert.doesNotMatch(text, /[\uAC00-\uD7A3]/, `${file} contains Hangul`);
+  }
+});
+
+// Minimal local check for the comparators used by requirements.paseo.
+function satisfiesRange(version, range) {
+  const parse = (value) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
+    assert.ok(match, `unexpected version ${value}`);
+    return match.slice(1).map(Number);
+  };
+  const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  const target = parse(version);
+  return range
+    .trim()
+    .split(/\s+/)
+    .every((part) => {
+      const match = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+)$/.exec(part);
+      assert.ok(match, `unsupported comparator ${part}`);
+      const order = compare(target, parse(match[2]));
+      switch (match[1] ?? "=") {
+        case ">=":
+          return order >= 0;
+        case "<=":
+          return order <= 0;
+        case ">":
+          return order > 0;
+        case "<":
+          return order < 0;
+        default:
+          return order === 0;
+      }
+    });
+}
+
+test("manifest supports Paseo 0.12 and 0.13 but not 0.14", async () => {
+  const manifest = JSON.parse(
+    await readFile(new URL("../paseo-plugin.json", import.meta.url), "utf8"),
+  );
+  const range = manifest.requirements.paseo;
+  assert.equal(range, ">=0.12.0 <0.14.0");
+  for (const version of ["0.12.0", "0.12.10", "0.13.0", "0.13.9"])
+    assert.ok(satisfiesRange(version, range), version);
+  for (const version of ["0.11.4", "0.14.0", "1.0.0"])
+    assert.ok(!satisfiesRange(version, range), version);
+  assert.equal(manifest.translations, undefined);
 });

@@ -3,15 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as fs from "node:fs/promises";
 import { PLUGIN_VERSION } from "../shared/management";
+import { resolvePaseoCli } from "./cli-path";
 import { treeDigest, run } from "./update-core.mjs";
 const home = homedir();
 const stateDir = join(home, ".paseobility", "updates");
-const cli =
-  process.platform === "darwin"
-    ? "/Applications/Paseo.app/Contents/Resources/bin/paseo"
-    : "paseo";
 async function command(args: string[]) {
-  return JSON.parse(await run(cli, args, undefined, 15000));
+  return JSON.parse(await run(resolvePaseoCli(), args, undefined, 15000));
 }
 async function identity(hostId: string) {
   const status = await command(["daemon", "status", "--json"]);
@@ -164,7 +161,7 @@ export async function startUpdate(input: {
       sha: release.sha,
       home,
       daemonHome: daemon.home,
-      cli,
+      cli: resolvePaseoCli(),
       oldPlugin: plugin.path,
     };
     await fs.writeFile(

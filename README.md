@@ -20,7 +20,7 @@ Eleven reusable skills for projects, browsers, artifacts and computers connected
 
 ## At a glance
 
-**Current package: v2.12.0.** `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The linked Paseo 0.12.0 compatibility report covers a static source/CLI check, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md).
+**Current package: v2.12.1.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -55,6 +55,20 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-24 · Paseo 0.13 support (v2.12.1)
+
+The plugin now loads on Paseo 0.12.x and 0.13.x (`>=0.12.0 <0.14.0`), adds a
+Command Center entry and follows the app language on 0.13. Its version screen
+and skill picker are rebuilt from Paseo's own settings and popover patterns,
+with skill icons, installed state, a status badge and keyboard selection. A failure of the
+private composer adapter no longer disables the version screen, updater or
+`+` menu. `paseo-multi` documents 0.13 native connected hosts, `paseo-orchestration`
+the combined report/finish message, and CI now checks every documented
+`paseo` command and flag against the recorded CLI surface. Trigger boundaries
+with Paseo's base skills (handoff, help, advisor, committee) are explicit.
+`paseo-design` ships the measurement fixes merged after v2.12.0.
+[0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## 2026-10-24 — Ego Lite integration (v2.12.0)
 

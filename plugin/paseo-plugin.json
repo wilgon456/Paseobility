@@ -1,12 +1,12 @@
 {
   "id": "paseobility",
   "name": "Paseobility",
-  "description": "Paseobility versions and updates, with skills added to your existing composer draft for manual sending",
+  "description": "Paseo skills from the composer and the + menu, with version checks and one-click updates.",
   "media": [
     "media/screen.png",
     "media/skills.png"
   ],
   "requirements": {
-    "paseo": ">=0.12.0 <0.13.0"
+    "paseo": ">=0.12.0 <0.14.0"
   }
 }
