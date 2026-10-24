@@ -1,10 +1,12 @@
 ---
 name: paseo-project
 description: >-
-  Summarize a repository or prepare its Paseo environment when the user asks
-  for a project brief, what a repo is or how to run it, a handoff summary,
-  initial setup, environment repair, or .paseobility context generation.
-  Ordinary coding and session resumption do not trigger this skill.
+  Summarize a repository or prepare its development environment when the user
+  asks for a project brief, what a repo is or how to run it, initial repository
+  setup, repository environment repair, or .paseobility context generation.
+  Handing work to another Paseo agent belongs to paseo-handoff, and Paseo
+  product setup or troubleshooting belongs to paseo-help. Ordinary coding and
+  session resumption do not trigger this skill.
 ---
 
 # Paseo Project
@@ -12,9 +14,10 @@ description: >-
 This combines `/paseo-session-brief` and `/paseo-project-bootstrap`. Pick the
 mode from the requested outcome.
 
-- A readable overview, commands, or handoff: [brief mode](references/brief.md).
-- Initial setup, environment repair, skill installation, or generated context:
-  [setup mode](references/setup.md).
+- A readable overview, commands, or a written handoff brief:
+  [brief mode](references/brief.md).
+- Initial repository setup, environment repair, skill installation, or
+  generated context: [setup mode](references/setup.md).
 
 ## Shared context
 

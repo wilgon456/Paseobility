@@ -123,8 +123,10 @@ function runCli(argv) {
 }
 async function main() {
   endpoint = endpointFor(req.host);
-  const {connectToDaemon} = await import(pathToFileURL(process.env.PASEO_MULTI_HOST_CLIENT_MODULE).href);
-  client = await connectToDaemon({target: {kind: 'endpoint', host: endpoint}, timeout: 30000});
+  const clientModule = await import(pathToFileURL(process.env.PASEO_MULTI_HOST_CLIENT_MODULE).href);
+  if (typeof clientModule.connectToDaemon !== 'function')
+    throw Error('Installed Paseo client interface changed: missing connectToDaemon');
+  client = await clientModule.connectToDaemon({target: {kind: 'endpoint', host: endpoint}, timeout: 30000});
   const status = await client.getDaemonStatus({timeout: 30000});
   if (status.serverId !== req.host.serverId) throw Error('Live server identity differs from registered target.');
   if (req.action === 'status') return {host: req.host.label, serverId: status.serverId,

@@ -15,6 +15,12 @@ Names resolve exactly against labels or aliases. "All" or "every PC" means every
 
 Every remote command checks the live server ID against the registry, so no separate `status` call is needed before working.
 
+## Native connected hosts (Paseo 0.13+)
+
+When the controller daemon is 0.13+ and the user wants agents on another computer, prefer the native path: MCP `list_hosts`, then `create_agent` or `send_agent_prompt` with `serverId`, a destination workspace and explicit `provider`/`model`. Saving a host grants no reverse access; credentials stay in the controller daemon's `hosts.json`, never printed. `paseo --host <controller> host add <endpoint> --label NAME` and `paseo --host <controller> host ls` are user-run setup ([CLI reference](https://paseo.sh/docs/cli.md)); do not print an endpoint that carries a password.
+
+Keep this adapter for what native hosts do not cover: shell execution, terminal capture, daemon restart and update, per-computer status, and hosts saved only in `~/.config/paseo-multi/hosts.json`.
+
 ## Operate
 
 ```bash
@@ -53,4 +59,4 @@ The user's request and target list authorize the steps needed inside it; do not 
 
 Per PC: done, pending, failed or unreachable. For updates, separate installed app/CLI version from live daemon version, verified by a fresh connection.
 
-The adapter is verified with macOS and Windows controllers on Paseo 0.11.2; Linux is unverified. Its client calls were compared statically with 0.12.0 source, not run against a 0.12 host. It imports Paseo's internal client; if a release changes that interface it fails with a dependency error. Runtime configuration: [connections.md](references/connections.md).
+Verified with macOS and Windows controllers on Paseo 0.11.2; Linux is unverified. On a macOS controller, `status`, `agents`, `cli`, `exec`/`close` and `restart` also ran against a live 0.13.0 daemon ([compatibility-0.13.0](https://github.com/wilgon456/Paseobility/blob/main/docs/compatibility-0.13.0.md)); Windows with 0.13 is unverified. It imports Paseo's internal client; a changed interface fails with an explicit dependency error. Runtime configuration: [connections.md](references/connections.md).

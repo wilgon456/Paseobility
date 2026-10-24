@@ -165,16 +165,21 @@ function run(command, args, serverId) {
       env: {...process.env, ELECTRON_RUN_AS_NODE: "1", PASEO_CLEANUP_CLIENT_MODULE: runtime.module},
       input: JSON.stringify(request), windowsHide: true,
     });
+    let detail = "";
+    if (result.status) {
+      try { detail = String(JSON.parse(result.stdout || "").error || ""); } catch (_error) {}
+    }
     return {status: result.status ?? 1, stdout: result.stdout || "", stderr: result.error
       ? "Guarded request timed out or unavailable; outcome unknown, inspect fresh state before retrying"
-      : result.status ? "Guarded request failed; inspect fresh state before retrying" : ""};
+      : result.status ? detail || "Guarded request failed; inspect fresh state before retrying" : ""};
   }
   throw new Error("Unsupported cleanup operation");
 }
 
 function readSnapshot(runCommand, expectedServer) {
   const result = runCommand("snapshot", []);
-  if (result.status !== 0) throw new Error("Complete Paseo snapshot unavailable; no further cleanup attempted");
+  if (result.status !== 0) throw new Error(result.stderr
+    || "Complete Paseo snapshot unavailable; no further cleanup attempted");
   const value = JSON.parse(result.stdout);
   if (value.complete !== true || typeof value.serverId !== "string" || !value.serverId ||
       !Array.isArray(value.agents) || !Array.isArray(value.workspaces) ||

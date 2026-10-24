@@ -1,6 +1,13 @@
 ---
 name: paseo-design
-description: Use when building, changing, or reviewing an interface, layout, styling, or frontend visuals for web or app. Follows the project's own design rules when it has them; otherwise locks a small token set, composes surface-first, implements in the project's stack, then proves the result with scripts/design-check.mjs (phone, tablet and desktop screenshots plus measured findings) and fixes every error before calling the work done.
+description: >-
+  Use when building, changing, or reviewing a web or app interface, layout,
+  styling, or frontend visuals with measured checks. Follows the project's own
+  design rules when it has them; otherwise locks a small token set, composes
+  surface-first, implements in the project's stack, then proves the result
+  with scripts/design-check.mjs (phone, tablet and desktop screenshots plus
+  measured findings) and fixes every error before calling the work done. Do
+  not use for design discussion that changes no interface.
 ---
 
 # paseo-design

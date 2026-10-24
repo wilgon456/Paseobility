@@ -20,7 +20,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.12.0.** `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 아래 Paseo 0.12.0 호환성 보고서는 소스·CLI 정적 확인 범위이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md).
+**현재 패키지: v2.12.1.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
 
 ## 한 줄 요약
 
@@ -55,6 +55,17 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
 기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
+
+## 2026-10-24 · Paseo 0.13 대응 (v2.12.1)
+
+플러그인이 Paseo 0.12.x와 0.13.x에서 모두 로드됩니다(`>=0.12.0 <0.14.0`).
+Command Center 항목이 추가됐고, 0.13에서는 앱 언어를 따릅니다. 비공개 입력창
+어댑터가 실패해도 버전 화면, 업데이트, `+` 메뉴는 그대로 동작합니다.
+`paseo-multi`에 0.13 기본 연결 호스트 사용법을, `paseo-orchestration`에 보고와
+완료 알림이 한 메시지로 합쳐진 점을 반영했습니다. CI는 문서와 스크립트의 모든
+`paseo` 명령과 플래그를 기록된 CLI 표면과 대조합니다. Paseo 기본 스킬(handoff,
+help, advisor, committee)과의 호출 경계를 설명문에 명시했습니다. `paseo-design`은
+v2.12.0 이후 병합된 측정 수정을 포함합니다. [0.13.0 확인](docs/compatibility-0.13.0.md).
 
 ## 2026-10-24 — Ego Lite 연동 (v2.12.0)
 

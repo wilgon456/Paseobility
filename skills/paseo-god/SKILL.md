@@ -62,7 +62,9 @@ Per-task overhead repeats on every small change, so size it to the change.
   than assuming them. Batch independent steps.
 - Spawn a helper agent (second opinion, independent review, parallel spike)
   when it clearly saves time or catches risk worth its token cost, and say so.
-  Large fan-outs or tournaments belong to `paseo-orchestration`.
+  When the installed base skills are present, use `paseo-advisor` for a second
+  opinion and `paseo-committee` when planning is stuck; otherwise keep this
+  behavior. Large fan-outs or tournaments belong to `paseo-orchestration`.
 - Preserve unrelated work. Update the TODO after meaningful outcomes. Record
   decisions, changed paths, check results and the next step; no secrets or raw
   transcripts.

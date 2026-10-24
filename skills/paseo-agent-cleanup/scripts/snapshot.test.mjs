@@ -7,12 +7,13 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const script = fileURLToPath(new URL('./snapshot.mjs', import.meta.url));
-function probe(scenario, request) {
+function probe(scenario, request, overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cleanup-snapshot-test-'));
   try {
     fs.writeFileSync(path.join(root, 'package.json'), '{"type":"module"}');
-    fs.writeFileSync(path.join(root, 'daemon-target.js'), 'export const selectDaemonTarget = () => ({kind:"instance",home:"fixture"});');
-    fs.writeFileSync(path.join(root, 'client.js'), `
+    fs.writeFileSync(path.join(root, 'daemon-target.js'), overrides.targetModule
+      ?? 'export const selectDaemonTarget = () => ({kind:"instance",home:"fixture"});');
+    fs.writeFileSync(path.join(root, 'client.js'), overrides.clientModule ?? `
       import fs from 'node:fs';
       const scenario = process.env.SCENARIO;
       const oldClient = scenario.startsWith('old-client');
@@ -96,3 +97,12 @@ for (const [scenario,covered] of [['old-client-011',true],['old-client-012',fals
     assert.equal(result.payload.complete,true);
     assert.equal(result.payload.backgroundCovered,covered);
   });
+for (const [missing,overrides] of [
+  ['connectToDaemon',{clientModule:'export const connect = () => {};'}],
+  ['selectDaemonTarget',{targetModule:'export const selectTarget = () => ({});'}],
+]) test(`snapshot names a changed client interface missing ${missing}`, () => {
+  const result = probe('valid',{action:'snapshot'},overrides);
+  assert.equal(result.status,1);
+  assert.equal(result.payload.error,`Installed Paseo client interface changed: missing ${missing}`);
+  assert.equal(result.closed,false);
+});

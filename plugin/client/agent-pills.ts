@@ -13,6 +13,19 @@ export function followAgentPills(
   let stopped = false,
     loading = false;
   const touched = new Set<string>();
+  const failed = new Set<string>();
+  const warn = (message: string, error: unknown) =>
+    console.warn(`[Paseobility] ${message}`, error);
+  const remove = (id: string) => {
+    const reg = registrations.get(id);
+    if (!reg) return;
+    registrations.delete(id);
+    try {
+      reg.remove();
+    } catch (error) {
+      warn(`Could not remove the composer pill for agent ${id}`, error);
+    }
+  };
   const reconcile = (agent: {
     id: string;
     workspaceId?: string | null;
@@ -20,30 +33,39 @@ export function followAgentPills(
   }) => {
     if (stopped) return;
     const old = registrations.get(agent.id);
-    if (old && (old.workspaceId !== agent.workspaceId || agent.archivedAt)) {
-      old.remove();
-      registrations.delete(agent.id);
-    }
+    if (old && (old.workspaceId !== agent.workspaceId || agent.archivedAt))
+      remove(agent.id);
     if (agent.archivedAt || !agent.workspaceId || registrations.has(agent.id))
       return;
-    const reg = client.addComposerPill({
-      id: `skills-${agent.id}`,
-      workspaceId: agent.workspaceId,
-      agentId: agent.id,
-      button,
-    });
-    registrations.set(agent.id, {
-      workspaceId: agent.workspaceId,
-      remove: () => reg.remove(),
-    });
+    const key = `${agent.id}\0${agent.workspaceId}`;
+    if (failed.has(key)) return;
+    try {
+      const reg = client.addComposerPill({
+        id: `skills-${agent.id}`,
+        workspaceId: agent.workspaceId,
+        agentId: agent.id,
+        button,
+      });
+      registrations.set(agent.id, {
+        workspaceId: agent.workspaceId,
+        remove: () => reg.remove(),
+      });
+    } catch (error) {
+      // The + menu attachment source stays usable when the draft adapter fails.
+      failed.add(key);
+      warn(`Composer pill unavailable for agent ${agent.id}`, error);
+    }
   };
   const stop = client.paseo.agents.subscribe((update) => {
-    if (loading)
-      touched.add(update.kind === "upsert" ? update.agent.id : update.agentId);
-    if (update.kind === "upsert") reconcile(update.agent);
-    else {
-      registrations.get(update.agentId)?.remove();
-      registrations.delete(update.agentId);
+    try {
+      if (loading)
+        touched.add(
+          update.kind === "upsert" ? update.agent.id : update.agentId,
+        );
+      if (update.kind === "upsert") reconcile(update.agent);
+      else remove(update.agentId);
+    } catch (error) {
+      warn("Could not update a composer pill", error);
     }
   });
   async function refresh() {
@@ -68,11 +90,8 @@ export function followAgentPills(
           : undefined;
       } while (cursor && !stopped);
       if (!stopped)
-        for (const [id, reg] of registrations) {
-          if (!seen.has(id) && !touched.has(id)) {
-            reg.remove();
-            registrations.delete(id);
-          }
+        for (const id of [...registrations.keys()]) {
+          if (!seen.has(id) && !touched.has(id)) remove(id);
         }
     } catch {
       /* Offline hosts retain their own contributions; never use another host. */
@@ -86,7 +105,7 @@ export function followAgentPills(
     stopped = true;
     clearInterval(timer);
     stop();
-    for (const reg of registrations.values()) reg.remove();
+    for (const id of [...registrations.keys()]) remove(id);
     registrations.clear();
   };
 }

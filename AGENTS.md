@@ -266,7 +266,11 @@ The current local compatibility baseline is Paseo 0.10.2; see
 `docs/compatibility-0.9.0-beta.2.md` record is retained as history). Paseo
 0.12.0 was checked statically only (v0.11.4..v0.12.0 source diff and the
 published 0.12.0 CLI's `--help`; no 0.12 daemon was run); the resulting fixes
-and open items are in `docs/compatibility-0.12.0.md`. When a CLI is found, run
+and open items are in `docs/compatibility-0.12.0.md`. Paseo 0.13.0 was run live
+from throwaway homes (plugin install on 0.12.0 and 0.13.0 daemons, cleanup and
+multi adapters on 0.13.0); see `docs/compatibility-0.13.0.md`. Refresh
+`docs/paseo-cli-surface.json` with `scripts/paseo-cli-surface.py` when a new
+Paseo release changes the CLI. When a CLI is found, run
 `paseo --version` and report the detected version; do not downgrade, update, or
 restart Paseo as part of skill installation. A future version is not by itself
 an install failure, but behavior-sensitive validation should use the tool names

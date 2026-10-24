@@ -23,6 +23,13 @@ resolution, no shell) and repeats the protection and daemon-identity checks
 inside that connection. The helper honors `PASEO_HOST`/`PASEO_HOME` via the
 client's daemon-target selection without printing them.
 
+Paseo 0.13 resolves an archive target through a complete paginated fetch
+([`fetchAllAgents`](https://github.com/getpaseo/paseo/blob/v0.13.0/packages/cli/src/utils/agent-directory.ts)),
+so an ID beyond the first 200 agents is found, and an archived agent stays
+archived across MCP `list_agents` discovery
+([archive discovery test](https://github.com/getpaseo/paseo/blob/v0.13.0/packages/server/src/server/agent/archive-discovery.e2e.test.ts)).
+The helper needs no change: it already reads every page and skips `archivedAt`.
+
 A timed-out archive may still have completed on the daemon. Keep its exact ID,
 read a fresh snapshot and report the uncertainty instead of repeating it.
 

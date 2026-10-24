@@ -1,6 +1,10 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const {
@@ -444,6 +448,24 @@ test("a disposable selection that changes before dispatch remains untouched", ()
   assert.equal(result.exitCode,1);
   assert.match(result.summary.actions[0].reason,/selection no longer/);
   assert.equal(runner.calls.length,0);
+});
+
+test("a changed installed client interface surfaces instead of a generic error", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cleanup-interface-test-"));
+  try {
+    const clientModule = path.join(root, "client.js");
+    fs.writeFileSync(clientModule, "export const connect = () => {};");
+    const result = spawnSync(process.execPath, [path.join(__dirname, "agent-cleanup.js"), "--json"], {
+      encoding: "utf8",
+      env: {...process.env, PASEO_CLEANUP_CLIENT_MODULE: clientModule, PASEO_CLEANUP_NODE: process.execPath},
+    });
+    assert.equal(result.status, 1);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.status, "failed");
+    assert.match(payload.error, /^Installed Paseo client interface changed: missing connectToDaemon$/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("hidden background workspaces are reported instead of implying absence", () => {

@@ -3,8 +3,9 @@ import {
   defineAttachmentSource,
   PluginAttachmentSearchPayloadSchema,
 } from "@getpaseo/plugin";
+import type { PluginText } from "@getpaseo/plugin";
 import { z } from "zod";
-export const PLUGIN_VERSION = "2.12.0";
+export const PLUGIN_VERSION = "2.12.1";
 const release = z.object({
   version: z.string(),
   sha: z.string(),
@@ -36,11 +37,17 @@ export const skillsSearchRpc = defineRpc({
   input: z.object({ query: z.string() }),
   output: PluginAttachmentSearchPayloadSchema,
 });
-export const skillsSource = defineAttachmentSource({
-  id: "paseobility-skills",
-  title: "Paseobility 스킬",
-  icon: "Sparkles",
-  pickerTitle: "Paseobility 스킬",
-  searchPlaceholder: "스킬 검색",
-  search: skillsSearchRpc,
-});
+export function createSkillsSource(labels: {
+  title: PluginText;
+  pickerTitle: PluginText;
+  searchPlaceholder: PluginText;
+}) {
+  return defineAttachmentSource({
+    id: "paseobility-skills",
+    title: labels.title,
+    icon: "Sparkles",
+    pickerTitle: labels.pickerTitle,
+    searchPlaceholder: labels.searchPlaceholder,
+    search: skillsSearchRpc,
+  });
+}

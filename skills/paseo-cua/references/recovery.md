@@ -47,8 +47,5 @@ used.
 ## Browser screenshots
 
 For `screenshot_no_frame`, capture timeouts, or a `fullPage` image with repeated
-edges, use
-[`../../paseo-browser/references/screenshots.md`](../../paseo-browser/references/screenshots.md).
-The Windows `screenshot_no_frame` failure is not solved here, and upstream PR
-[#3197](https://github.com/getpaseo/paseo/pull/3197) is open, not part of an
-official install. Do not claim either as fixed.
+edges, use [screenshots.md](screenshots.md). The Windows failure and upstream
+status are recorded there.

@@ -345,3 +345,115 @@ test("pill lifecycle ignores stale snapshots, preserves registrations, removes a
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(adds.length, 2);
 });
+
+test("composer pill adapter failures never escape or repeat every refresh", async () => {
+  const { followAgentPills } = await import("../client/agent-pills.ts");
+  const button = {
+    title: "test",
+    icon: "Sparkles",
+    behavior: { kind: "action", onPress() {} },
+  };
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...args) => warnings.push(args);
+  try {
+    let update;
+    const client = {
+      paseo: {
+        agents: {
+          subscribe(fn) {
+            update = fn;
+            return () => {};
+          },
+          list: async () => ({ entries: [], pageInfo: { hasMore: false } }),
+        },
+      },
+      addComposerPill() {
+        throw new Error("draft adapter unavailable");
+      },
+    };
+    const stop = followAgentPills(client, button);
+    assert.doesNotThrow(() =>
+      update({ kind: "upsert", agent: { id: "a", workspaceId: "w" } }),
+    );
+    assert.doesNotThrow(() =>
+      update({ kind: "upsert", agent: { id: "a", workspaceId: "w" } }),
+    );
+    assert.equal(warnings.length, 1);
+    assert.match(String(warnings[0][0]), /Composer pill unavailable/);
+    assert.doesNotThrow(() => stop());
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("macOS CLI uses the app bundle when present and PATH otherwise", async () => {
+  const { resolvePaseoCli, BUNDLED_PASEO_CLI } = await import(
+    "../server/cli-path.ts"
+  );
+  assert.equal(
+    resolvePaseoCli("darwin", (path) => path === BUNDLED_PASEO_CLI),
+    BUNDLED_PASEO_CLI,
+  );
+  assert.equal(resolvePaseoCli("darwin", () => false), "paseo");
+  assert.equal(resolvePaseoCli("linux", () => true), "paseo");
+  assert.equal(resolvePaseoCli("win32", () => true), "paseo");
+});
+
+test("plugin labels provide the same keys in English and Korean", async () => {
+  const { MESSAGES } = await import("../shared/messages.ts");
+  const english = Object.keys(MESSAGES.en).sort();
+  assert.deepEqual(Object.keys(MESSAGES.ko).sort(), english);
+  for (const locale of Object.keys(MESSAGES))
+    for (const key of english)
+      assert.ok(MESSAGES[locale][key].trim(), `${locale}.${key} is empty`);
+  assert.equal(MESSAGES.en.attachmentTitle, "Paseobility skills");
+  assert.equal(MESSAGES.en.attachmentSearchPlaceholder, "Search skills");
+  assert.equal(MESSAGES.ko.attachmentTitle, "Paseobility 스킬");
+  assert.equal(MESSAGES.ko.attachmentSearchPlaceholder, "스킬 검색");
+  assert.equal(MESSAGES.ko.commandCenterTitle, "Paseobility 열기");
+});
+
+// Minimal local check for the comparators used by requirements.paseo.
+function satisfiesRange(version, range) {
+  const parse = (value) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
+    assert.ok(match, `unexpected version ${value}`);
+    return match.slice(1).map(Number);
+  };
+  const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  const target = parse(version);
+  return range
+    .trim()
+    .split(/\s+/)
+    .every((part) => {
+      const match = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+)$/.exec(part);
+      assert.ok(match, `unsupported comparator ${part}`);
+      const order = compare(target, parse(match[2]));
+      switch (match[1] ?? "=") {
+        case ">=":
+          return order >= 0;
+        case "<=":
+          return order <= 0;
+        case ">":
+          return order > 0;
+        case "<":
+          return order < 0;
+        default:
+          return order === 0;
+      }
+    });
+}
+
+test("manifest supports Paseo 0.12 and 0.13 but not 0.14", async () => {
+  const manifest = JSON.parse(
+    await readFile(new URL("../paseo-plugin.json", import.meta.url), "utf8"),
+  );
+  const range = manifest.requirements.paseo;
+  assert.equal(range, ">=0.12.0 <0.14.0");
+  for (const version of ["0.12.0", "0.12.10", "0.13.0", "0.13.9"])
+    assert.ok(satisfiesRange(version, range), version);
+  for (const version of ["0.11.4", "0.14.0", "1.0.0"])
+    assert.ok(!satisfiesRange(version, range), version);
+  assert.equal(manifest.translations, undefined);
+});

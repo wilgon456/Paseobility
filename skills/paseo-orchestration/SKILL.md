@@ -4,7 +4,8 @@ description: >-
   Coordinate multiple Paseo agents or compare competing answers only when the
   user explicitly requests parallel agents, cross-provider work, a tournament,
   or a debate. Ordinary coding, planning, review, and single-agent delegation
-  do not trigger this skill.
+  do not trigger this skill. Second opinions belong to the base paseo-advisor
+  skill and two-agent planning to paseo-committee when those are installed.
 ---
 
 # Paseo Orchestration
@@ -17,7 +18,8 @@ workflow end to end without stopping for approval of reversible steps.
 - Distinct deliverables, dependencies, or requested monitoring:
   [coordination patterns](references/coordination.md), only the needed pattern.
 - Competing answers, plans, or implementations:
-  [comparison mode](references/tournament.md). Replaces `/paseo-agent-tournament`.
+  [comparison mode](references/tournament.md). Replaces the retired
+  `/paseo-agent-tournament` command.
 
 Use the smallest set of agents with distinct roles, launched in parallel when
 independent. The coordinator synthesizes results itself; add a synthesis or
@@ -27,10 +29,14 @@ verified context instead of having each agent rediscover it.
 ## Launch contract
 
 Read the installed base **paseo** skill for active tool schemas (baseline Paseo
-0.10.2, schemas statically checked against 0.12.0; discover capabilities rather
-than assuming them from the version). On 0.12+, `create_agent` rejects a
-`background` argument and messages to a running agent steer its turn; see
-[Pattern 6](references/coordination.md#pattern-6-blocking-askreply).
+0.10.2, schemas statically checked against 0.12.0 and 0.13.0; discover
+capabilities rather than assuming them from the version). On 0.12+, `create_agent`
+rejects a `background` argument and messages to a running agent steer its turn;
+see [Pattern 6](references/coordination.md#pattern-6-blocking-askreply). On 0.13+,
+a child's report and its finish notification arrive as one message, so do not
+wait for a second notification. Remote children use `serverId` with a
+destination workspace and explicit provider/model; see the native connected
+hosts section of the installed `paseo-multi` skill.
 
 1. Read `list_profiles` and notes. Follow a user-named profile or pick one that
    fits the role.

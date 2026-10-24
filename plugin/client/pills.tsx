@@ -17,7 +17,12 @@ import {
 } from "react-native";
 import { WORKFLOWS } from "../shared/workflows";
 import { skillStatusRpc } from "../shared/skills";
-import { attachSkill, markerId, resolveEditor } from "./web";
+import {
+  EDITOR_UNAVAILABLE,
+  attachSkill,
+  markerId,
+  resolveEditor,
+} from "./web";
 import { palette } from "./screen";
 function PillIcon(props: PluginButtonIconProps) {
   return (
@@ -36,7 +41,18 @@ export function SkillPicker(props: PluginButtonContentProps) {
   const agentId = props.context === "agent" ? props.agentId : "";
   const provider = useAgent(agentId, (agent) => agent.provider);
   const marker = markerId(host.id, agentId);
-  const [editor] = useState(() => resolveEditor(marker));
+  const [editor] = useState(() => {
+    try {
+      return resolveEditor(marker);
+    } catch (error) {
+      console.warn(
+        "[Paseobility] Could not resolve the composer editor",
+        error,
+      );
+      return null;
+    }
+  });
+  const unavailable = Platform.OS === "web" && !editor;
   const [error, setError] = useState("");
   const fetchStatus = useRpc(skillStatusRpc);
   const status = useQuery({
@@ -103,8 +119,14 @@ export function SkillPicker(props: PluginButtonContentProps) {
           backgroundColor: c.surface0,
         }}
       />
-      {Platform.OS !== "web" && (
+      {Platform.OS !== "web" ? (
         <Text style={caption}>입력창 + 메뉴에서 스킬을 추가해주세요.</Text>
+      ) : (
+        unavailable && (
+          <Text accessibilityRole="alert" style={caption}>
+            {EDITOR_UNAVAILABLE}
+          </Text>
+        )
       )}
       {status.isPending && (
         <Text style={caption}>설치 정보를 확인하고 있습니다…</Text>
@@ -137,7 +159,8 @@ export function SkillPicker(props: PluginButtonContentProps) {
               item.id === skill.id &&
               (provider?.startsWith("claude") ? item.claude : item.paseo),
           );
-          const disabled = !installed || Platform.OS !== "web";
+          const disabled =
+            !installed || Platform.OS !== "web" || unavailable;
           return (
             <Pressable
               key={skill.id}
@@ -207,9 +230,18 @@ export function SkillPicker(props: PluginButtonContentProps) {
 }
 
 export function contributePills(client: PluginClientContext) {
-  return followAgentPills(client, {
-    title: "Paseobility",
-    icon: PillIcon,
-    behavior: { kind: "popover", Content: SkillPicker },
-  });
+  try {
+    return followAgentPills(client, {
+      title: "Paseobility",
+      icon: PillIcon,
+      behavior: { kind: "popover", Content: SkillPicker },
+    });
+  } catch (error) {
+    // The sidebar, updater and + menu stay available without the private adapter.
+    console.warn(
+      "[Paseobility] Composer pill unavailable; use the + menu instead",
+      error,
+    );
+    return () => {};
+  }
 }
