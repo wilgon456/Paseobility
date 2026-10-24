@@ -26,6 +26,10 @@ snapshot again — old tokens, indexes, and coordinates are stale.
 - Pick the window from `list_windows` (or the `launch_app` response) by
   `window_id`; check `cua-driver describe list_windows` for field meanings.
 
+For mixed Ego/native work, follow [ego-companion.md](ego-companion.md).
+Do not interpret the routes below as permission to attach a second page
+controller or bypass Ego user-control stops.
+
 ## Routes, cheapest first
 
 Move on when a route does not land; mention which one worked.

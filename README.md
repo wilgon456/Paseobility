@@ -65,6 +65,12 @@ control handoff and error recovery. An explicitly selected Chrome keeps the
 existing-window adapter. [Ego workflow and verified scope](skills/paseo-browser/references/ego.md).
 This update is on main; the v2.11.0 release records the earlier Chrome default.
 
+Advanced page work and native-app handoff now have a shared workflow: semantic
+or visual observation, iframe/popup ownership, verified download/upload artifacts,
+and same-space recovery. The opt-in `ego-smoke.py --live --out <new-directory>`
+exercises the installed browser without making CI or installation open a GUI.
+[Capabilities and validation limits](docs/ego-computer-use.md).
+
 ## 2026-10-23 — Existing Chrome tabs and Apps in Toss (v2.11.0)
 
 `paseo-browser` now creates one task tab in an existing running Chrome window, reuses it and explicitly closes only that tab. Its macOS adapter journals ownership, recovers lost creation replies, distinguishes browser restarts and verifies cleanup. Existing-window adapters on Windows/Linux remain unverified; the macOS helper refuses those platforms. [Repeat-use validation](docs/browser-tab-lifecycle.md).

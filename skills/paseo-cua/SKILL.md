@@ -15,6 +15,16 @@ trycua Cua Driver controls native app windows on macOS, Windows, and Linux.
 Web pages belong to `paseo-browser`. If a CLI, API, AppleScript/`osascript`, or
 file edit reaches the same outcome more reliably, use that and say so.
 
+## Ego Lite companion mode
+
+For a task spanning a web page and a native application, keep Ego responsible
+for page actions and task-space cleanup. Read
+[references/ego-companion.md](references/ego-companion.md) for the artifact and
+control handoff. Preserve Ego's space ID/Page label across native work; do not
+create another browser space, attach Cua browser tools to that Page, or use Cua
+to bypass Ego's human-control/permission stops. Verify the native result before
+returning to a fresh Ego page observation.
+
 ## Preconditions
 
 - `cua-driver --version` — binary present. If missing, use a non-GUI route if
@@ -59,8 +69,9 @@ releases:
 
 One action is `cua-driver <tool> '<json>'`. Cursor overlays, recording, browser
 sessions, and named sessions need one persistent `cua-driver mcp` connection;
-a repeated session label does not adopt another process. Browser windows: bind
-the native window first, then use the typed browser tools. More detail in
+a repeated session label does not adopt another process. For an explicitly selected Cua browser backend, bind
+the native window first, then use its typed browser tools; this is not the Ego
+companion path and must not control an Ego-owned Page in parallel. More detail in
 [references/workflow.md](references/workflow.md).
 
 ## Safety

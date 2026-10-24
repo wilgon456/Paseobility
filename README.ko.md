@@ -65,6 +65,11 @@ TaskSpace 하나와 기본 탭 `p1`을 여러 실행에서 재사용하고, 성�
 [Ego 실행 흐름과 검증 범위](skills/paseo-browser/references/ego.md).
 이번 변경은 main 기준이며 v2.11.0 릴리스에는 이전 Chrome 기본 정책이 담겨 있습니다.
 
+프레임·팝업·파일 업로드/다운로드와 네이티브 앱 연결 절차도 제공합니다.
+선택 실행하는 `ego-smoke.py --live --out <새-폴더>`가 실제 브라우저에서
+탭 재사용·중단 복구·파일 결과·완료 정리를 검증합니다. 설치와 CI에서는
+실제 브라우저를 열지 않습니다. [기능과 검증 범위](docs/ego-computer-use.md).
+
 ## 2026-10-23 — 기존 Chrome 탭 재사용과 Apps in Toss (v2.11.0)
 
 `paseo-browser`는 실행 중인 Chrome의 기존 창에 작업 탭 하나를 만들고 재사용한 뒤 그 탭만 닫습니다. macOS 도우미는 탭 소유 기록, 생성 응답 유실 복구, Chrome 재시작 구분과 종료 확인을 제공합니다. Windows/Linux의 기존 창 어댑터는 아직 미검증이며 macOS 도우미는 실행되지 않습니다. [반복 검증](docs/browser-tab-lifecycle.md).

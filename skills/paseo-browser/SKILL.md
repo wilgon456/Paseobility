@@ -51,6 +51,21 @@ rules. A recoverable error resumes the same space; user-owned/inactive spaces
 require explicit user authorization to claim. Process death cannot run cleanup;
 report unfinished state instead of claiming automatic cleanup.
 
+## Page work and native desktop handoff
+
+For forms, frames, rich editors, popups, files, and ambiguous failures, use
+[references/interaction.md](references/interaction.md). It defines observation,
+expected-state verification, artifact handling and the opt-in live smoke test.
+Use snapshots for semantic pages, screenshots for visual surfaces, and batch
+known actions with an expected-state wait. An action receipt alone is not proof
+of application success; never replay uncertain submissions automatically.
+
+If a task crosses into a native app, keep the Ego space ID and Page label, then
+follow `paseo-cua`'s Ego companion workflow for the exact native PID/window.
+Return to the same Ego Page with a fresh observation. Ego CSS coordinates and
+Cua window coordinates/tokens are not interchangeable. Do not use Cua to bypass
+Ego's user-control or permission stops, or attach a second browser controller.
+
 ## Existing Chrome lifecycle
 
 On macOS, use the bundled `scripts/chrome-tabs.py` (Python 3 stdlib + AppleScript)
