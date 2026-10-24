@@ -56,6 +56,15 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
 
+## 2026-10-24 — Ego Lite integration (main)
+
+When installed, Ego Lite is preferred for ordinary browser tasks. One user goal
+uses one TaskSpace and its existing `p1`, reused across rounds; successful work
+ends with `finish({ keep: [] })`. The installed runtime guide defines APIs,
+control handoff and error recovery. An explicitly selected Chrome keeps the
+existing-window adapter. [Ego workflow and verified scope](skills/paseo-browser/references/ego.md).
+This update is on main; the v2.11.0 release records the earlier Chrome default.
+
 ## 2026-10-23 — Existing Chrome tabs and Apps in Toss (v2.11.0)
 
 `paseo-browser` now creates one task tab in an existing running Chrome window, reuses it and explicitly closes only that tab. Its macOS adapter journals ownership, recovers lost creation replies, distinguishes browser restarts and verifies cleanup. Existing-window adapters on Windows/Linux remain unverified; the macOS helper refuses those platforms. [Repeat-use validation](docs/browser-tab-lifecycle.md).
@@ -354,7 +363,7 @@ The package now has **11 skills**. [`/paseo-toss`](docs/paseo-toss.md) bundles t
 | `/paseo-multi` | Selected remote computers: status, agents, shell commands and updates |
 | `/paseo-orchestration` | Explicitly requested multi-agent coordination or compare/tournament |
 | `/paseo-project` | Requested project summary/handoff (refreshing `.paseobility` context) or initial setup/environment changes |
-| `/paseo-browser` | Create, reuse and close a task tab in an existing Chrome window. macOS lifecycle helper; isolated browsers are requested alternatives |
+| `/paseo-browser` | Reuse one Ego Lite TaskSpace when installed, or an explicitly selected existing Chrome tab; preserve user tabs and verify completion |
 | `/paseo-cua` | Native app GUI driven by the trycua Cua Driver when a task needs it |
 | `/paseo-design` | Web or app frontend: project rules first, compose surface-first, then prove it with `design-check` (screenshots plus measured findings, errors 0) |
 | `/paseo-agent-cleanup` | Cleaning up selected test agents/workspaces |
@@ -490,7 +499,7 @@ When you explicitly request these tasks, you can use the following capabilities:
 | `/paseo-god` | Explicit task execution and resumption | Bounded work, acceptance evidence, debugging/review/spike and learning proposals |
 | `/paseo-multi` | Operate selected Paseo computers | Named hosts or `all` (every registered host, in parallel), remote status/agents, inline or file Bash/PowerShell commands (`exec --command`, `--wait` up to 300 s), verified updates, `restart --force` only when you asked for an immediate restart, merging `import-saved` |
 | `/paseo-design` | Web and app frontend workflow | Project design rules, existing components and frontend review |
-| `/paseo-browser` | Create, reuse and close a task tab in an existing Chrome window. macOS lifecycle helper; isolated browsers are requested alternatives |
+| `/paseo-browser` | Reuse one Ego Lite TaskSpace when installed, or an explicitly selected existing Chrome tab; preserve user tabs and verify completion |
 | `/paseo-cua` | Native desktop GUI driving | App window manipulation/snapshot/verification with the trycua Cua Driver, whenever a task needs a native app GUI |
 | `/paseo-orchestration` | Multi-agent coordination and comparison | Explicitly requested coordination or tournament, mode-specific guidance |
 | `/paseo-project` | Project summary and setup | Requested brief (writes or refreshes stale `.paseobility` context) or environment/context setup |
@@ -1070,7 +1079,15 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 ## `/paseo-browser`
 
-Default: **open one task tab in an already-running Chrome window → reuse it → close only that tab**.
+Default when installed: **Ego Lite → one TaskSpace → reuse its `p1` → finish**.
+Read `ego-browser skill` for the installed API contract; see the
+[Ego reference](skills/paseo-browser/references/ego.md) for multi-round reuse,
+completion receipts, user control, and shell portability. Do not run Chrome's
+helper against Ego. Failed tasks retain their space for recovery rather than
+opening a replacement space or silently switching browsers.
+
+For explicitly selected Chrome, or when Ego is absent: **existing Chrome window
+→ one task tab → reuse → close only that tab**.
 The macOS `scripts/chrome-tabs.py` adapter targets an explicit existing window,
 records tab ownership and Chrome incarnation, and recovers a lost creation
 reply without making another tab/window. Cleanup is verified by re-listing.

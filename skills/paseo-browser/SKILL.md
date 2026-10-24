@@ -1,20 +1,55 @@
 ---
 name: paseo-browser
 description: >-
-  Operate websites in the user's already-running Chrome: open one task tab in
-  an existing window, reuse it, then close only that tab and verify cleanup.
-  Use for web navigation, reading, clicking, forms, screenshots and browser
-  debugging. Isolated CloakBrowser, Paseo browser tools and Playwright CLI are
-  explicit alternatives, not silent replacements for the user's Chrome.
+  Operate websites with installed Ego Lite using one reusable TaskSpace and
+  task tab, then verify completion cleanup. Use for web navigation, reading,
+  clicking, forms, screenshots and browser debugging. Also supports an
+  explicitly selected existing Chrome window and requested isolated backends.
 ---
 
 # Paseo Browser
 
-Default workflow: **existing Chrome window → one task-owned tab → reuse → close
-that tab**. Keep the user's browser, login session and pre-existing tabs intact.
-Do not launch another browser/window or switch to headless to work around tab
-placement. Native desktop tasks belong to `paseo-cua`; HTTP/API and filesystem
-work do not require a browser.
+Preserve the user's browser, login session and pre-existing tabs. Select the
+backend once per task and keep it across rounds and recoverable failures:
+
+- When the user names a browser, honor that choice. For Ego Lite, follow the
+  Ego workflow below; for personal Chrome, use the existing-window lifecycle.
+- For ordinary web work without an explicit browser, prefer **Ego Lite when
+  its `ego-browser` CLI is installed**. Read the installed `ego-browser` skill
+  and run `ego-browser skill`; read through its end-of-guide marker before
+  acting. Use its current documented APIs, not guessed Playwright methods.
+- If Ego is not installed and the task has not selected it, use an already
+  running Chrome window. Do not install or start a browser implicitly. If the
+  selected backend fails, report and recover there; do not silently switch.
+- Native desktop tasks belong to `paseo-cua`; HTTP/API and filesystem work do
+  not require a browser. Explicit headless verification workflows stay explicit.
+
+## Ego Lite lifecycle
+
+Use **one TaskSpace per user goal → its existing `p1` → reuse → finish**.
+Read [references/ego.md](references/ego.md) with the runtime guide. Let Ego
+manage its tabs and ownership; do not run `chrome-tabs.py`, another browser
+integration's tab creation, or a separate Playwright browser inside this path.
+
+Create the space once with a unique stable agent/task name, print its `spaceId`
+and Page label, then resume that ID in later rounds. The same owned name also
+resumes the space after an uncertain response; never invent a new name to retry.
+Navigate the existing Page instead of allocating a new space/tab for each URL.
+Use snapshot-derived actions, batch dependent actions with their expected-state
+wait, then print the next snapshot. Take screenshots when visual evidence is
+needed rather than requesting both observation forms on every call.
+
+On success, call `await task.finish({ keep: [] })` exactly once as the last
+operation on that task and inspect the returned completion receipt. Keep a Page
+only when the user requests it or needs the result open to continue. Ego protects
+user-created and unmanaged tabs, so a retained protected tab is not a cleanup
+failure and must not be forcibly closed. Never quit the browser as cleanup.
+
+On error or loss of user control, do not run `finish()` in a generic `finally`.
+Stop, report the saved space ID, and follow Ego's documented recovery/handoff
+rules. A recoverable error resumes the same space; user-owned/inactive spaces
+require explicit user authorization to claim. Process death cannot run cleanup;
+report unfinished state instead of claiming automatic cleanup.
 
 ## Existing Chrome lifecycle
 

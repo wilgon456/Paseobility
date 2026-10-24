@@ -88,7 +88,7 @@ What changed, the design-check result (errors, notable warnings, before/after co
 
 ## Exercising the running app
 
-When the user wants the app clicked through, follow `/paseo-browser` for the browser (existing Chrome task tab by default; that skill defines the alternatives) and `vendor/hermes/dogfood/GUIDE.md` for the plan, explore, evidence and report sequence and its severity taxonomy. Only on a local or staging instance; saving and submitting test data there is fine. Ask before deleting data you did not create.
+When the user wants the app clicked through, follow `/paseo-browser` for the browser (installed Ego Lite task space preferred, or the selected existing Chrome tab; that skill defines lifecycle and alternatives) and `vendor/hermes/dogfood/GUIDE.md` for the plan, explore, evidence and report sequence and its severity taxonomy. Only on a local or staging instance; saving and submitting test data there is fine. Ask before deleting data you did not create.
 
 ## About the vendored guides
 

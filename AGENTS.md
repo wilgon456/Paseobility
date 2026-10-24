@@ -97,12 +97,14 @@ local run records only; it does not execute tasks or save native memory.
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver when a task needs a
-native app GUI; ordinary web page work stays with `paseo-browser`, whose default
-is one task tab in an already-running Chrome window, reused and explicitly
-closed after work. Its macOS `chrome-tabs.py` helper records tab ownership and
-recovers uncertain creation without opening duplicate tabs. CloakBrowser, Paseo
-`browser_*` and Playwright CLI are named, requested alternatives; they do not
-silently replace personal Chrome. No duplicate alias skills are installed.
+native app GUI; ordinary web page work stays with `paseo-browser`, which prefers installed
+Ego Lite for ordinary web work: one TaskSpace and its existing task tab, reused
+across rounds, with explicit completion through Ego's current runtime guide.
+An explicitly selected Chrome keeps the existing-window workflow; when Ego is
+absent, that workflow remains available. The macOS `chrome-tabs.py` helper
+records Chrome tab ownership and recovers uncertain creation without duplicate
+tabs. CloakBrowser, Paseo `browser_*` and Playwright CLI are named, requested
+alternatives. Connection failures never silently switch browsers. No duplicate alias skills are installed.
 
 For an authorized update, use `--migrate-skills` (PowerShell: `-MigrateSkills`)
 to move selected predecessors to backup after installing replacements. This

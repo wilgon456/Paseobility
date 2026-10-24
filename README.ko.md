@@ -56,6 +56,15 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
 기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
 
+## 2026-10-24 — Ego Lite 연동 (main)
+
+Ego Lite가 설치되어 있으면 일반 웹 작업에서 우선 사용합니다. 사용자 목표당
+TaskSpace 하나와 기본 탭 `p1`을 여러 실행에서 재사용하고, 성공 시
+`finish({ keep: [] })`로 정리합니다. API·제어권·오류 복구는 설치 버전의 안내를
+따릅니다. Chrome을 지정하면 기존 창 어댑터를 사용합니다.
+[Ego 실행 흐름과 검증 범위](skills/paseo-browser/references/ego.md).
+이번 변경은 main 기준이며 v2.11.0 릴리스에는 이전 Chrome 기본 정책이 담겨 있습니다.
+
 ## 2026-10-23 — 기존 Chrome 탭 재사용과 Apps in Toss (v2.11.0)
 
 `paseo-browser`는 실행 중인 Chrome의 기존 창에 작업 탭 하나를 만들고 재사용한 뒤 그 탭만 닫습니다. macOS 도우미는 탭 소유 기록, 생성 응답 유실 복구, Chrome 재시작 구분과 종료 확인을 제공합니다. Windows/Linux의 기존 창 어댑터는 아직 미검증이며 macOS 도우미는 실행되지 않습니다. [반복 검증](docs/browser-tab-lifecycle.md).
@@ -379,7 +388,7 @@ Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 �
 | `/paseo-god` | 명시 호출 작업 모드: 완료 조건, 필요한 절차, 검증 근거와 작업별 재개 |
 | `/paseo-orchestration` | 명시 요청한 다중 에이전트 조율 또는 비교·토너먼트 |
 | `/paseo-project` | 요청한 프로젝트 요약·인수인계(`.paseobility` context 갱신 포함) 또는 초기 설정·환경 수정 |
-| `/paseo-browser` | 기존 Chrome 창의 작업용 탭 생성·재사용·종료. macOS 실행 도우미와 소유 탭 정리 검증; 격리 브라우저는 요청된 대안 |
+| `/paseo-browser` | 설치된 Ego Lite의 TaskSpace 하나 또는 지정한 기존 Chrome 탭 재사용. 사용자 탭 보존과 완료 정리 검증 |
 | `/paseo-cua` | 작업에 네이티브 앱 GUI가 필요할 때 trycua Cua Driver로 구동 |
 | `/paseo-design` | 웹·앱 프론트: 프로젝트 규칙 먼저, 화면 갈래부터 짜고, `design-check`로 찍어 재서 오류 0을 증명 |
 | `/paseo-agent-cleanup` | 선택한 테스트 에이전트·workspace 정리 |
@@ -542,7 +551,7 @@ https://github.com/wilgon456/Paseobility
 | Skill | 역할 | 이런 요청에 강함 |
 | --- | --- | --- |
 | `/paseo-god` | 명시 호출 실행·검증·재개 | 완료 조건, 디버깅·리뷰·실험, 작업별 기록과 학습 후보 제안 |
-| `/paseo-browser` | 기존 Chrome 창의 작업용 탭 생성·재사용·종료. macOS 실행 도우미와 소유 탭 정리 검증; 격리 브라우저는 요청된 대안 |
+| `/paseo-browser` | 설치된 Ego Lite의 TaskSpace 하나 또는 지정한 기존 Chrome 탭 재사용. 사용자 탭 보존과 완료 정리 검증 |
 | `/paseo-cua` | 네이티브 데스크톱 GUI 구동 | trycua Cua Driver로 앱 창 조작·스냅샷·검증, 작업에 네이티브 앱 GUI가 필요할 때 동작 |
 | `/paseo-orchestration` | 다중 에이전트 조율과 비교 | 명시 요청한 조율 또는 토너먼트, 모드별 지침 |
 | `/paseo-project` | 프로젝트 요약과 설정 | 요청한 brief(없거나 오래된 `.paseobility` context 작성·갱신) 또는 환경·context 설정 |
@@ -1132,7 +1141,12 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 ## `/paseo-browser`
 
-기본 동작은 **현재 실행 중인 Chrome 창에 작업용 탭 하나 추가 → 재사용 → 그 탭만 종료**입니다.
+Ego Lite가 설치되어 있으면 **TaskSpace 하나 → 기본 탭 `p1` 재사용 → 완료 정리**가 기본입니다.
+`ego-browser skill`로 설치 버전의 API 안내를 읽습니다. 여러 실행 간 재사용,
+완료 결과 확인, 제어권 전환과 Windows 명령 형식은 [Ego 참조](skills/paseo-browser/references/ego.md)를 따릅니다.
+Ego에 Chrome 도우미를 적용하지 않습니다. 오류가 나면 같은 공간을 복구하며 새 공간을 만들거나 브라우저를 자동 전환하지 않습니다.
+
+Chrome을 지정했거나 Ego가 없으면 **현재 실행 중인 Chrome 창에 작업용 탭 하나 추가 → 재사용 → 그 탭만 종료**합니다.
 macOS의 `scripts/chrome-tabs.py`가 기존 창 ID를 지정해 탭을 만들고, 생성한 탭 ID와 Chrome 실행 식별자를 기록합니다. 생성 응답이 유실돼도 같은 작업 ID로 복구하며 새 창이나 중복 탭을 만들지 않습니다. 작업 후 종료 결과를 다시 확인합니다.
 
 ```bash
