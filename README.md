@@ -385,7 +385,7 @@ The package now has **11 skills**. [`/paseo-toss`](docs/paseo-toss.md) bundles t
 | `/paseo-project` | Requested project summary/handoff (refreshing `.paseobility` context) or initial setup/environment changes |
 | `/paseo-browser` | Reuse one Ego Lite TaskSpace when installed, or an explicitly selected existing Chrome tab; preserve user tabs and verify completion |
 | `/paseo-cua` | Native app GUI driven by the trycua Cua Driver when a task needs it |
-| `/paseo-design` | Web or app frontend: project rules first, compose surface-first, then prove it with `design-check` (screenshots plus measured findings, errors 0) |
+| [`/paseo-design`](docs/paseo-design.md) | Web or app frontend: project rules and product evidence, a proportionate brief, then rendered visual review and `design-check` (measured errors 0) |
 | `/paseo-agent-cleanup` | Cleaning up selected test agents/workspaces |
 | `/paseo-toss` | Apps in Toss planning, development, phone testing and pre-launch review |
 | `/paseo-share` | Artifact sharing between personal devices |

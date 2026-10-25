@@ -2,6 +2,13 @@
 
 `design-check` measures geometry and style discipline. These are the judgments it cannot make. Look for them on the `-sheet.png` and the `-marked.png` of every width; report what you found and fixed, not a line-by-line answer sheet.
 
+Compare with the current brief and real product content. Keep actionable issues,
+corrections and recheck evidence in the existing brief/run record as described
+in `creative-workflow.md`; do not create another checklist document. Review the
+first rendered screen before propagating its composition. After edits, inspect
+fresh images of the affected screen/state; a zero-error report alone does not
+establish visual quality.
+
 ## Concept and appeal
 
 - Can you say the concept in one line, and is it visible in color, type and the memorable element?
@@ -27,6 +34,14 @@
 - Do buttons say what happens, and keep that name through the flow?
 - Do empty, loading and error states tell the user what to do next?
 - Any filler: fake numbers, placeholder testimonials, "Insights / Growth / Scale" labels, decorative icons?
+- Can material claims be traced to product evidence? Are sample data, simulated demos and planned capabilities visibly distinguished from working behavior?
+
+## Interaction and motion (when affected)
+
+- Does the interaction explain the product or advance the task? Is the trigger, feedback and end state understandable?
+- Is essential content visible without waiting for an animation, and is reduced motion an understandable equivalent?
+- Are changing scenes stable in size, and are nonessential loops stopped when hidden? Are keyboard controls, pause/replay and focus usable where relevant?
+- Were claimed states and performance actually exercised with the environment and method recorded, rather than inferred from a static screenshot?
 
 ## Korean text
 

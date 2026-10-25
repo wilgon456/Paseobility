@@ -25,7 +25,20 @@ Before anything else, look for design rules the project already has:
 3. token sources (`ui_tokens.*`, `tokens.*`, `theme.*`, `tailwind.config.*`, a Tailwind `@theme` block, CSS custom properties in the global stylesheet);
 4. UI checks the repo already runs (save hooks, lint scripts, screenshot or visual-regression tests, Storybook).
 
-If any exist, follow them, reuse their components and tokens, run their checks, and do not create a second source of truth: no new `DESIGN.md`, no new palette, no new component for a pattern that exists. Then build, and run design-check (step 4) unless the project already has a check that renders and measures the page.
+If any exist, follow them, reuse their components and tokens, run their checks, and do not create a second source of truth: no new `DESIGN.md`, no new palette, no new component for a pattern that exists. Apply the workflow below within those rules; use design-check (step 4) unless the project already has a check that renders and measures the page.
+
+## Choose the working depth
+
+When explicitly invoked for planning or preparation only, stop at the requested
+brief or recommendations. Report that implementation and rendered verification
+remain; do not build a screen merely to satisfy step 4. The render requirement
+applies to claiming a completed interface, not to a preparation-only deliverable.
+
+- A bounded correction (copy, spacing, one control): keep the intent, affected state and check in a few working notes. Reuse local styles and the established direction; skip token/concept exploration that would not affect the correction. No new brief, research round or variants by default.
+- A new or substantially recomposed screen: settle a compact brief before implementation. For multi-screen work or a substantial public page, keep it in the project's existing brief/planning document so revisions and rejected directions survive resumption. Use `templates/BRIEF.md` only when a new document is useful; omit irrelevant sections. Link to existing tokens and components rather than copying their definitions.
+- For composed screens, read [references/creative-workflow.md](references/creative-workflow.md): product evidence before copy, references chosen for specific decisions, purposeful interaction, and a recorded visual revision loop. Small corrections need only its relevant parts.
+
+This skill owns the design procedure even when called by `paseo-god` or another workflow. Put design decisions and review evidence in the existing brief or run record; do not maintain parallel records. A design task does not itself authorize deployment, publication or merging.
 
 ## 1. Lock the tokens (only when the project has none)
 
@@ -49,7 +62,7 @@ The dotted bin name `design.md` does nothing on Windows (exit 0, no output), so 
 Read `references/design-digest.md` (concept first, the surface list, the AI-tell list). Then:
 
 - Find one concept in the subject's own world before any layout: its objects, materials, rituals and vernacular (an address converter becomes airmail: striped borders, stamps, a typewritten label; a lottery page becomes the paper slip). Name it in one line. The concept decides color, type, shapes and the one memorable element. A screen without a concept is what makes generated UI look bland and interchangeable, more than any single tell.
-- When the direction is open or taste matters to the user, sketch three clearly different directions (concept, palette, type, memorable element), render a first screen of each and show them side by side or pick the strongest. Otherwise commit to the best concept and build.
+- When the direction is genuinely open and comparing alternatives will resolve it, sketch three clearly different directions (concept, palette, type, memorable element), render a first screen of each and show them side by side or pick the strongest. A requested reference, chosen direction or small correction is usually enough to proceed without variants.
 - Name the surface in one line before choosing a layout: Monitor, Operate, Compare, Configure, Decide/Learn, Explore, or Command/Inspect. A hero plus three equal cards is right for Decide/Learn only.
 - Read what exists: screens, components, copy, the screenshots the user gave. Reuse components (the project's own, shadcn/ui, the design system) before adding any.
 - Ask only when the brand or audience is unknown and guessing would waste real work. Otherwise state your assumptions and proceed.
@@ -66,6 +79,7 @@ Write production code in the repo's framework. A standalone HTML artifact only w
 - Controls on one row share one height token (40px; 44px on phones) and sit on `align-items: center`.
 - Contrast 4.5:1 (3:1 at 24px or bold 19px and up); tap targets 44px on phones; nothing under 12px.
 - Images keep their aspect ratio (`object-fit: cover` or one fixed dimension) and carry `alt`. Keyboard focus stays visible (`:focus-visible` ring; never bare `outline: none`). Buttons and inputs use one or two height tokens across the page; icons in a row share one size. Animations stop under `prefers-reduced-motion: reduce`.
+- For substantial copy or demos, check the underlying product behavior and label simulations. For motion, define the state change and its reduced-motion equivalent before choosing effects; use the focused guidance in `references/creative-workflow.md` when needed.
 - The AI tells (gradient washes, glows, glass, left accent rails, tracked uppercase eyebrows, emoji as icons, icon toppers, arrows in button text, centered multi-line paragraphs) are habits, not bans. Do not reach for them by default; use any of them boldly when the concept calls for it (an airmail border is a gradient, a tilted envelope is a rotation, a seal stamp is a red accent). What to cut is decoration that belongs to no idea. Over-restraint is its own failure: a page of grey cards that passes every check can still be bad.
 
 ## 4. Prove it with design-check
@@ -77,6 +91,7 @@ Render and measure every changed screen at phone, tablet and desktop widths:
 Per page and width it writes a clean screenshot, a marked screenshot with numbered boxes, `-report.md` with a fix hint per finding, `-report.json`, and `-sheet.png` with all widths side by side. Exit 1 means errors remain; exit 2 means the tool could not run (no browser, page did not load).
 
 - Open the sheet and the marked screenshots and look at them. The machine finds overflow, clipping, overlap, misalignment, uneven rhythm, contrast, Hangul mid-word breaks, scale sprawl and the common AI tells. You judge hierarchy, composition, copy and whether one thing is memorable; `references/review-checklist.md` lists what to look for.
+- Compare the first rendered screen with the brief and actual product content before extending its composition to other screens. Record concrete visual issues, corrections and recheck evidence in the existing brief/run record (the format is in `references/creative-workflow.md`). Zero measured errors and visual quality are separate judgments. After a relevant edit, refresh the affected screenshots; old images do not prove the final state.
 - Fix errors and rerun until none remain, or `--ignore`/`--disable` a false positive with the reason. Fix the warnings that matter.
 - Findings named `ai-*` are 참고 (info): they point at habits. Keep one when the concept needs it; remove it when it is decoration for its own sake.
 - Judge blandness as hard as breakage: is there one memorable element, does the page look like this subject and no other, would a designer keep it? If it is merely tidy, push the concept further and rerun.
@@ -91,7 +106,7 @@ Per page and width it writes a clean screenshot, a marked screenshot with number
 
 ## 5. Report
 
-What changed, the design-check result (errors, notable warnings, before/after counts when you have them), the screenshot paths, design issues you found and fixed, and what was not verified. Never claim a screen was checked if it was not rendered.
+What changed, the design-check result (errors, notable warnings, before/after counts when you have them), current screenshot paths and the widths/states actually covered, visual issues fixed or still open, and what was not verified. Distinguish observed product behavior from a simulated demo and measured performance from a target. Never claim a screen or state was checked if it was not rendered or exercised; the checker selftest proves the checker, not the page or its design quality.
 
 ## Exercising the running app
 

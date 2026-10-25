@@ -408,7 +408,7 @@ Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 �
 | `/paseo-project` | 요청한 프로젝트 요약·인수인계(`.paseobility` context 갱신 포함) 또는 초기 설정·환경 수정 |
 | `/paseo-browser` | 설치된 Ego Lite의 TaskSpace 하나 또는 지정한 기존 Chrome 탭 재사용. 사용자 탭 보존과 완료 정리 검증 |
 | `/paseo-cua` | 작업에 네이티브 앱 GUI가 필요할 때 trycua Cua Driver로 구동 |
-| `/paseo-design` | 웹·앱 프론트: 프로젝트 규칙 먼저, 화면 갈래부터 짜고, `design-check`로 찍어 재서 오류 0을 증명 |
+| [`/paseo-design`](docs/paseo-design.md) | 웹·앱 프론트: 프로젝트 규칙과 제품 근거, 작업 규모에 맞는 브리프, 렌더 화면 검수와 `design-check` 측정 오류 0 확인 |
 | `/paseo-agent-cleanup` | 선택한 테스트 에이전트·workspace 정리 |
 | `/paseo-multi` | 선택한 원격 PC의 상태·에이전트 확인, 명령 실행과 업데이트 |
 | `/paseo-share` | 개인 기기 간 산출물 공유 |

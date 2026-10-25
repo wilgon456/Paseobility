@@ -93,6 +93,69 @@ v0 includes no four-CLI adapter, embedding router, model swap, skill auto-save,
 global INDEX, finance/news workflow or guaranteed token savings. Tools are
 discovered in the active environment; Hermes-specific calls are not assumed.
 
+## Workflow revision — 2026-10-25
+
+The [Dinobot comparison](paseo-god-dinobot-review.md) records the inspected
+modules and adoption decisions. Criteria now connect to observable scenarios,
+expected checks and the actual checked input state. Relevant changes make
+affected evidence stale; method repair preserves the obligation being tested.
+The agent reconciles an interrupted action before retrying it and checks the
+literal final deliverable rather than treating a child task or exit code as
+completion.
+
+Conditional guidance covers shared API/state boundaries, ordered handoffs and
+controlled comparisons. Learning candidates retain their scope and limits.
+Analysis/preparation ends at the requested artifact. These are procedures, not
+new tool commands, locks or host-enforced verification. The existing helper
+still creates, lists and reads local records only; native memory and generated
+skills are not automatically promoted.
+
+## Planning, request revisions and handoff — 2026-10-25 follow-up
+
+After enough initial inspection, God states a short plan and writes a TODO
+before substantive changes. Items advance acceptance criteria, follow real
+dependencies and include the relevant final check. Small fixes need only one
+or two steps; completed work and the remaining plan carry into resumption.
+An available plan tool can show the same plan, without becoming a second source
+of truth or requiring a separate approval round.
+
+Request and plan revisions are distinct. A user scope change updates criteria,
+TODOs and owned helper instructions; old-scope results need reassessment before
+integration. A compact handoff keeps critical constraints, decisions, evidence,
+unknown effects and the next ready item, with accessible source links.
+
+RUN.md also identifies the loaded God skill and references, using a content
+digest when a package/source revision does not identify local edits. On a
+material guidance change, apply current user/project rules and reconsider
+affected work. This is recorded provenance, not runtime version pinning. Older
+records without these fields still resume, with historical identity left unknown.
+The optional detailed procedure is
+[planning and handoff](../skills/paseo-god/references/planning-and-handoff.md).
+
+Follow-up validation: all 11 helper tests and both skill validators passed.
+Temporary install/reinstall matched the 11-file skill in both target layouts.
+Three independent fixtures exercised a two-step plan before a one-line fix,
+scope revision with a synthetic worker and preservation of an old artifact,
+and a documentation-only handoff with missing requirements and changed guidance.
+Parent review checked saved plans/action records, reran the two original tests,
+and verified the exact JSON output and preserved inputs. A handoff-status
+ambiguity was corrected: delivered handoff artifacts are recorded separately
+while the unfinished original goal remains blocked on its missing requirements.
+See the [follow-up record](paseo-god-dinobot-review.md#follow-up-validation)
+for limits; the fixture controller does not prove real worker cancellation.
+
+## Validation — 2026-10-25
+
+All 11 existing helper tests and both skill validators passed. Temporary
+installation/reinstallation and copied-helper creation/list/resume passed.
+Four independent local fixture requests exercised stale evidence, an empty
+successful-looking check, interrupted-effect reconciliation and a report-only
+comparison. Parent review inspected the artifacts and reran the relevant checks.
+The local `.agents` copy matched all 10 final skill files after a backed-up
+single-skill update. See the [comparison's validation record](paseo-god-dinobot-review.md#validation)
+for observed outcomes and limits; these checks do not certify a host-enforced
+workflow, a distributed execution guarantee or general task success rates.
+
 ## Validation — 2026-10-13
 
 - Apple Silicon macOS: all 10 run-helper tests passed under Node 18.4.0 and
