@@ -20,7 +20,7 @@ Eleven reusable skills for projects, browsers, artifacts and computers connected
 
 ## At a glance
 
-**Current package: v2.12.1.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.2.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -55,6 +55,22 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-25 · Design judgment and AI slop reduction (v2.12.2)
+
+`paseo-design` removes redundant UI copy, decorative micro-labels, unnecessary
+card wrappers and automatic visual effects while preserving useful labels,
+context and accessible names. It turns references into composition decisions,
+reviews a representative screen before extending it, and diagnoses hierarchy,
+density, typography and phone-layout problems. Working tools no longer need a
+forced decorative signature; templates follow the selected direction.
+[Design workflow and sources](docs/paseo-design.md).
+
+This release also includes the earlier product-evidence/visual-review workflow,
+`paseo-god` planning, verification and handoff improvements, and refreshed plugin
+listing assets already merged since v2.12.1. Design quality gains have not been
+measured in a controlled comparison. Existing compatibility reports retain
+their recorded scope.
 
 ## 2026-10-24 · Paseo 0.13 support (v2.12.1)
 

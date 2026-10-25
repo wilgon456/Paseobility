@@ -2,17 +2,23 @@
 name: paseo-design
 description: >-
   Use when building, changing, or reviewing a web or app interface, layout,
-  styling, or frontend visuals with measured checks. Follows the project's own
-  design rules when it has them; otherwise locks a small token set, composes
-  surface-first, implements in the project's stack, then proves the result
-  with scripts/design-check.mjs (phone, tablet and desktop screenshots plus
-  measured findings) and fixes every error before calling the work done. Do
+  styling, or frontend visuals. Turns product intent and references into a
+  coherent composition, implements in the project's stack, and improves the
+  rendered result through visual critique and measured checks. Reuses project
+  design rules and verifies phone, tablet and desktop layouts with
+  scripts/design-check.mjs before calling an interface complete. Do
   not use for design discussion that changes no interface.
 ---
 
 # paseo-design
 
 Web and app frontend work. Leave tasks that do not change the interface alone.
+
+Optimize for a screen that fits its users, content and product: clear hierarchy,
+deliberate proportions, coherent typography and useful interaction. Distinctive
+expression matters when the brief calls for it; quiet, familiar precision can
+be the right result for a working tool. A list of avoided styles or a clean
+checker report is not evidence of good design.
 
 Paths are relative to this skill's directory. When your working directory is the project, prefix them with the skill's absolute location (Claude Code: `~/.claude/skills/paseo-design/`; Codex and OpenCode: `~/.agents/skills/paseo-design/`). Scripts need Node 20+ and, for step 4, a Chromium-family browser on the machine (Chrome, Edge, Chromium, or a Playwright download). Nothing is installed by this skill.
 
@@ -44,7 +50,7 @@ This skill owns the design procedure even when called by `paseo-god` or another 
 
 Read `DESIGN.md` at the project root if it exists. Its values are binding; every guide below loses to it.
 
-If it does not exist, find the concept first (step 2), then choose a small token set yourself and state it:
+If it does not exist, choose the visual direction first (step 2), then choose a small token set yourself and state it:
 
 - 4 to 6 colors (ink, muted, surface, border, one accent; danger and success only if needed), body text at 4.5:1 or better;
 - 1 or 2 type families. If the interface shows Korean, the first family must be a Korean one (Pretendard, Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic). Inter, Geist or system-ui first means Korean renders in whatever the OS falls back to;
@@ -57,16 +63,18 @@ For a project that will keep growing, write `DESIGN.md` from `templates/DESIGN.m
 
 The dotted bin name `design.md` does nothing on Windows (exit 0, no output), so empty output is a failure, not a pass. Fix errors.
 
-## 2. Find the concept, then compose
+## 2. Choose the direction, then compose
 
-Read `references/design-digest.md` (concept first, the surface list, the AI-tell list). Then:
+Read `references/design-digest.md` (visual direction, the surface list, the AI-tell list). Then:
 
-- Find one concept in the subject's own world before any layout: its objects, materials, rituals and vernacular (an address converter becomes airmail: striped borders, stamps, a typewritten label; a lottery page becomes the paper slip). Name it in one line. The concept decides color, type, shapes and the one memorable element. A screen without a concept is what makes generated UI look bland and interchangeable, more than any single tell.
-- When the direction is genuinely open and comparing alternatives will resolve it, sketch three clearly different directions (concept, palette, type, memorable element), render a first screen of each and show them side by side or pick the strongest. A requested reference, chosen direction or small correction is usually enough to proceed without variants.
+- State a visual direction tied to the user and task, with concrete consequences for density, type, proportions and emphasis. For an expressive page, the subject's materials or imagery can supply a concept. For a working tool, clarity, scan speed and consistency may supply the direction; do not force a visual metaphor or signature ornament.
+- When the direction is genuinely open and comparing alternatives will resolve it, explore distinct compositions (content priority, density, type and image treatment), render representative views and compare them against the task. A requested reference, chosen direction or small correction is usually enough to proceed without variants.
 - Name the surface in one line before choosing a layout: Monitor, Operate, Compare, Configure, Decide/Learn, Explore, or Command/Inspect. A hero plus three equal cards is right for Decide/Learn only.
 - Read what exists: screens, components, copy, the screenshots the user gave. Reuse components (the project's own, shadcn/ui, the design system) before adding any.
+- Avoid unnecessary auxiliary labels and explanations. Let layout, grouping, spacing, hierarchy and clear control names explain the interface. Remove subtitles that repeat headings and helper text that merely narrates an obvious action; fix an unclear composition before adding prose to explain it. Keep visible input labels, accessible names, constraints, error/recovery guidance and consequential-action information when users need them to act correctly.
+- Give each element a job: new information, a needed action or a meaningful visual role. Cut duplicate status copy, decorative micro-labels, unnecessary card wrappers and repeated icon toppers. Do not fill space with slogans, invented metrics or extra sections. Use the subtraction examples in `references/design-digest.md` during composition and rendered review; preserve units, time ranges and other context needed to interpret values.
 - Ask only when the brand or audience is unknown and guessing would waste real work. Otherwise state your assumptions and proceed.
-- Before coding a new screen, settle surface, reading order, the memorable element and density, and rework any part that reads like what you would produce for any similar brief.
+- Before coding a new screen, settle reading order, dominant content, density and phone adaptation. Translate references into observable decisions (column balance, type roles, image crop, spacing rhythm), not mood words alone; use `references/creative-workflow.md` for the first-screen and critique process.
 - When the user names a known product as a reference and the project has no tokens yet, read only the matching file in `vendor/hermes/popular-web-designs/templates/`. Take vocabulary (density, contrast posture, type roles), never a branded layout.
 - `vendor/ui-ux-pro-max/GUIDE.md` fronts a searchable rule base: `python vendor/ui-ux-pro-max/scripts/search.py "<query>" --domain ux` (use `python3` or `py -3` if `python` is missing). Skip `--persist`; it writes a second design source into the project.
 
@@ -90,11 +98,11 @@ Render and measure every changed screen at phone, tablet and desktop widths:
 
 Per page and width it writes a clean screenshot, a marked screenshot with numbered boxes, `-report.md` with a fix hint per finding, `-report.json`, and `-sheet.png` with all widths side by side. Exit 1 means errors remain; exit 2 means the tool could not run (no browser, page did not load).
 
-- Open the sheet and the marked screenshots and look at them. The machine finds overflow, clipping, overlap, misalignment, uneven rhythm, contrast, Hangul mid-word breaks, scale sprawl and the common AI tells. You judge hierarchy, composition, copy and whether one thing is memorable; `references/review-checklist.md` lists what to look for.
+- Open the sheet and the marked screenshots and look at them. The machine finds overflow, clipping, overlap, misalignment, uneven rhythm, contrast, Hangul mid-word breaks, scale sprawl and the common AI tells. You judge hierarchy, composition, copy and fit to the visual direction; `references/review-checklist.md` lists what to look for.
 - Compare the first rendered screen with the brief and actual product content before extending its composition to other screens. Record concrete visual issues, corrections and recheck evidence in the existing brief/run record (the format is in `references/creative-workflow.md`). Zero measured errors and visual quality are separate judgments. After a relevant edit, refresh the affected screenshots; old images do not prove the final state.
 - Fix errors and rerun until none remain, or `--ignore`/`--disable` a false positive with the reason. Fix the warnings that matter.
 - Findings named `ai-*` are 참고 (info): they point at habits. Keep one when the concept needs it; remove it when it is decoration for its own sake.
-- Judge blandness as hard as breakage: is there one memorable element, does the page look like this subject and no other, would a designer keep it? If it is merely tidy, push the concept further and rerun.
+- Review task fit, hierarchy/proportions, typography, content/assets and responsive composition separately. Tie each material weakness to a visible location and correction. Fix structure before decorative polish, then compare fresh screenshots; use the diagnosis table in `references/creative-workflow.md`. Do not invent a beauty score or add ornament just to make a working tool distinctive.
 - When the change touches forms, keyboard flow or motion, check it against `vendor/web-design-guidelines/command.md` (Vercel's Web Interface Guidelines) for what a renderer cannot see.
 - Changing an existing screen: a design-check run before you edit gives a before/after comparison.
 - Running app: use its dev or staging URL. If nothing is serving, start the project's dev server in the background (its `package.json` scripts or run skill), wait for the port, check, then stop it. Never exercise production data. Pages behind a login: a staging server with a test account, or a saved copy of the rendered HTML.

@@ -2,9 +2,9 @@
 
 Condensed from Anthropic's `frontend-design` (Apache-2.0) and Hermes' `claude-design` (MIT). The full texts are in `../vendor/frontend-design/GUIDE.md` and `../vendor/hermes/claude-design/GUIDE.md`; read them when you need the long form.
 
-## Concept first
+## Direction before decoration
 
-The single biggest difference between a page people call pretty and one they call generated is a concept: one idea taken from the subject's world and carried through color, type, shape and the memorable element. Airmail for an address converter, the paper slip for a lottery picker, ink and a red seal for fortune telling. Find it before the layout, then let it license boldness: saturated color, big type, illustration, texture, a tilt, a stripe. Restraint is a tool, not a goal; a page that avoids every tell but has no idea is bland, and bland reads as generated too.
+Choose a direction that serves the product and its users, then make it visible in proportions, type, density and imagery. An expressive page may draw on the subject's materials or rituals: airmail for an address converter or a paper slip for a lottery picker. A working tool may instead earn its quality through precise alignment, useful density and familiar controls. A metaphor is optional. Neither bold decoration nor extreme restraint guarantees quality; judge the rendered composition against the actual task.
 
 ## Start from context, not vibes
 
@@ -26,7 +26,7 @@ State the surface in one line. A dashboard is Monitor, not Decide. If a screen s
 
 ## Plan, then check the plan
 
-Before code, settle surface, reading order (first, second, third), the one memorable element, type roles, color posture, what stays quiet, alignment and density. If any part is what you would produce for any similar brief, change it.
+Before code, settle surface, reading order (first, second, third), dominant content, type roles, color posture, what stays quiet, alignment and density. Reuse familiar patterns when they fit; change a generic composition when it fails the actual content or task. Distinctiveness should come from appropriate decisions, not novelty for its own sake.
 
 ## Ground the look in the subject
 
@@ -44,7 +44,7 @@ Brand or design-system colors first. Without them, a small system: ink, muted te
 
 ## Structure is information
 
-Borders, dividers, eyebrows, numbering and outlines encode meaning or they go. Spend boldness in one place and keep everything around it quiet. Build to a quality floor without announcing it: responsive to phones, visible keyboard focus, reduced motion respected, readable contrast. Before shipping, remove one accessory.
+Borders, dividers, eyebrows, numbering and outlines should clarify relationships. Establish a dominant region with quieter supporting content, and use space before unnecessary containers. Build to a quality floor without announcing it: responsive to phones, visible keyboard focus, reduced motion respected, readable contrast. Remove accessories that add no meaning; do not remove useful cues to satisfy a quota.
 
 ## Motion
 
@@ -54,9 +54,39 @@ One orchestrated moment lands better than scattered effects; fade-and-slide-up o
 
 No fake metrics, decorative stats, generic feature grids, placeholder testimonials, filler sections, or invented claims. Mark draft copy as draft. Write from the user's side, in their words: active voice, sentence case, a button that says what happens ("Save changes", not "Submit") and keeps its name through the flow ("Publish" produces "Published"). Errors say what went wrong and how to fix it; an empty state is an invitation to act.
 
+## Subtract low-value UI
+
+For each visible element, ask what would be lost if it were removed: new
+information, an action, orientation, feedback or purposeful visual expression.
+If none is lost, remove it. Let placement, grouping, spacing and type hierarchy
+explain relationships before adding another caption or container. This is a
+review of meaning, not a word-count target or a demand for bare screens.
+
+| Pattern to remove by default | Better treatment |
+| --- | --- |
+| A subtitle that paraphrases its heading | Under `프로젝트 목록`, omit `프로젝트를 확인하고 관리하세요` when the list and actions already convey it. |
+| Several phrases for one state | Keep `사용 가능`; omit adjacent `지금 사용할 수 있습니다`. Keep distinct availability conditions. |
+| A decorative micro-label or number | Remove `OVERVIEW` above a self-explanatory heading and `01/02/03` from non-sequential content. Retain useful category or step labels. |
+| Every fragment wrapped in a card | Use shared space, rows or a table when the content belongs together; keep containers that clarify a meaningful group or action. |
+| Automatic emphasis and effects | Omit arbitrary headline-word coloring, repeated icon toppers, gradient accents and reveal animations unless they direct attention, explain change or support the chosen visual direction. |
+| Generic slogans or filler sections | State the actual capability and audience. Do not invent benefits, statistics or testimonials to balance a layout. |
+
+Keep button labels short and specific to the action; shorten redundant object
+names only when the target stays clear. Preserve visible input labels,
+accessible names, units, date ranges, constraints, recovery instructions and
+consequential-action information. A status icon plus text can improve access;
+two sentences saying the same thing add no information. Do not replace useful
+visible guidance with an ambiguous icon or a hover-only tooltip.
+
+In rendered review, check whether removal preserves first-time comprehension
+and the next action. If it does not, restore the needed cue or fix the grouping.
+Do not claim a comprehension study from visual inspection alone. Fix identified
+noise before completion; a passing geometry report does not detect semantic
+duplication or prove that the remaining copy is useful.
+
 ## Variations
 
-When exploring, three options: conservative (closest to what exists), strong fit (best reading of the brief), divergent (to find the taste boundary). Not color swaps. When the user picks, consolidate; do not leave a pile of options.
+When alternatives would resolve an open decision, compare different compositions: conservative (closest to what exists), strong fit (best reading of the brief), divergent (to find the taste boundary). Not color swaps. A supplied reference or established direction can make this unnecessary. Once a direction is chosen, consolidate.
 
 ## The ten AI tells (habits to notice, not rules to obey)
 
@@ -71,9 +101,9 @@ When exploring, three options: conservative (closest to what exists), strong fit
 9. Default type: Inter or system-ui used by default rather than chosen.
 10. Wrong surface: the composition does not match the surface (a hero on a Monitor). The root cause behind most of the others.
 
-Current clichés to add to the list: cream background with a high-contrast serif display and a terracotta accent; near-black with one acid-green or vermilion accent; broadsheet hairlines with zero radius and dense columns; the SaaS card kit (identical rounded cards, one radius everywhere, the same soft shadow, gradient washes); template chrome (tracked ALL-CAPS eyebrow above every heading, "A · B · C" meta strings, "WORD — fragment" labels, tinted near-black, monospace for small data labels, "→" on every button). All legitimate for some briefs; none a default.
+Do not replace these habits with a new universal aesthetic. A cream editorial page, dark technical console or rounded card system can each be appropriate. Judge why the treatment belongs here and whether its execution supports the content; its popularity alone is not a defect.
 
-Diagnose first, then repair in the matching register. Tells 3, 8 and 10 need a new composition (do not recolor). Tells 1, 2 and 9 need a new palette or type. Tells 4 to 7 need the decoration removed and hierarchy rebuilt with scale, weight and spacing. Re-score after repairing; do not stop while 3, 8 or 10 still fire. `design-check` flags 1, 4, 5, 6, 7, 8 and 9 (and part of 2) mechanically; 3 and 10 are yours to judge.
+Diagnose first, then repair at the right level. When an equal tile grid, center stack or wrong surface fails the task, change the composition before recoloring. When palette, type or decoration undermines hierarchy, correct that relationship. A detected habit is a prompt to inspect, not a demand to replace a valid choice. `design-check` flags 1, 4, 5, 6, 7, 8 and 9 (and part of 2) mechanically; 3 and 10 are yours to judge. The diagnosis table in `creative-workflow.md` connects visible symptoms to corrections.
 
 ## Verification
 

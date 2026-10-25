@@ -22,11 +22,12 @@ do not apply. Link existing design/token sources; do not redefine them here.
 
 ## Direction and structure
 
-- Concept and memorable element: [subject-specific idea and how it is visible]
+- Visual direction: [why it fits the audience/task; concrete density, type and proportion choices; signature element only if useful]
 - Reuse: [links to brand assets, components and authoritative tokens]
 - Reading order: [first, second, third]
 - Sections/states: [purpose, real content and next action for each]
-- Reference decisions, if needed: [source inspected; principle to borrow; avoid]
+- Reference decisions, if needed: [source inspected; observed relationship such as column balance/type hierarchy/crop; what transfers and what does not]
+- First representative screen: [content and assets needed to judge the direction before extending it]
 
 ## Interaction and adaptation
 
@@ -36,7 +37,9 @@ do not apply. Link existing design/token sources; do not redefine them here.
 
 ## Decisions and visual review
 
-[Keep selected/rejected directions and later user changes here.]
+[Keep selected/rejected directions and later user changes here. Compare task
+fit, hierarchy/proportions, type, content/assets and phone adaptation against
+the brief; record visible shortcomings rather than a numeric beauty score.]
 
 | Issue and screen/state | Intended correction | Recheck evidence | Status |
 | --- | --- | --- | --- |

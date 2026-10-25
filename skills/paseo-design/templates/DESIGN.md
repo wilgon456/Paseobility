@@ -67,14 +67,14 @@ components:
 
 ## Overview
 
-Who uses this, how often, for how long, and what the screen must make fast. Two or three sentences; no adjective without a reason. Replace every value above with the project's own before writing UI; these are placeholders that pass the linter, not a recommendation.
+Who uses this, how often, for how long, and what the screen must make fast. Two or three sentences; no adjective without a reason. This template's tokens and prose illustrate a quiet working interface, not a universal style. Replace them with the chosen direction before writing UI, including component policies and do-not rules. These are placeholders that pass the linter, not a recommendation. Do not create this file when authoritative project rules already exist.
 
 ## Colors
 
 - Primary (#1F2328): text and headlines. Not a fill.
 - Secondary (#57606A): supporting text and metadata; 6.4:1 on the neutral background, never below 4.5:1 wherever it sits.
-- Tertiary (#0B5CD5): the only interaction color: primary buttons, links, selected states. One primary action per view. 5.9:1 under white text.
-- Neutral, surface, border: page, panels, hairlines. No gradients.
+- Tertiary (#0B5CD5): primary buttons, links and selected states in this example. Establish action hierarchy for each task/state. 5.9:1 under white text.
+- Neutral, surface, border: page, panels, hairlines. Describe any expressive backgrounds chosen for the actual direction and how contrast is maintained.
 
 ## Typography
 
@@ -90,14 +90,14 @@ Two radii: `sm` on inputs and chips, `md` on buttons and cards. Nothing else.
 
 ## Components
 
-- `button-primary`: one per view; the label says what happens.
-- `card`: a grouping surface with a hairline border, no shadow, never nested inside another card.
-- `table-head`: the only tinted row in a table; body rows stay on the page background.
+- `button-primary`: the main action for the current task/state; the label says what happens.
+- `card`: a meaningful grouping surface; specify border or elevation for the actual direction. Prefer shared space or rows when separate containers add no meaning.
+- `table-head`: distinguish column labels; specify body, selected and exceptional row treatments as the product needs them.
 - `divider`: a 1px hairline in the border color; the way to separate groups before reaching for a card.
 
 ## Do's and Don'ts
 
 - Do reuse an existing component before adding one.
 - Don't add colors, radii, shadows or font sizes outside this file; extend the file first.
-- Don't use gradients, glass, glows, left accent rails, tracked uppercase labels, emoji as icons, or arrows in button text.
-- Don't center multi-line paragraphs.
+- Record which treatments do not fit this project's direction and why. Avoid copying a universal style blacklist.
+- Use paragraph alignment and line length that support reading; reserve centered text for short content when the composition benefits.

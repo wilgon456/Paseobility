@@ -9,29 +9,37 @@ first rendered screen before propagating its composition. After edits, inspect
 fresh images of the affected screen/state; a zero-error report alone does not
 establish visual quality.
 
-## Concept and appeal
+## Direction and fit
 
-- Can you say the concept in one line, and is it visible in color, type and the memorable element?
-- Would someone call this pretty, or only tidy? Bland is a defect: push the concept until the page could only belong to this subject.
-- Is boldness spent in one place, with everything around it calm?
+- Does the visual direction fit the audience, task and existing product, with visible choices in density, type and proportions?
+- Against the chosen reference or brief, what specifically falls short: column balance, type hierarchy, imagery, spacing rhythm or emphasis? Point to a location rather than assigning a taste score.
+- Is expressive treatment purposeful where used, and does a quiet working screen remain clear without forced decoration?
 
 ## Hierarchy (the first three seconds)
 
 - Can you tell what the screen is for and what to do first without reading everything?
-- Is there exactly one primary action per view, and does it look like the most important thing?
+- Is the next action clear for the current task/state, with secondary and destructive actions appropriately distinguished?
 - Does the reading order follow the task order?
 
 ## Composition
 
 - Does the layout match the surface you named? A Monitor with a hero, or a Configure screen with marketing cards, is a composition error: relayout, do not restyle.
-- Is there one memorable element with everything else quiet, or does every block shout equally?
+- Do the dominant content and supporting regions have deliberate proportions, or does every block shout equally?
 - Are related things close and unrelated things apart, grouped by space before boxes?
 - Same job, same component, same place, across screens?
+- Does the whole-page rhythm vary with the content while recurring edges and type roles stay consistent? Are there oversized blank regions or repetitive containers with no purpose?
+
+## Type and assets
+
+- Do headings, body, values and metadata have distinct, consistent roles at actual viewing size? Is supporting text still readable?
+- Does imagery demonstrate or express something relevant, with a useful crop at each width? Have placeholders or unrelated assets been mistaken for a finished visual direction?
 
 ## Content
 
 - Does every label use the user's words, sentence case, active voice?
 - Do buttons say what happens, and keep that name through the flow?
+- Does each subtitle or helper sentence add information needed to act? Remove repeated headings and obvious instructions; check that grouping and hierarchy remain clear at every width while preserving input labels, accessible names and necessary guidance.
+- Apply the subtraction examples in `design-digest.md`: any repeated status phrases, decorative micro-labels, redundant card wrappers or automatic emphasis/effects? Remove what adds no meaning, then check the updated screen; keep units, time ranges, orientation and recovery cues.
 - Do empty, loading and error states tell the user what to do next?
 - Any filler: fake numbers, placeholder testimonials, "Insights / Growth / Scale" labels, decorative icons?
 - Can material claims be traced to product evidence? Are sample data, simulated demos and planned capabilities visibly distinguished from working behavior?
@@ -52,6 +60,7 @@ establish visual quality.
 ## Phone (375)
 
 - Is the primary action reachable for the main task without hunting?
+- Does the phone composition preserve reading order and useful context, with secondary material still accessible?
 - Do fixed headers or footers stack into two bars or hide content behind them?
 - Do tables scroll horizontally on purpose, or reflow into something readable?
 
@@ -60,4 +69,4 @@ establish visual quality.
 - Focus rings visible; hover and pressed states exist; disabled looks disabled but stays readable.
 - Icons from one set, one stroke weight, optically aligned with their text.
 - Shadows and radii from the scale, no near-duplicates.
-- Before shipping, remove one accessory.
+- Remove accessories that add no meaning; retain cues that support understanding or action.
