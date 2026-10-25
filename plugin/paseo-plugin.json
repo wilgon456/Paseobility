@@ -1,12 +1,13 @@
 {
   "id": "paseobility",
   "name": "Paseobility",
-  "description": "Paseo skills from the composer and the + menu, with version checks and one-click updates.",
+  "description": "Choose from eleven Paseo workflows, attach skills to your draft, and manage installed versions on each computer.",
   "media": [
-    "media/screen.png",
+    "media/cover.png",
     "media/skills.png"
   ],
   "requirements": {
     "paseo": ">=0.12.0 <0.14.0"
-  }
+  },
+  "icon": "media/icon.png"
 }
