@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "phaseTimeoutSeconds": 7200,
+  "projects": [
+    {
+      "id": "paseo_slash",
+      "targets": [
+        {
+          "machine": "MAC_HOME",
+          "repo": "/absolute/macbook/path/paseo_slash",
+          "defaultBranch": "main",
+          "enabled": false,
+          "gates": [
+            "python3 -m unittest discover -s tests -p 'test_*.py'",
+            "python3 scripts/validate-skills.py"
+          ],
+          "deployCommands": [],
+          "skills": []
+        },
+        {
+          "machine": "MAC_COM",
+          "repo": "/absolute/mac-com/path/paseobility",
+          "defaultBranch": "main",
+          "enabled": false,
+          "gates": [
+            "python3 -m unittest discover -s tests -p 'test_*.py'"
+          ],
+          "deployCommands": [],
+          "skills": []
+        }
+      ]
+    },
+    {
+      "id": "personal-blog",
+      "targets": [
+        {
+          "machine": "MAC_HOME",
+          "repo": "/absolute/macbook/path/personal-blog",
+          "defaultBranch": "main",
+          "enabled": false,
+          "gates": [
+            "npm run typecheck",
+            "npm run test",
+            "npm run build"
+          ],
+          "deployCommands": [
+            "npm run deploy"
+          ],
+          "skills": [
+            "paseo-design"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vax-wiki-gateway",
+      "targets": [
+        {
+          "machine": "VAX_COM",
+          "repo": "C:\\absolute\\path\\vax-wiki-gateway",
+          "defaultBranch": "master",
+          "enabled": false,
+          "gates": [
+            "python ops/selftest_all.py"
+          ],
+          "deployCommands": [],
+          "skills": []
+        }
+      ]
+    },
+    {
+      "id": "ai_cli_auto_manager",
+      "targets": [
+        {
+          "machine": "MAC_MINI",
+          "repo": "/absolute/mac-mini/path/ai_cli_auto_manager",
+          "defaultBranch": "main",
+          "enabled": false,
+          "gates": [
+            "bash tests/aicm_test.sh",
+            "python3 tests/cleanup_safety_test.py"
+          ],
+          "deployCommands": [],
+          "skills": []
+        }
+      ]
+    }
+  ],
+  "machineAliases": {
+    "MacBook": "MAC_HOME",
+    "VAXPORT": "VAX_COM"
+  }
+}

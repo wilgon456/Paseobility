@@ -18,6 +18,8 @@
 
 ---
 
+`tools/paseo-bot`에 상주형 **Paseo bot** v1을 추가했습니다. 연결된 모든 프로젝트의 PC·경로·검증 명령을 등록하고 Grok 작업 큐에서 worktree 실행과 독립 검수를 진행합니다. [Paseo bot 안내](docs/paseo-bot.md).
+
 ## 시작 전에
 
 **현재 패키지: v2.12.2.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).

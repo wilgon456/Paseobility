@@ -50,6 +50,9 @@ jobs:
       - name: Paseo Multi adapter syntax
         run: node --check skills/paseo-multi/scripts/rpc.mjs
 
+      - name: Paseo bot bridge contracts
+        run: node --test tools/paseo-bot/bridge.test.mjs
+
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py
 
@@ -161,6 +164,9 @@ jobs:
 
       - name: Paseo Multi adapter syntax
         run: node --check skills/paseo-multi/scripts/rpc.mjs
+
+      - name: Paseo bot bridge contracts
+        run: node --test tools/paseo-bot/bridge.test.mjs
 
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py
