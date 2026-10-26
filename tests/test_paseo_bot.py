@@ -63,7 +63,7 @@ class Fake:
 class BotTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.home = Path(self.temp.name) / 'state'
+        self.home = Path(self.temp.name) / 'state with spaces'
         self.fake = Fake()
         self.bot = m.Bot(self.home, self.fake)
         self.bot.host = lambda name: {'label': name, 'serverId': 'srv-' + name}
@@ -192,6 +192,9 @@ class BotTests(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout)['id'], 'unicode-pipeline')
         saved = json.loads(self.bot.db.execute('SELECT body FROM tasks WHERE id=?',('unicode-pipeline',)).fetchone()[0])
         self.assertEqual(saved['title'], '한글 작업')
+        r = subprocess.run(base+[str(wrapper),'status','-State',str(self.home)],capture_output=True,encoding='utf-8')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('queue', json.loads(r.stdout))
 
     def test_idempotent_submission_and_conflict(self):
         self.bot.submit(self.body)

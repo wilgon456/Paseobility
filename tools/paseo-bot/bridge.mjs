@@ -5,6 +5,7 @@ import {pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
 const req = JSON.parse(fs.readFileSync(0, 'utf8'));
 let client;
+let stage='connect';
 function endpoint(h) {
   if (h.endpoint) return h.endpoint;
   const r = h.connections?.find(c => c.type === 'relay');
@@ -38,6 +39,7 @@ async function main() {
   const {connectToDaemon}=await import(pathToFileURL(process.env.PASEO_MULTI_HOST_CLIENT_MODULE).href);
   const target=endpoint(req.host);
   client=await connectToDaemon({target:{kind:'endpoint',host:target},timeout:10000});
+  stage='identity';
   const status=await client.getDaemonStatus({timeout:10000});
   if(status.serverId!==req.host.serverId) throw Error('identity');
   if(req.action==='discover') {
@@ -62,6 +64,7 @@ async function main() {
     return {accepted:true};
   }
   if(req.action==='launch') {
+    stage='profile';
     const c=await client.getDaemonConfig();
     const matches=profileRows(c.config ?? c).filter(p=>p.name===req.profile);
     if(matches.length!==1) throw Error('profile');
@@ -88,6 +91,7 @@ async function main() {
     const module=process.env.PASEO_MULTI_HOST_CLIENT_MODULE;
     const cli=path.join(path.dirname(path.dirname(module)),'index.js');
     const prefix=JSON.parse(process.env.PASEO_BOT_RUNTIME_PREFIX ?? '[]');
+    stage='cli';
     const raw=await new Promise((resolve,reject)=>{
       const child=spawn(process.execPath,[...prefix,cli,...argv],{env,stdio:['ignore','pipe','pipe']});
       let out='';const timer=setTimeout(()=>{child.kill();reject(Error('launch outcome unknown'));},45000);
@@ -95,6 +99,7 @@ async function main() {
       child.stderr.resume();child.on('error',()=>{clearTimeout(timer);reject(Error('launch'));});
       child.on('close',code=>{clearTimeout(timer);if(code!==0)reject(Error('launch'));else {try{resolve(JSON.parse(out));}catch{reject(Error('schema'));}}});
     });
+    stage='receipt';
     const a=raw.data ?? raw;
     if(!a.agentId)throw Error('receipt');
     const fetched=await client.fetchAgent({agentId:a.agentId});
@@ -104,5 +109,10 @@ async function main() {
   throw Error('action');
 }
 try {process.stdout.write(JSON.stringify({ok:true,result:await main()}));}
-catch {process.stdout.write(JSON.stringify({ok:false,error:'Paseo operation failed; check host identity, connectivity, profile and client compatibility privately.'}));process.exitCode=1;}
+catch(e) {
+  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt']);
+  // Fixed diagnostic vocabulary only. Never return raw transport/CLI messages.
+  const reason=known.has(e?.message)?e.message.replaceAll(' ','-'):'operation';
+  process.stdout.write(JSON.stringify({ok:false,stage,reason,error:'Paseo operation failed; inspect private configuration.'}));process.exitCode=1;
+}
 finally {await client?.close().catch(()=>{});}

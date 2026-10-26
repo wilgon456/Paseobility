@@ -27,6 +27,15 @@ TERMINAL = {'passed', 'failed', 'blocked', 'unknown'}
 ID = re.compile(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\Z')
 SHA = re.compile(r'[0-9a-f]{40,64}\Z')
 DEFAULT_HOME = Path.home() / '.config/paseo-bot'
+
+
+class BridgeFailure(ValueError):
+    def __init__(self, stage='operation', reason='operation'):
+        self.stage = stage if stage in ['connect', 'identity', 'profile', 'cli', 'receipt'] else 'operation'
+        self.reason = reason if reason in ['identity', 'connection', 'profile', 'profile-unsupported', 'provider-unavailable', 'unknown-mode', 'launch', 'launch-outcome-unknown', 'schema', 'receipt', 'workspace-receipt'] else 'operation'
+        super().__init__('Paseo operation failed; inspect private host and profile configuration.')
+
+
 SNAPSHOT_SCRIPT = '''import hashlib, os, pathlib, subprocess
 h = hashlib.sha256(subprocess.check_output(['git','diff','--binary','HEAD','--']))
 for name in sorted(subprocess.check_output(['git','ls-files','--others','--exclude-standard','-z']).split(b'\\0')):
@@ -128,8 +137,10 @@ def bridge(host, action, **kwargs):
                            capture_output=True, text=True, encoding='utf-8', env=env, timeout=65)
         value = json.loads(r.stdout)
         if r.returncode or not value.get('ok'):
-            raise ValueError('Paseo operation failed.')
+            raise BridgeFailure(value.get('stage'), value.get('reason'))
         return value['result']
+    except BridgeFailure:
+        raise
     except (subprocess.SubprocessError, ValueError, OSError):
         raise ValueError('Paseo operation failed; inspect private host and profile configuration.') from None
 
@@ -408,8 +419,10 @@ class Bot:
                 args['workspaceId'] = r['workspaceId']
             try:
                 receipt = self.rpc(h, 'launch', **args)
-            except ValueError:
+            except ValueError as error:
                 # Leave dispatching for reconciliation on the next tick.
+                r['launchDiagnostic'] = {'stage': getattr(error, 'stage', 'operation'), 'reason': getattr(error, 'reason', 'operation')}
+                self.save(r)
                 return r
             r['runs'].append(dict(receipt, stage=stage, attempt=r['attempt']))
             r['state'] = 'running'
