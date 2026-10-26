@@ -29,6 +29,8 @@ class Fake:
         self.repairs = 0
         self.omit_snapshot = False
         self.fail_repair = False
+        self.postflight_suffix = ''
+        self.postflight_override = None
         self.busy = {'MacBook': 3, 'MAC_MINI': 0, 'MAC_COM': 1, 'VAXPORT': 2}
 
     def __call__(self, host, action, **kw):
@@ -56,7 +58,10 @@ class Fake:
                 e['head'] = 'd' * 40
             if stage == 'review' and self.omit_snapshot and not self.repairs:
                 del e['snapshot']
-            return {'workspaceId': 'workspace1' if stage == 'preflight' else 'workspace2', 'cwd': '/repo' if stage == 'preflight' else '/worktree', 'status': self.status, 'message': '' if self.empty else 'PASEO_BOT_RESULT=' + json.dumps(e)}
+            receipt = json.dumps(e)
+            if stage == 'postflight':
+                receipt = self.postflight_override if self.postflight_override is not None else '  ' + receipt + self.postflight_suffix
+            return {'workspaceId': 'workspace1' if stage == 'preflight' else 'workspace2', 'cwd': '/repo' if stage == 'preflight' else '/worktree', 'status': self.status, 'message': '' if self.empty else 'PASEO_BOT_RESULT=' + receipt}
         raise AssertionError(action)
 
 
@@ -332,6 +337,41 @@ class BotTests(unittest.TestCase):
         self.bot.submit(self.body)
         self.assertEqual(self.drive()['state'], 'blocked')
         self.assertEqual(len(self.fake.launches), 4)
+
+    def test_postflight_accepts_first_complete_object_with_trailing_characters(self):
+        self.fake.postflight_suffix = ' \t** stray } {"verdict":"fail"}'
+        self.bot.submit(self.body)
+        r = self.drive()
+        self.assertEqual(r['state'], 'passed')
+        self.assertEqual(r['evidence']['postflight']['verdict'], 'pass')
+        self.assertEqual(self.fake.repairs, 0)
+        self.assertEqual(len(self.fake.launches), 4)
+
+    def test_trailing_characters_do_not_bypass_snapshot_validation(self):
+        self.fake.postflight_suffix = '**'
+        self.fake.changed_snapshot = True
+        self.bot.submit(self.body)
+        self.assertEqual(self.drive()['state'], 'blocked')
+        self.assertEqual(self.fake.repairs, 0)
+
+    def test_incomplete_postflight_object_still_blocks_after_one_correction(self):
+        self.fake.postflight_override = '{"verdict":"pass"'
+        self.bot.submit(self.body)
+        self.assertEqual(self.drive()['state'], 'blocked')
+        self.assertEqual(self.fake.repairs, 1)
+        self.assertEqual(len(self.fake.launches), 4)
+
+    def test_multiple_receipt_markers_still_block(self):
+        self.fake.postflight_suffix = '\nPASEO_BOT_RESULT={"verdict":"pass"}'
+        self.bot.submit(self.body)
+        self.assertEqual(self.drive()['state'], 'blocked')
+        self.assertEqual(self.fake.repairs, 1)
+
+    def test_non_object_postflight_value_still_blocks(self):
+        self.fake.postflight_override = '[] trailing'
+        self.bot.submit(self.body)
+        self.assertEqual(self.drive()['state'], 'blocked')
+        self.assertEqual(self.fake.repairs, 1)
 
     def test_unauthorized_commit_blocks(self):
         self.fake.changed_head = True

@@ -502,7 +502,10 @@ class Bot:
                 return self.save(r)
             lines = [x[len('PASEO_BOT_RESULT='):] for x in observed.get('message', '').splitlines() if x.startswith('PASEO_BOT_RESULT=')]
             try:
-                e = scrub(json.loads(lines[0])) if len(lines) == 1 else None
+                # Agents sometimes append Markdown or stray characters after
+                # the object. Decode one complete value; all receipt/schema
+                # checks below still apply, and multiple markers stay invalid.
+                e = scrub(json.JSONDecoder().raw_decode(lines[0].lstrip())[0]) if len(lines) == 1 else None
             except ValueError:
                 e = None
             required = {'verdict', 'summary', 'branch', 'head', 'cwd', 'gates', 'files'}
