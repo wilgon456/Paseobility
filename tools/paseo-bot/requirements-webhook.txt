@@ -1,0 +1,2 @@
+# Official SDK, installed in a dedicated host-local venv; never the shared broker.
+bitwarden-sdk==2.1.0
