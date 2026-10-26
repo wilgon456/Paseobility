@@ -139,7 +139,7 @@ script schema (see `paseo script --help` and your installed Paseo documentation)
 with the following script (replace the absolute paths):
 
 ```json
-{"scripts":{"paseo-bot":{"type":"service","command":"python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py --state /absolute/private/paseo-bot serve"}}}
+{"scripts":{"paseo-bot":{"type":"script","command":"python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py --state /absolute/private/paseo-bot serve"}}}
 ```
 
 Create a local workspace for that directory, launch a coordinator agent with the
