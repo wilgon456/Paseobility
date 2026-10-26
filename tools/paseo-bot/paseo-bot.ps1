@@ -19,12 +19,13 @@ end {
     [Console]::OutputEncoding = $utf8
     $prefix = @()
     if (!$Python) {
-      $launcher = Get-Command py.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-      if ($launcher) { $Python = $launcher.Source; $prefix = @('-3') }
+      $launcher = Get-Command python.exe -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch '\\WindowsApps\\' } | Select-Object -First 1
+      if ($launcher) { $Python = $launcher.Source }
       else {
-        $launcher = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        $launcher = Get-Command py.exe -ErrorAction SilentlyContinue | Select-Object -First 1
         if (!$launcher) { throw 'Python unavailable' }
         $Python = $launcher.Source
+        $prefix = @('-3')
       }
     }
     $argv = $prefix + @('-X','utf8',(Join-Path $PSScriptRoot 'paseo_bot.py'),'--state',$State,$Command)
