@@ -98,7 +98,8 @@ copy. The resulting new plan needs another confirmation and uses new IDs, with
 
 ## Interface and evidence
 
-The overview separates runner heartbeat, manager/service state and SSH health.
+The secondary overview shows queue totals and runner heartbeat. The chat header
+separates SSH reconnection from a manager service that has stopped responding.
 Search/project/machine/requester/state/sort filters run over the entire queue,
 not only a page. The 100-item page and result count are explicit. Kanban and list
 share filters. Running includes preflight/work/review/postflight; blocked and
@@ -107,8 +108,8 @@ unassigned instead of inventing a machine/model.
 
 Card detail offers a four-stage timeline, structured receipts/gate exit codes,
 safe PR links, expandable/filterable JSON and host clipboard copy. It never
-claims unsaved raw logs exist. Chat has project/template pickers, source-linked
-task links, saved reading position within a mounted session, a new-message
+claims unsaved raw logs exist. Chat has no required pickers. It provides source-linked task links, saved
+reading position and drafts within a mounted session, a new-message
 control, Enter/Shift+Enter with IME protection, `/` search and `N` composer focus.
 Native host Modal/Markdown/toast/Icon are reused. Controls are 44px; colors come
 from the host theme. Keyboard arrows navigate cards. Explicitly saved assistant
