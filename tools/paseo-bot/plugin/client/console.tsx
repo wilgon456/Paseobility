@@ -104,11 +104,13 @@ export function Console(p: Props) {
     ? "다시 연결 중"
     : p.loading && !p.data
       ? "연결 중"
-      : p.data?.deliveryState
-        ? "답변하는 중"
-        : running
-          ? `${running}개 작업 중`
-          : "연결됨";
+      : p.data?.configured && !p.data.managerHealthy
+        ? "봇 응답 확인 중"
+        : p.data?.deliveryState
+          ? "답변하는 중"
+          : running
+            ? `${running}개 작업 중`
+            : "연결됨";
   return (
     <View
       testID="bot-console"
