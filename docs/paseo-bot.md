@@ -244,3 +244,71 @@ they do not certify every project's gates, deployment, or remote coding provider
   reviewed/final SHA256. Earlier blocked development receipts remain retained.
 - Real Grok Bot transport wiring, every project's gates, and remote coding E2E
   remain separate rollout work; see the private report/checklist.
+
+## Windows PowerShell and owner handoff
+
+`tools/paseo-bot/paseo-bot.ps1` is a PowerShell 5.1/7 entrypoint. It accepts a
+UTF-8 JSON file (with or without BOM), or pipeline JSON, and emits UTF-8 JSON.
+It uses the local Python launcher without a shell-built command string. Examples
+for a private Windows runtime pinned to the PR commit:
+
+```powershell
+$Bot = Join-Path $env:USERPROFILE '.local\share\paseo-bot\runtime\tools\paseo-bot\paseo-bot.ps1'
+& $Bot submit -File 'C:\path\task.json'
+Get-Content -Raw -Encoding UTF8 'C:\path\task.json' | & $Bot submit
+& $Bot status
+& $Bot status 'task-id'
+& $Bot result 'task-id'
+```
+
+Use `-State` for a nondefault queue and `-Python` for a specific interpreter.
+`status` reports heartbeat, ownership mode, queue counts and task states; a task
+ID gives a compact task status. `result` returns the full receipt. The wrapper
+restores PowerShell encoding settings and propagates the Python exit code.
+
+Migrated queues use a private `owner.json` bound to the controller's OS hostname:
+
+- `active`: this host can admit tasks and dispatch.
+- `standby`: heartbeat/readiness works; intake and dispatch are disabled.
+- `retired`: intake and dispatch remain disabled, including accidental restarts.
+- A copy bound to another hostname cannot dispatch until explicitly rebound to
+  standby. Retired queues cannot jump straight back to active.
+
+Manage the fence with the Python entrypoint (not with hand-edited task records):
+
+```powershell
+python -X utf8 .\tools\paseo-bot\paseo_bot.py owner --mode standby --label VAX_COM --rebind
+python -X utf8 .\tools\paseo-bot\paseo_bot.py owner --mode active --label VAX_COM
+```
+
+Use `--state PATH` before `owner` when necessary. Existing unfenced v1 queues
+remain compatible as `legacy`; install a fence before migration. Owner changes
+serialize with both runner and intake locks. Intake holds its separate lock for
+the full transaction, so retirement cannot race an already admitted request.
+Windows paths in remote receipts compare using Windows case/separator rules;
+Mac paths remain case-sensitive and are never resolved on the controller.
+
+For a single-owner handoff, prepare the destination with a pinned clean runtime,
+private user ACLs, its existing host registry and a standby fence. Verify a fresh
+standby heartbeat and all destination-to-fleet connections before stopping the
+source. Retire and stop the source, then use SQLite's backup API for the final
+queue snapshot under the runner/intake locks. Copy project policy and result
+records, preserving historical remote paths and all task IDs/events. Archive
+source-only workspace/agent receipts instead of making them live destination
+identities. Do not overwrite a running destination SQLite database: stop its
+standby script for final import, restore/verify the snapshot, restart in standby,
+and activate only after the source retirement is confirmed. Keep the old source
+fenced and its backup intact; never run both copies active.
+
+A healthy standby only proves readiness. It does not claim active dispatch or
+satisfy an end-to-end smoke. Verify a complete task from the new controller after
+activation, including actual worktree files, gates, independent review and final
+result retrieval through PowerShell.
+
+For Tailscale-only fleet routing, put explicit verified SSH-over-Tailscale
+endpoints into the destination's existing private `paseo-multi` registry. Endpoint
+selection precedes saved relay connections; a failed tunnel does not silently
+fall back to relay. Verify SSH host keys through an already authenticated control
+path, preserve existing registry/known-host backups, and use strict host-key
+checking. Do not print connection material, change private keys or restart
+working daemons just to move the controller.

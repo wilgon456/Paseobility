@@ -5,10 +5,12 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import hashlib
 import json
+import ntpath
 import os
 from pathlib import Path
 import re
 import signal
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -46,6 +48,14 @@ def classify(body):
     if re.search(r'^(git[- ]sync|sync branch|git 상태)', text):
         return 'sync'
     return 'gpt'
+
+
+def same_remote_path(a, b):
+    if not isinstance(a, str) or not isinstance(b, str):
+        return False
+    if re.match(r'^[A-Za-z]:[\\/]|^\\\\', a):
+        return ntpath.normcase(ntpath.normpath(a)) == ntpath.normcase(ntpath.normpath(b))
+    return a == b
 
 
 def scrub(value):
@@ -88,9 +98,9 @@ def write_json(path, value):
 
 
 @contextmanager
-def lock(home):
+def lock(home, name='runner.lock'):
     private_dir(home)
-    file = home / 'runner.lock'
+    file = home / name
     if file.exists() or file.is_symlink():
         private_file(file)
     fd = os.open(file, os.O_RDWR | os.O_CREAT | getattr(os, 'O_NOFOLLOW', 0), 0o600)
@@ -180,11 +190,55 @@ class Bot:
         private_file(self.registry_path)
         return validate_config(json.loads(self.registry_path.read_text(encoding='utf-8')))
 
+    def ownership(self):
+        file = self.home / 'owner.json'
+        here = socket.gethostname().casefold()
+        if not file.exists():
+            return {'mode': 'legacy', 'host': here, 'dispatchEnabled': True, 'acceptsTasks': True}
+        private_file(file)
+        owner = json.loads(file.read_text(encoding='utf-8-sig'))
+        if owner.get('version') != 1 or owner.get('mode') not in ['active', 'standby', 'retired'] or not isinstance(owner.get('host'), str):
+            raise ValueError('Invalid owner fence.')
+        matched = owner['host'] == here
+        enabled = matched and owner['mode'] == 'active'
+        return dict(owner, hostMatches=matched, dispatchEnabled=enabled, acceptsTasks=enabled)
+
+    def set_owner(self, mode, label=None, rebind=False):
+        with lock(self.home), lock(self.home, 'intake.lock'):
+            old = self.ownership()
+            if rebind and mode != 'standby':
+                raise ValueError('Rebinding is allowed only into standby.')
+            if not rebind and (old.get('hostMatches') is False or (old['mode'] == 'retired' and mode != 'retired')):
+                raise ValueError('Retired or copied queues require explicit standby rebind.')
+            write_json(self.home / 'owner.json', {'version': 1, 'host': socket.gethostname().casefold(),
+                       'label': label or old.get('label', ''), 'mode': mode, 'changedAt': time.time()})
+        return self.ownership()
+
+    def health(self):
+        file = self.home / 'health.json'
+        if file.exists():
+            private_file(file)
+        out = json.loads(file.read_text(encoding='utf-8-sig')) if file.exists() else {'status': 'never-ticked'}
+        return dict(out, healthy=time.time() - out.get('lastTickAt', 0) < 120, ownership=self.ownership())
+
+    def status(self, task_id=None):
+        if task_id:
+            r = self.result(task_id)
+            return {k: r[k] for k in ['version', 'id', 'project', 'state', 'stage', 'machine', 'updatedAt', 'summary', 'reason'] if k in r}
+        return {'version': 1, 'health': self.health(), 'queue': dict(self.db.execute('SELECT state,count(*) FROM tasks GROUP BY state')),
+                'tasks': [{'id': i, 'state': s} for i, s in self.db.execute('SELECT id,state FROM tasks ORDER BY rowid')]}
+
     def host(self, machine):
         machine = self.config().get('machineAliases', {}).get(machine, machine)
         return fleet.select_host(fleet.load_hosts(fleet.DEFAULT_CONFIG), machine)
 
     def submit(self, body):
+        with lock(self.home, 'intake.lock'):
+            return self._submit(body)
+
+    def _submit(self, body):
+        if not self.ownership()['acceptsTasks']:
+            raise ValueError('Queue is standby, retired or bound to another host; intake disabled.')
         allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine'}
         if not isinstance(body, dict) or set(body) - allowed or not ID.fullmatch(body.get('id', '')):
             raise ValueError('Invalid task ID or fields.')
@@ -299,7 +353,7 @@ class Bot:
         expected = record['target']['defaultBranch'] if stage == 'preflight' else record['branch']
         if e.get('branch') != expected:
             raise ValueError('Branch evidence does not match task.')
-        if stage != 'preflight' and e['cwd'] != record['worktree']:
+        if stage != 'preflight' and not same_remote_path(e['cwd'], record['worktree']):
             raise ValueError('Worktree evidence does not match task.')
         if stage != 'preflight' and e['head'] != record['evidence']['preflight']['head']:
             raise ValueError('Unexpected commit or HEAD change; commits were not authorized.')
@@ -365,7 +419,7 @@ class Bot:
         if r['state'] == 'running':
             run = r['runs'][-1]
             observed = self.rpc(h, 'observe', agentId=run['agentId'], attempt=run['attempt'])
-            if observed.get('workspaceId') != run['workspaceId'] or observed.get('cwd') != run['cwd']:
+            if observed.get('workspaceId') != run['workspaceId'] or not same_remote_path(observed.get('cwd'), run['cwd']):
                 raise ValueError('Agent placement changed; inspect task ownership.')
             if observed['status'] == 'timeout':
                 if time.time() - r['phaseStartedAt'] > self.config().get('phaseTimeoutSeconds', 7200):
@@ -411,6 +465,11 @@ class Bot:
 
     def tick(self):
         with lock(self.home):
+            owner = self.ownership()
+            if not owner['dispatchEnabled']:
+                write_json(self.home / 'health.json', {'version': 1, 'pid': os.getpid(), 'lastTickAt': time.time(),
+                           'activeTask': None, 'mode': owner['mode'], 'dispatchEnabled': False})
+                return
             rows = self.db.execute('SELECT body,record FROM tasks ORDER BY rowid').fetchall()
             active = next(((json.loads(b), json.loads(r)) for b, r in rows if json.loads(r)['state'] not in TERMINAL), None)
             if active:
@@ -434,7 +493,8 @@ class Bot:
                 r = json.loads(encoded)
                 if r['state'] in TERMINAL:
                     write_json(self.home / 'results' / (r['id'] + '.json'), r)
-            write_json(self.home / 'health.json', {'version': 1, 'pid': os.getpid(), 'lastTickAt': time.time(), 'activeTask': active[1]['id'] if active else None})
+            write_json(self.home / 'health.json', {'version': 1, 'pid': os.getpid(), 'lastTickAt': time.time(), 'activeTask': active[1]['id'] if active else None,
+                       'mode': owner['mode'], 'dispatchEnabled': True})
 
     def discover(self):
         old = self.config() if self.registry_path.exists() else {'version': 1, 'projects': []}
@@ -469,6 +529,8 @@ class Bot:
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state', type=Path, default=DEFAULT_HOME)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -477,6 +539,12 @@ def main():
     submit.add_argument('--file', type=Path, help='UTF-8 task JSON; omit to read stdin')
     result = sub.add_parser('result')
     result.add_argument('id')
+    status = sub.add_parser('status')
+    status.add_argument('id', nargs='?')
+    owner = sub.add_parser('owner')
+    owner.add_argument('--mode', choices=['active', 'standby', 'retired'])
+    owner.add_argument('--label')
+    owner.add_argument('--rebind', action='store_true')
     sub.add_parser('list')
     sub.add_parser('tick')
     sub.add_parser('serve')
@@ -488,16 +556,18 @@ def main():
             with lock(bot.home):
                 out = bot.discover()
         elif args.command == 'submit':
-            text = args.file.read_text(encoding='utf-8') if args.file else sys.stdin.read(50000)
+            text = args.file.read_text(encoding='utf-8-sig') if args.file else sys.stdin.buffer.read(200000).decode('utf-8-sig')
             out = bot.submit(json.loads(text))
+        elif args.command == 'status':
+            out = bot.status(args.id)
+        elif args.command == 'owner':
+            out = bot.set_owner(args.mode, args.label, args.rebind) if args.mode else bot.ownership()
         elif args.command == 'result':
             out = bot.result(args.id)
         elif args.command == 'list':
             out = [{'id': i, 'state': s} for i, s in bot.db.execute('SELECT id,state FROM tasks ORDER BY rowid')]
         elif args.command == 'health':
-            f = bot.home / 'health.json'
-            out = json.loads(f.read_text()) if f.exists() else {'status': 'never-ticked'}
-            out['healthy'] = time.time() - out.get('lastTickAt', 0) < 120
+            out = bot.health()
         elif args.command == 'tick':
             bot.tick()
             out = {'status': 'ticked'}
