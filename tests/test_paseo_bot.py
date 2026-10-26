@@ -100,6 +100,32 @@ class BotTests(unittest.TestCase):
         self.assertEqual(r['deployment'], 'not-run')
         self.assertEqual(json.loads((self.home/'results/task-1.json').read_text())['state'], 'passed')
 
+    def test_completion_webhooks_capture_each_terminal_state_once(self):
+        for state in ['passed', 'failed', 'blocked']:
+            body = dict(self.body, id='notify-' + state, requester='operator', pr_url='https://github.com/a/b/pull/1')
+            record = self.bot.submit(body)
+            record.update(state=state, machine='VAXPORT', summary='bounded result')
+            self.bot.save(record)
+            self.bot.save(record)
+        rows = self.bot.db.execute('SELECT payload FROM webhook_jobs').fetchall()
+        self.assertEqual(len(rows), 3)
+        payloads = [json.loads(row[0]) for row in rows]
+        self.assertEqual({p['state'] for p in payloads}, {'passed', 'failed', 'blocked'})
+        self.assertTrue(all(p['requester'] == 'operator' and p['pr_url'].endswith('/1') for p in payloads))
+        unknown = self.bot.submit(dict(self.body, id='unknown-task'))
+        unknown.update(state='unknown')
+        self.bot.save(unknown)
+        self.assertEqual(self.bot.db.execute('SELECT count(*) FROM webhook_jobs').fetchone()[0], 3)
+
+    def test_webhook_failure_does_not_change_task_outbox_or_health(self):
+        self.bot.submit(self.body)
+        with patch.object(m.webhook_queue, 'drain', side_effect=RuntimeError('notification failure')):
+            result = self.drive()
+        self.assertEqual(result['state'], 'passed')
+        self.assertEqual(json.loads((self.home/'results/task-1.json').read_text())['state'], 'passed')
+        self.assertTrue(self.bot.health()['healthy'])
+        self.assertEqual(self.bot.db.execute('SELECT count(*) FROM webhook_jobs').fetchone()[0], 1)
+
     def test_standby_is_healthy_but_cannot_admit_or_dispatch(self):
         self.bot.submit(self.body)
         self.bot.set_owner('standby', 'VAX_COM')

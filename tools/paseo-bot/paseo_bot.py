@@ -17,6 +17,9 @@ import sys
 import time
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import webhook_queue
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/paseo-multi/scripts'))
 import hosts as fleet
@@ -250,6 +253,7 @@ class Bot:
           CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, digest TEXT NOT NULL, body TEXT NOT NULL, state TEXT NOT NULL, record TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY, task_id TEXT, time REAL NOT NULL, state TEXT NOT NULL);
         ''')
+        webhook_queue.initialize(self.db)
         self.db.commit()
 
     def config(self):
@@ -305,11 +309,13 @@ class Bot:
     def _submit(self, body):
         if not self.ownership()['acceptsTasks']:
             raise ValueError('Queue is standby, retired or bound to another host; intake disabled.')
-        allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine'}
+        allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine', 'pr_url', 'requester'}
         if not isinstance(body, dict) or set(body) - allowed or not ID.fullmatch(body.get('id', '')):
             raise ValueError('Invalid task ID or fields.')
         if body.get('kind', 'gpt') not in PROFILES:
             raise ValueError('kind must be sync, hard, refactor or gpt.')
+        if any(k in body and (not isinstance(body[k], str) or len(body[k]) > 2000) for k in ['pr_url', 'requester']):
+            raise ValueError('Invalid completion metadata.')
         if any(not isinstance(body.get(k), str) or not body[k].strip() for k in ['project', 'title', 'prompt']) or len(body['prompt']) > 40000:
             raise ValueError('Task needs project, title and prompt (max 40000 characters).')
         if not any(p['id'] == body['project'] for p in self.config()['projects']):
@@ -337,8 +343,11 @@ class Bot:
     def save(self, record):
         record = scrub(dict(record, updatedAt=time.time()))
         with self.db:
+            previous = self.db.execute('SELECT state,body FROM tasks WHERE id=?', (record['id'],)).fetchone()
             self.db.execute('UPDATE tasks SET state=?,record=? WHERE id=?', (record['state'], json.dumps(record), record['id']))
             self.db.execute('INSERT INTO events(task_id,time,state) VALUES (?,?,?)', (record['id'], time.time(), record['state']))
+            if previous and previous[0] != record['state'] and record['state'] in webhook_queue.STATES:
+                webhook_queue.enqueue(self.db, record, json.loads(previous[1]))
         # Regenerated after a crash between the DB commit and outbox publication.
         write_json(self.home / 'results' / (record['id'] + '.json'), record)
         return record
@@ -568,6 +577,11 @@ class Bot:
                 r = json.loads(encoded)
                 if r['state'] in TERMINAL:
                     write_json(self.home / 'results' / (r['id'] + '.json'), r)
+            try:
+                webhook_queue.drain(self.db, self.home)
+            except Exception:
+                # Notification errors must never change task state or stop the resident.
+                pass
             write_json(self.home / 'health.json', {'version': 1, 'pid': os.getpid(), 'lastTickAt': time.time(), 'activeTask': active[1]['id'] if active else None,
                        'mode': owner['mode'], 'dispatchEnabled': True})
 
