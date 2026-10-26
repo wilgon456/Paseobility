@@ -3,6 +3,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
+import {loadResult, saveResult, claimCleanup} from './results.mjs';
 
 const req = JSON.parse(fs.readFileSync(0, 'utf8'));
 let client;
@@ -93,20 +94,60 @@ async function agents(scope) {
   }
   throw Error('Agent snapshot exceeds page limit.');
 }
-async function capture(run) {
-  const terminals = await client.listTerminals();
-  const matchesByName = terminals.terminals?.filter(t => t.name === run.name) ?? [];
-  const terminal = run.terminalId ? terminals.terminals?.find(t => t.id === run.terminalId) :
-    (matchesByName.length === 1 ? matchesByName[0] : null);
-  if (!terminal || terminal.name !== run.name) throw Error('Recorded terminal missing or ownership changed; outcome is unknown.');
+function findTerminal(run, terminals) {
+  if (!Array.isArray(terminals.terminals) || terminals.error) throw Error('Cannot list terminals safely.');
+  const matches = terminals.terminals.filter(t => t.name === run.name);
+  const terminal = run.terminalId ? terminals.terminals.find(t => t.id === run.terminalId) :
+    (matches.length === 1 ? matches[0] : null);
+  if (terminal && terminal.name !== run.name) throw Error('Terminal ownership/name changed; refusing close.');
+  return terminal;
+}
+async function cleanupSaved(run, saved) {
+  const result = {...saved.result, resultSaved: true};
+  const terminal = findTerminal({...run, terminalId: result.terminalId}, await client.listTerminals());
+  if (!terminal) return {...result, terminalState: 'closed'};
+  // A durable, exclusive claim prevents concurrent captures or a lost close
+  // response from issuing a second kill. A remaining terminal needs manual close.
+  if (!claimCleanup(req.stateDir, run)) return {...result, terminalState: 'close-unconfirmed'};
+  try {
+    const reply = await client.killTerminal(terminal.id);
+    if (reply?.error) return {...result, terminalState: 'close-unconfirmed'};
+    const remaining = findTerminal({...run, terminalId: terminal.id}, await client.listTerminals());
+    return {...result, terminalState: remaining ? 'close-unconfirmed' : 'closed'};
+  } catch {
+    return {...result, terminalState: 'close-unconfirmed'};
+  }
+}
+async function capture(run, autoCleanup = true) {
+  const eligible = run.cleanupPolicy === 'saved-success-v1';
+  const saved = eligible ? loadResult(req.stateDir, run) : null;
+  if (saved) return autoCleanup ? cleanupSaved(run, saved) : {...saved.result, resultSaved: true};
+  const terminal = findTerminal(run, await client.listTerminals());
+  if (!terminal) throw Error('Recorded terminal missing or ownership changed; outcome is unknown.');
   run = {...run, terminalId: terminal.id};
   const r = await client.captureTerminal(run.terminalId, {stripAnsi: true, start: 0});
-  if (r.error) throw Error('Cannot capture recorded terminal.');
-  const output = (r.lines ?? []).join('\n');
-  const matches = [...output.matchAll(new RegExp('PASEO_RUN_' + run.runId + '_EXIT=(-?\\d+)', 'g'))];
-  return {runId: run.runId, host: run.host, terminalId: run.terminalId,
+  if (r.error || !Array.isArray(r.lines) || r.lines.some(line => typeof line !== 'string'))
+    throw Error('Cannot capture recorded terminal.');
+  const output = r.lines.join('\n');
+  const matches = [...output.matchAll(new RegExp('^PASEO_RUN_' + run.runId + '_EXIT=(-?\\d+)\\r?$', 'gm'))];
+  const result = {runId: run.runId, host: run.host, terminalId: run.terminalId,
     status: matches.length ? 'completed' : 'running',
     exitCode: matches.length ? Number(matches.at(-1)[1]) : null, output};
+  if (!eligible || !autoCleanup || result.exitCode !== 0) return result;
+  // Never discard output when the terminal scrollback has lost the beginning,
+  // the completion marker is ambiguous, or more output arrived after completion.
+  const begin = 'PASEO_RUN_' + run.runId + '_BEGIN';
+  const end = matches[0];
+  const begins = r.lines.filter(line => line.replace(/\r$/, '') === begin);
+  if (matches.length !== 1 || begins.length !== 1 || output.indexOf(begin) > end.index ||
+      output.slice(end.index + end[0].length).trim())
+    return {...result, terminalState: 'retained', warning: 'Complete output not confirmed; terminal retained.'};
+  try {
+    const durable = saveResult(req.stateDir, run, scrub(result));
+    return await cleanupSaved(run, durable);
+  } catch {
+    return {...result, terminalState: 'retained', warning: 'Result persistence or cleanup verification failed; inspect before closing.'};
+  }
 }
 function runCli(argv) {
   return new Promise((resolve, reject) => {
@@ -151,19 +192,20 @@ async function main() {
   if (req.action === 'exec') {
     const runId = randomUUID();
     const run = {runId, host: req.host.label, serverId: req.host.serverId,
-      terminalId: null, name: 'paseo-multi-' + runId, createdAt: new Date().toISOString()};
+      terminalId: null, name: 'paseo-multi-' + runId, createdAt: new Date().toISOString(),
+      ...(req.keepTerminal ? {} : {cleanupPolicy: 'saved-success-v1'})};
     const marker = 'PASEO_RUN_' + runId + '_EXIT=';
     let command, args;
     if (req.shell === 'powershell') {
       command = 'powershell.exe';
       const inner = Buffer.from("$ErrorActionPreference='Stop'\n" + req.script, 'utf16le').toString('base64');
-      const wrapper = `& powershell.exe -NoProfile -EncodedCommand ${inner}; $rc=$LASTEXITCODE; Write-Output ('${marker}' + $rc); while ($true) {Start-Sleep -Seconds 60}`;
+      const wrapper = `Write-Output 'PASEO_RUN_${runId}_BEGIN'; & powershell.exe -NoProfile -EncodedCommand ${inner}; $rc=$LASTEXITCODE; Write-Output ('${marker}' + $rc); while ($true) {Start-Sleep -Seconds 60}`;
       args = ['-NoProfile', '-EncodedCommand', Buffer.from(wrapper, 'utf16le').toString('base64')];
       if (args.join(' ').length > 28000) throw Error('PowerShell script exceeds Windows command-line limit; use a shorter host-side script. No command was submitted.');
     } else {
       command = '/bin/bash';
       const literal = "'" + req.script.replaceAll("'", "'\\''") + "'";
-      args = ['-c', `/bin/bash -c ${literal}; rc=$?; printf '\\n${marker}%s\\n' "$rc"; while :; do sleep 60; done`];
+      args = ['-c', `printf 'PASEO_RUN_${runId}_BEGIN\\n'; /bin/bash -c ${literal}; rc=$?; printf '\\n${marker}%s\\n' "$rc"; while :; do sleep 60; done`];
     }
     fs.mkdirSync(req.stateDir, {recursive: true, mode: 0o700});
     const recordPath = path.join(req.stateDir, runId + '.json');
@@ -198,7 +240,7 @@ async function main() {
       (byName.length === 1 ? byName[0] : null);
     if (!terminal) return {runId: req.run.runId, status: 'already absent'};
     if (terminal.name !== req.run.name) throw Error('Terminal ownership/name changed; refusing close.');
-    const result = await capture(req.run);
+    const result = await capture(req.run, false);
     if (result.status !== 'completed' && !req.interrupt) throw Error('Command still running; close requires explicit interruption.');
     await client.killTerminal(terminal.id);
     return {runId: req.run.runId, status: 'closed', exitCode: result.exitCode};

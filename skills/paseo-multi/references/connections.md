@@ -27,3 +27,29 @@ For another runtime, set both `PASEO_MULTI_HOST_CLIENT_MODULE` (absolute path to
 Run records are written before terminal creation and kept after closing. `runs` lists them; `capture RUN_ID` recovers a terminal by its unique name even if the creation response was lost. Windows scripts whose encoded wrapper exceeds the command-line limit are refused before submission.
 
 Aliases must be unique and match exactly, never by prefix. A connection keeps its expected `serverId`; re-register when a host's identity changes. Helper output redacts connection material, but remote script output can contain private data: do not repeat secrets from it.
+
+
+## Saved successful runs
+
+New `exec` records opt into save-before-close. On a zero exit code, `exec` or
+`capture` requires an intact start marker and one final completion marker before
+saving the terminal capture and exit code to `runs/results/<run-id>.json`. These
+are terminal screen captures (not byte-exact stdout/stderr logs). If the beginning
+has scrolled away, capture fails, or storage cannot be verified, the terminal stays
+open. Receipts redact the same known connection credentials as command output;
+other command output may be sensitive. POSIX files use 0600 and their directory
+0700; on Windows keep the registry directory under private user ACLs.
+
+The receipt is flushed, atomically published without overwriting, and read back
+before terminal close. A durable close-attempt claim prevents concurrent capture
+or a lost acknowledgment from issuing duplicate closes. `terminalState` is
+`closed`, `retained`, or `close-unconfirmed`; an unconfirmed close needs inspection
+and, if the terminal still exists, explicit `close`. `status: completed` and
+`exitCode` retain their previous meaning. Repeated `capture` returns the saved
+output even after the terminal is gone, after verifying the registered host.
+
+`--keep-terminal` opts out when launching a service or doing interactive work.
+Nonzero exits, interruption, input waits, and old run records keep the previous
+manual-close behavior. No existing run is migrated and no timer sweeps old
+terminals. If `exec --wait` returns while the command is running, call `capture`
+later to finalize it; a disconnected controller cannot perform cleanup.

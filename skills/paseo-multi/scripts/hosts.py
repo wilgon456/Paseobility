@@ -121,6 +121,8 @@ def main():
     src.add_argument('--command', help='Inline script text instead of --file')
     exe.add_argument('--shell', choices=['bash', 'powershell'])
     exe.add_argument('--wait', type=int, choices=range(0, 301), default=10, metavar='0..300')
+    exe.add_argument('--keep-terminal', action='store_true',
+                     help='Keep a successful terminal open instead of saving and closing it')
     exe.add_argument('--workspace', help='Remote workspace ID, for daemons that require one per terminal')
     for action in ('capture', 'close'):
         p = sub.add_parser(action)
@@ -173,7 +175,7 @@ def main():
         if shell is None:
             raise ValueError('Unknown target platform: supply --shell after verifying it.')
         script = args.command if args.command is not None else args.file.read_text(encoding='utf-8')
-        req.update(script=script, shell=shell, wait=args.wait)
+        req.update(script=script, shell=shell, wait=args.wait, keepTerminal=args.keep_terminal)
         if args.workspace:
             req['workspaceId'] = args.workspace
     if args.action == 'cli':

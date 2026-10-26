@@ -54,3 +54,21 @@ installer, and automatic discovery of newly added Desktop hosts are not proven
 by this run. Restart safety was tested with fixtures; no real daemon restart,
 CLI software update, active-agent cancellation, or user-data cleanup was
 performed during this validation. Historical update evidence is separate.
+
+## Save-before-close regression coverage (2026-10-26)
+
+New runs carry `cleanupPolicy: saved-success-v1`; older records are not migrated.
+The adapter suite covers verified private result persistence before close,
+zero/nonzero exit, cancellation, unfinished/input-wait captures, truncated or
+ambiguous output, storage collision, fsync/readback failure, private-directory
+and symlink refusal, corrupt receipts, lost/refused close replies, concurrent
+and repeated capture, sequential runs, `--keep-terminal`, and PowerShell wrapper
+construction. The POSIX suite also executes the generated Bash wrapper with
+quoted multiline output and explicit success/failure exits in a test-owned
+process group.
+
+These tests use fake daemon clients and temporary state, never existing hosts.
+The new auto-close path has not been exercised against a live Paseo daemon or a
+real Windows PowerShell terminal; the earlier live compatibility observations
+above do not certify this new behavior. Complete local macOS CI-equivalent
+suites pass; Windows adapter behavior is checked in repository CI.

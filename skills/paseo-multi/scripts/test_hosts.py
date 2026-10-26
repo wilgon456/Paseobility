@@ -1,5 +1,6 @@
 """Offline invariants: target identity, lifecycle protection, ownership and redaction."""
 import json
+import concurrent.futures
 import os
 from pathlib import Path
 import shutil
@@ -12,10 +13,60 @@ import uuid
 SCRIPT = Path(__file__).with_name('hosts.py')
 FAKE_CLIENT = '''
 import fs from 'node:fs';
+import path from 'node:path';
 const mode=process.env.MULTI_HOST_TEST_MODE;
 const mark=name=>fs.appendFileSync(process.env.MULTI_HOST_TEST_CALLS,name+'\\n');
 export const connectToDaemon = mode==='missing-connect' ? undefined : async (options) => {
  if(mode==='redact') throw Error('failed '+options.target.host+' secret-key-123');
+ const state=process.env.MULTI_HOST_TEST_CALLS+'.terminal';
+ if(mode.startsWith('run-')) return {
+  getDaemonStatus:async()=>({serverId:'expected',version:'0.13.0'}),
+  supportsBackgroundWorkspaces:()=>true,
+  createTerminal:async(cwd,name,requestId,opts)=>{
+   mark('exec');
+   const terminal={id:name,name};
+   fs.writeFileSync(state,JSON.stringify(terminal));
+   fs.writeFileSync(state+'.options',JSON.stringify(opts));
+   if(mode==='run-save-failure') fs.fsyncSync=()=>{throw Error('disk unavailable')};
+   if(mode==='run-readback-failure') {
+    const read=fs.readFileSync;
+    fs.readFileSync=(file,...args)=>{
+     if(String(file).includes('results')&&String(file).endsWith('.json')) throw Error('readback failed');
+     return read(file,...args);
+    };
+   }
+   return {terminal};
+  },
+  listTerminals:async()=>({terminals:fs.existsSync(state)?[JSON.parse(fs.readFileSync(state))]:[]}),
+  captureTerminal:async()=>{
+   const t=JSON.parse(fs.readFileSync(state));
+   const id=t.name.slice('paseo-multi-'.length);
+   const code=mode==='run-fail'?1:mode==='run-cancel'?130:0;
+   const begin='PASEO_RUN_'+id+'_BEGIN';
+   const end='PASEO_RUN_'+id+'_EXIT='+code;
+   if(mode==='run-invalid') return {error:'capture unavailable'};
+   const lines=[...(mode==='run-truncated'?[]:[begin]),'result 한글 secret-key-123',
+    ...(mode==='run-pending'||mode==='run-input'?[]:[end]),
+    ...(mode==='run-trailing'?['background output']:[]),
+    ...(mode==='run-duplicate-marker'?[end]:[])];
+   return {lines};
+  },
+  killTerminal:async()=>{
+   mark('kill');
+   // Closing is forbidden until the receipt is already durable and readable.
+   if(mode!=='run-manual') {
+    const t=JSON.parse(fs.readFileSync(state));
+    const base=path.dirname(process.env.MULTI_HOST_TEST_CALLS);
+    const receipt=JSON.parse(fs.readFileSync(base+'/runs/results/'+t.name.slice(12)+'.json'));
+    if(receipt.result.exitCode!==0||!receipt.result.output) throw Error('missing receipt');
+   }
+   if(mode==='run-kill-error') return {error:'refused'};
+   fs.unlinkSync(state);
+   if(mode==='run-kill-lost') throw Error('lost response');
+   return {};
+  },
+  close:async()=>{}
+ };
  const oldClient=mode.startsWith('old-client');
  return {
   getDaemonStatus:async()=>({serverId:mode==='mismatch'?'other':'expected',
@@ -58,7 +109,7 @@ class AdapterTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.config = self.root / 'hosts.json'
         self.module = self.root / 'client.mjs'
-        self.module.write_text(FAKE_CLIENT)
+        self.module.write_text(FAKE_CLIENT, encoding='utf-8')
         self.calls = self.root / 'calls'
         self.script = self.root / 'read.sh'
         self.script.write_text('printf READ_ONLY')
@@ -81,6 +132,157 @@ class AdapterTests(unittest.TestCase):
     def assert_no_mutation(self):
         self.assertFalse(self.calls.exists(), 'remote mutation was called')
 
+    def run_command(self, mode='run-success', *extra):
+        return self.invoke(mode, 'exec', 'PC', '--command', 'printf done', '--wait', '0', *extra)
+
+    def test_success_saved_before_close_and_repeated_capture(self):
+        p, d = self.run_command()
+        self.assertEqual(p.returncode, 0, d)
+        result = d['result']
+        self.assertEqual(result['terminalState'], 'closed')
+        self.assertTrue(result['resultSaved'])
+        receipt = self.root / 'runs/results' / (result['runId'] + '.json')
+        saved = json.loads(receipt.read_text(encoding='utf-8'))
+        self.assertEqual(saved['result']['output'], result['output'])
+        self.assertNotIn('secret-key-123', receipt.read_text(encoding='utf-8'))
+        if os.name != 'nt':
+            self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
+        p, again = self.invoke('run-success', 'capture', result['runId'])
+        self.assertEqual(p.returncode, 0, again)
+        self.assertEqual(again['result']['output'], result['output'])
+        self.assertEqual(again['result']['terminalState'], 'closed')
+        self.assertEqual(self.calls.read_text(encoding='utf-8').count('kill'), 1)
+        p, closed = self.invoke('run-success', 'close', result['runId'])
+        self.assertEqual(closed['result']['status'], 'already absent')
+
+    def test_errors_cancellation_pending_and_incomplete_output_are_retained(self):
+        for mode in ['run-fail', 'run-cancel', 'run-pending', 'run-input',
+                     'run-truncated', 'run-trailing', 'run-duplicate-marker', 'run-invalid']:
+            with self.subTest(mode=mode):
+                self.calls.unlink(missing_ok=True)
+                p, d = self.run_command(mode)
+                self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
+                self.assertTrue(Path(str(self.calls) + '.terminal').exists())
+                self.assertEqual(list((self.root / 'runs').glob('results/*.json')), [])
+
+    def test_persistence_collision_does_not_close(self):
+        (self.root / 'runs').mkdir()
+        (self.root / 'runs/results').write_text('do not overwrite')
+        p, d = self.run_command()
+        self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
+        self.assertEqual((self.root / 'runs/results').read_text(encoding='utf-8'), 'do not overwrite')
+
+    def test_write_sync_and_readback_failures_preserve_terminal(self):
+        for mode in ['run-save-failure', 'run-readback-failure']:
+            with self.subTest(mode=mode):
+                self.calls.unlink(missing_ok=True)
+                p, d = self.run_command(mode)
+                self.assertEqual(p.returncode, 0, d)
+                self.assertEqual(d['result']['terminalState'], 'retained')
+                self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
+                self.assertTrue(Path(str(self.calls) + '.terminal').exists())
+
+    def test_corrupted_receipt_blocks_close(self):
+        p, d = self.run_command('run-kill-error')
+        run_id = d['result']['runId']
+        receipt = self.root / 'runs/results' / (run_id + '.json')
+        receipt.write_text('{broken')
+        p, d = self.invoke('run-success', 'capture', run_id)
+        self.assertFalse(d['ok'])
+        self.assertEqual(self.calls.read_text(encoding='utf-8').count('kill'), 1)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX symlink and mode tests')
+    def test_linked_or_public_result_storage_never_closes(self):
+        (self.root / 'runs').mkdir()
+        outside = self.root / 'outside'
+        outside.mkdir(mode=0o700)
+        result_dir = self.root / 'runs/results'
+        result_dir.symlink_to(outside, target_is_directory=True)
+        p, d = self.run_command()
+        self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
+        self.assertEqual(list(outside.iterdir()), [])
+        result_dir.unlink()
+        result_dir.mkdir(mode=0o755)
+        p, d = self.run_command()
+        self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
+
+    def test_keep_terminal_and_legacy_runs_never_auto_close(self):
+        p, d = self.run_command('run-success', '--keep-terminal')
+        self.assertEqual(p.returncode, 0, d)
+        run_id = d['result']['runId']
+        self.assertNotIn('cleanupPolicy', json.loads((self.root / 'runs' / (run_id + '.json')).read_text(encoding='utf-8')))
+        p, d = self.invoke('run-success', 'capture', run_id)
+        self.assertEqual(p.returncode, 0, d)
+        self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
+
+    def test_pending_later_succeeds_and_concurrent_captures_close_once(self):
+        p, d = self.run_command('run-pending')
+        run_id = d['result']['runId']
+        self.assertEqual(d['result']['status'], 'running')
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            replies = list(pool.map(lambda _: self.invoke('run-success', 'capture', run_id), range(2)))
+        self.assertTrue(any(d['ok'] for p, d in replies))
+        self.assertEqual(self.calls.read_text(encoding='utf-8').count('kill'), 1)
+        p, d = self.invoke('run-success', 'capture', run_id)
+        self.assertEqual(d['result']['terminalState'], 'closed')
+
+    def test_lost_close_reply_is_recovered_without_duplicate_kill(self):
+        p, d = self.run_command('run-kill-lost')
+        self.assertEqual(d['result']['terminalState'], 'close-unconfirmed')
+        p, d = self.invoke('run-success', 'capture', d['result']['runId'])
+        self.assertEqual(d['result']['terminalState'], 'closed')
+        self.assertEqual(self.calls.read_text(encoding='utf-8').count('kill'), 1)
+
+    def test_refused_close_keeps_saved_result_and_never_repeats_kill(self):
+        p, d = self.run_command('run-kill-error')
+        self.assertEqual(d['result']['terminalState'], 'close-unconfirmed')
+        p, d = self.invoke('run-success', 'capture', d['result']['runId'])
+        self.assertEqual(d['result']['terminalState'], 'close-unconfirmed')
+        self.assertEqual(self.calls.read_text(encoding='utf-8').count('kill'), 1)
+
+    def test_sequential_runs_have_separate_receipts(self):
+        ids = []
+        for _ in range(2):
+            p, d = self.run_command()
+            self.assertEqual(d['result']['terminalState'], 'closed')
+            ids.append(d['result']['runId'])
+        self.assertNotEqual(*ids)
+        self.assertEqual(len(list((self.root / 'runs/results').glob('*.json'))), 2)
+
+    @unittest.skipIf(os.name == 'nt', 'Bash wrapper execution on POSIX')
+    def test_bash_wrapper_preserves_output_and_exit_marker(self):
+        import signal
+        for command, expected in [("printf 'quoted\\noutput'; exit 0", 0), ("printf 'failure'; exit 7", 7)]:
+            p, d = self.invoke('run-success', 'exec', 'PC', '--command', command,
+                               '--wait', '0', '--keep-terminal')
+            self.assertEqual(p.returncode, 0, d)
+            options = json.loads(Path(str(self.calls) + '.terminal.options').read_text(encoding='utf-8'))
+            proc = subprocess.Popen([options['command'], *options['args']], stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, start_new_session=True)
+            try:
+                proc.communicate(timeout=0.3)
+                self.fail('result-preserving wrapper exited before capture')
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGTERM)
+                output, _ = proc.communicate(timeout=5)
+            finally:
+                if proc.poll() is None:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                    proc.communicate(timeout=5)
+            self.assertIn('PASEO_RUN_' + d['result']['runId'] + '_BEGIN', output)
+            self.assertIn('PASEO_RUN_' + d['result']['runId'] + '_EXIT=' + str(expected), output)
+            self.assertIn('quoted\noutput' if expected == 0 else 'failure', output)
+
+    def test_powershell_success_uses_same_save_before_close_flow(self):
+        p, d = self.run_command('run-success', '--shell', 'powershell')
+        self.assertEqual(p.returncode, 0, d)
+        self.assertEqual(d['result']['terminalState'], 'closed')
+        import base64
+        options = json.loads(Path(str(self.calls) + '.terminal.options').read_text(encoding='utf-8'))
+        wrapper = base64.b64decode(options['args'][-1]).decode('utf-16le')
+        self.assertIn('_BEGIN', wrapper)
+        self.assertIn('Start-Sleep', wrapper)
+
     def test_identity_mismatch_blocks_exec(self):
         p, d = self.invoke('mismatch', 'exec', 'PC', '--file', str(self.script))
         self.assertNotEqual(p.returncode, 0)
@@ -98,7 +300,7 @@ class AdapterTests(unittest.TestCase):
         self.assertFalse(d['ok'])
         records = list((self.root / 'runs').glob('*.json'))
         self.assertEqual(len(records), 1)
-        record = json.loads(records[0].read_text())
+        record = json.loads(records[0].read_text(encoding='utf-8'))
         self.assertIn(record['runId'], d['error'])
         self.assertIsNone(record['terminalId'])
         self.assertEqual(record['host'], 'PC')
@@ -113,7 +315,7 @@ class AdapterTests(unittest.TestCase):
         self.assert_no_mutation()
         p, d = self.invoke('ws-required', 'exec', 'PC', '--workspace', 'wks_1', '--file', str(self.script))
         self.assertFalse(d['ok'])
-        self.assertEqual(self.calls.read_text(), 'exec:wks_1\n')
+        self.assertEqual(self.calls.read_text(encoding='utf-8'), 'exec:wks_1\n')
 
     def test_large_windows_script_rejected_before_dispatch(self):
         self.script.write_text('Write-Output "large"\n' * 3000)
@@ -139,7 +341,7 @@ class AdapterTests(unittest.TestCase):
         p, d = self.invoke('pages-idle', 'restart', 'PC')
         self.assertEqual(p.returncode, 0)
         self.assertTrue(d['result']['acknowledged']['ack'])
-        self.assertEqual(self.calls.read_text(), 'restart\n')
+        self.assertEqual(self.calls.read_text(encoding='utf-8'), 'restart\n')
 
     def test_background_workspace_agents_are_listed_and_block_restart(self):
         p, d = self.invoke('background-busy', 'agents', 'PC')
@@ -168,13 +370,13 @@ class AdapterTests(unittest.TestCase):
                     self.calls.unlink()
                 p, d = self.invoke(mode, 'restart', 'PC')
                 self.assertEqual(p.returncode, 0, d)
-                self.assertEqual(self.calls.read_text(), 'restart\n')
+                self.assertEqual(self.calls.read_text(encoding='utf-8'), 'restart\n')
 
     def test_finished_attention_does_not_block_restart(self):
         p, d = self.invoke('finished', 'restart', 'PC')
         self.assertEqual(p.returncode, 0)
         self.assertTrue(d['result']['acknowledged']['ack'])
-        self.assertEqual(self.calls.read_text(), 'restart\n')
+        self.assertEqual(self.calls.read_text(encoding='utf-8'), 'restart\n')
 
     def test_exact_alias_and_unknown_name(self):
         p, d = self.invoke('idle', 'status', 'MY PC')
@@ -222,7 +424,7 @@ class AdapterTests(unittest.TestCase):
 
     def test_inline_command_dispatches_without_file(self):
         p, d = self.invoke('idle', 'exec', 'PC', '--command', 'uname -a')
-        self.assertEqual(self.calls.read_text(), 'exec\n')
+        self.assertEqual(self.calls.read_text(encoding='utf-8'), 'exec\n')
         p = subprocess.run([sys.executable, str(SCRIPT), '--config', str(self.config), 'exec', 'PC',
                             '--command', 'x', '--file', str(self.script)], capture_output=True, text=True)
         self.assertNotEqual(p.returncode, 0)
@@ -231,7 +433,7 @@ class AdapterTests(unittest.TestCase):
         p, d = self.invoke('busy', 'restart', 'PC', '--force')
         self.assertEqual(p.returncode, 0)
         self.assertEqual([a['id'] for a in d['result']['interruptedAgents']], ['a'])
-        self.assertEqual(self.calls.read_text(), 'restart\n')
+        self.assertEqual(self.calls.read_text(encoding='utf-8'), 'restart\n')
         self.calls.unlink()
         p, d = self.invoke('schema', 'restart', 'PC', '--force')
         self.assertEqual(p.returncode, 0)
@@ -258,7 +460,7 @@ class AdapterTests(unittest.TestCase):
         source.write_text(json.dumps([other, renamed]))
         p, d = self.invoke('idle', 'import-saved', str(source))
         self.assertEqual(p.returncode, 0)
-        labels = [h['label'] for h in json.loads(self.config.read_text())['hosts']]
+        labels = [h['label'] for h in json.loads(self.config.read_text(encoding='utf-8'))['hosts']]
         self.assertEqual(sorted(labels), ['PC-RENAMED', 'PC2'])
 
     def test_import_duplicate_alias_keeps_existing_registry(self):

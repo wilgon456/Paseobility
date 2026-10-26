@@ -38,9 +38,10 @@ python3 scripts/hosts.py cli HOST -- agent inspect AGENT_ID --json
 Each invocation is independent, so run several hosts concurrently.
 
 - `exec` runs Bash on macOS/Linux and PowerShell on Windows (`--shell` overrides). Use the remote machine's paths. Any command the user's task needs is fine, including installs and file changes.
-- `--wait` observes up to 300 seconds. A timeout means `running`, not failure: `capture` later, then `close` once completed. If a response or connection is lost mid-mutation, `capture` or check the resulting state before rerunning it.
+- `--wait` observes up to 300 seconds. A timeout means `running`, not failure: `capture` later. Successful new runs close only after saving; other completed runs still use explicit `close`. If a response or connection is lost mid-mutation, `capture` or check the resulting state before rerunning it.
 - Some daemons need a workspace for terminals ("workspaceId is required"): get one from `cli HOST -- workspace ls --json` and pass `exec --workspace ID`. On 0.12+ hosts, `ls` and `workspace ls` hide background workspaces unless given `--background` (0.11 rejects that flag).
-- The terminal keeps the script in its command line until `close`. A script carrying a credential gets `close RUN_ID --interrupt` right after it completes.
+- New successful runs save a private result receipt (captured output and exit code) under `runs/results/`, verify it, then close their own terminal. `capture RUN_ID` replays saved output after close. This happens during `exec --wait` or a later `capture`; there is no background watcher. Use `exec --keep-terminal` for interactive work or commands that launch background services. Failed, interrupted, still-running, truncated-output and unsaved runs stay open; legacy records never auto-close.
+- The terminal keeps the script in its command line until it closes. A script carrying a credential gets `close RUN_ID --interrupt` right after it completes.
 - Capture is a terminal screen (wide characters may gain spaces), not raw bytes. Use checksums or encoded output for byte-exact data. Very large Windows scripts are refused before dispatch; stage a file on the host instead.
 - Agents, projects, workspaces and schedules: `cli HOST -- ...` with installed `paseo ... --help` or the Paseo skill. Use the user's chosen provider/profile. `cli` allows `daemon status`/`daemon reload` but routes other daemon lifecycle commands to `restart`.
 
