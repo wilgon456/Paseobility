@@ -32,6 +32,12 @@ jobs:
           npm --prefix plugin run typecheck
           npm --prefix plugin test
 
+      - name: Bot GUI dependencies, types and UI/transport tests
+        run: |
+          npm ci --prefix tools/paseo-bot/plugin
+          npm --prefix tools/paseo-bot/plugin run typecheck
+          npm --prefix tools/paseo-bot/plugin test
+
       - name: Validation dependency (CI only)
         run: python -m pip install PyYAML==6.0.3
 
@@ -120,6 +126,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix plugin test
 
+      - name: Bot GUI dependencies, types and UI/transport tests
+        run: |
+          npm ci --prefix tools/paseo-bot/plugin
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix tools/paseo-bot/plugin run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix tools/paseo-bot/plugin test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Validation dependency (CI only)
         run: python -m pip install PyYAML==6.0.3
 
@@ -127,7 +142,7 @@ jobs:
         shell: pwsh
         run: |
           $failed = $false
-          Get-ChildItem -Path scripts, tests, skills -Filter *.ps1 -Recurse | ForEach-Object {
+          Get-ChildItem -Path scripts, tests, skills, tools -Filter *.ps1 -Recurse | ForEach-Object {
             $file = $_.FullName
             try {
               $null = [scriptblock]::Create((Get-Content -Raw -LiteralPath $file))
@@ -142,7 +157,7 @@ jobs:
         shell: powershell
         run: |
           $failed = $false
-          Get-ChildItem -Path scripts, tests, skills -Filter *.ps1 -Recurse | ForEach-Object {
+          Get-ChildItem -Path scripts, tests, skills, tools -Filter *.ps1 -Recurse | ForEach-Object {
             $file = $_.FullName
             try {
               $null = [scriptblock]::Create((Get-Content -Raw -LiteralPath $file))
