@@ -12,6 +12,24 @@ export const stateLabels: Record<string, string> = {
 export const stateLabel = (state: string) => stateLabels[state] ?? state;
 export const makeTaskId = () =>
   `gui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+export const stageLabel = (stage: string) =>
+  (
+    ({
+      preflight: "준비",
+      work: "작업",
+      review: "검토",
+      postflight: "마무리",
+    }) as Record<string, string>
+  )[stage] ?? stage;
+export const profileLabel = (kind: string) =>
+  (
+    ({
+      gpt: "일반 작업",
+      hard: "집중 개발",
+      refactor: "구조 개선",
+      sync: "상태 확인",
+    }) as Record<string, string>
+  )[kind] ?? kind;
 export const lanes = [
   { id: "waiting", label: "대기" },
   { id: "running", label: "실행 중" },

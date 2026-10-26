@@ -15,11 +15,11 @@ const sample=snapshotSchema.parse({host:'VAXPORT',healthy:true,lastTickAt:now-8,
   messages:[{id:'m-user',role:'user',text:'로그인할 때 입력 내용이 사라지는 문제를 고쳐 줘.',time:now-280,payload:{}},{id:'m-bot',role:'assistant',text:'어느 프로젝트에서 발생하나요? 재현 조건도 알려주시면 수정 범위를 정리하겠습니다.',time:now-270,payload:{}},{id:'m-user2',role:'user',text:'paseobility야. 모바일에서 확인했어. 재현하고 입력 흐름을 개선해 줘.',time:now-240,payload:{}},{id:'m-bot2',role:'assistant',text:'문제 재현과 입력 흐름 개선으로 나누겠습니다. 기존 입력 동작을 확인하고 회귀 테스트를 함께 추가하겠습니다.',time:now-220,payload:{}}],
   plans:[{id:'plan-fixture',digest:'a'.repeat(64),state:'pending',messageId:'m-user2',tasks:[{project:'paseobility',title:'모바일 입력 상태 보존',prompt:'모바일 로그인 화면에서 입력 상태가 사라지는 문제를 재현하고 수정한다. 회귀 테스트를 추가한다. 커밋·배포는 하지 않는다.',kind:'gpt'}]}]});
 function App(){
-  const [source,setSource]=useState<Snapshot>(mode==='empty'?{...sample,tasks:[],total:0,filtered:0,queue:{},messages:[],plans:[]}:sample);
-  const [filters,setFilters]=useState(()=>syncInput.parse({})),[selected,select]=useState<TaskRow|null>(null),[conversation,setConversation]=useState('session-fixture');
+  const [source,setSource]=useState<Snapshot>(['empty','first'].includes(mode??'')?{...sample,tasks:[],total:0,filtered:0,queue:{},messages:[],plans:[]}:sample);
+  const [filters,setFilters]=useState(()=>syncInput.parse({})),[selected,select]=useState<TaskRow|null>(null),[conversation,setConversation]=useState(mode==='first'?'':'session-fixture');
   const [width,setWidth]=useState(innerWidth);
   React.useEffect(()=>{const r=()=>setWidth(innerWidth);addEventListener('resize',r);return()=>removeEventListener('resize',r);},[]);
-  React.useEffect(()=>{if(mode==='detail')select(rows[3]);if(mode==='confirm')setTimeout(()=>document.querySelector<HTMLElement>('[aria-label="계획 확인"]')?.click(),80);if(mode==='kanban'&&innerWidth<768)setTimeout(()=>document.querySelector<HTMLElement>('[aria-label="작업"]')?.click(),80);},[]);
+  React.useEffect(()=>{if(mode==='detail')select(rows[3]);if(mode==='kanban')setTimeout(()=>document.querySelector<HTMLElement>('[aria-label="작업 보기"]')?.click(),80);},[]);
   let tasks=source.tasks.filter(r=>(!filters.query||(r.title+r.id).toLowerCase().includes(filters.query.toLowerCase()))&&(!filters.group||laneOf(r.state)===filters.group)&&(!filters.project||r.project===filters.project)&&(!filters.machine||r.machine===filters.machine)&&(!filters.requester||r.requester===filters.requester));
   if(filters.sort==='oldest')tasks=[...tasks].reverse();if(filters.sort==='title')tasks=[...tasks].sort((a,b)=>a.title.localeCompare(b.title));
   const data={...source,tasks,filtered:tasks.length};
@@ -27,6 +27,7 @@ function App(){
     (window as any).__actions??=[];(window as any).__actions.push(a);
     if(mode==='send-failure'&&a.action==='send')throw Error('fixture');
     if(a.action==='create'){setConversation(a.requestId);setSource(s=>({...s,conversations:[{id:a.requestId,title:'새 대화',agentId:'fixture-new',status:'idle',createdAt:now},...s.conversations],messages:[],plans:[]}));return {conversationId:a.requestId};}
+    if(a.action==='start'){setConversation(a.requestId);setSource(s=>({...s,messages:[{id:a.messageId,role:'user',text:a.text,time:now,payload:{}}]}));return {conversationId:a.requestId};}
     if(a.action==='send'){setSource(s=>({...s,messages:[...s.messages,{id:a.messageId,role:'user',text:a.text,time:now,payload:{}}]}));return {accepted:true};}
     if(a.action==='approve'){setSource(s=>({...s,plans:s.plans.map(p=>({...p,state:'approved'})),tasks:[{...rows[0],id:'admitted-fixture',title:'모바일 입력 상태 보존'},...s.tasks],total:s.total+1}));return {taskIds:['admitted-fixture']};}
     if(a.action==='reject')setSource(s=>({...s,plans:[]}));return {accepted:true};

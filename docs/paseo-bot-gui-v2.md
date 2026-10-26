@@ -1,10 +1,16 @@
 # Paseo bot GUI v2
 
 The sidebar plugin is now a conversation with a dedicated **VAXPORT manager**,
-alongside the existing queue's read-only Kanban/list. The manager understands and
+with the existing queue's read-only Kanban/list available in the secondary **작업 보기** panel. The manager understands and
 splits requests; the Mac does not call an LLM. A plan is admitted only after the
-operator opens **계획 확인** and selects **확인하고 접수**. Cards are projections,
+operator selects the inline plan's single **접수** button. No project, machine or model form is required; the manager selects them from the active registry. Cards are projections,
 not another scheduler. There is no drag/drop or state mutation endpoint.
+
+The first sentence starts a persistent conversation automatically. Short follow-ups
+use the same manager session and an authoritative snapshot of that conversation's
+work. Stage changes and terminal results appear in the same chat, including safe
+PR links. Natural-language retries create a new validated plan; failed-card retries
+first confirm a review request and then require the new plan's **접수**.
 
 ## Runtime ownership
 

@@ -111,6 +111,14 @@ export const actionInput = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), requestId: taskId }).strict(),
   z
     .object({
+      action: z.literal("start"),
+      requestId: taskId,
+      messageId: taskId,
+      text: z.string().trim().min(1).max(12000),
+    })
+    .strict(),
+  z
+    .object({
       action: z.literal("send"),
       conversationId: taskId,
       messageId: taskId,

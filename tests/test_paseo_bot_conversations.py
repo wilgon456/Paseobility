@@ -159,7 +159,35 @@ class ConversationTests(unittest.TestCase):
         self.c.bot.save(dict(self.c.bot.result(task), state='passed', summary='Gate passed'))
         self.c.tick(); self.c.tick()
         self.assertEqual(self.c.db.execute("SELECT count(*) FROM gui_jobs WHERE kind='result'").fetchone()[0], 1)
-        self.assertEqual(self.c.db.execute("SELECT count(*) FROM gui_messages WHERE role='system' AND text LIKE '작업 상태%'").fetchone()[0], 1)
+        self.assertEqual(self.c.db.execute("SELECT count(*) FROM gui_messages WHERE role='system' AND text='작업과 확인을 마쳤어요.'").fetchone()[0], 1)
+
+    def test_short_status_request_receives_actual_conversation_task_context(self):
+        plan, digest = self.plan(); task = self.c.approve('session-1', plan, digest)['taskIds'][0]
+        self.c.send('session-1','status-question','Status?')
+        self.c.tick()
+        self.assertIn(task,self.fake.sent[-1]['prompt'])
+        self.assertIn('queued',self.fake.sent[-1]['prompt'])
+
+    def test_model_retry_reference_requires_failed_task_in_same_conversation(self):
+        record=self.c.bot.submit(dict(self.step,id='failed-in-chat'),{'requester':'gui','conversationId':'session-1'})
+        self.c.bot.save(dict(record,state='failed'))
+        self.c.send('session-1','repeat','Do it again')
+        job=self.c.db.execute("SELECT * FROM gui_jobs WHERE id='repeat'").fetchone()
+        response=dict(requestId='repeat',reply='A retry plan',tasks=[self.step],retryOf='failed-in-chat')
+        self.c.collect_reply(job,'PASEO_GUI_RESPONSE='+json.dumps(response))
+        body=json.loads(self.c.db.execute('SELECT body FROM gui_plans').fetchone()[0]);self.assertEqual(body['retryOf'],'failed-in-chat')
+        self.c.bot.save(dict(record,state='unknown'))
+        with self.assertRaises(ValueError):self.c.collect_reply(job,'PASEO_GUI_RESPONSE='+json.dumps(response))
+
+    def test_first_sentence_creates_session_without_form_or_duplicate_message(self):
+        req=dict(action='start',requestId='first-chat',messageId='first-message',text='Please work on fixture')
+        for _ in range(2):self.assertEqual(handle(self.home,req,True)['conversationId'],'first-chat')
+        self.assertEqual(self.c.db.execute("SELECT count(*) FROM gui_jobs WHERE id='first-message'").fetchone()[0],1)
+
+    def test_absent_optional_agents_file_is_not_a_preflight_blocker(self):
+        record=dict(id='test',target=dict(repo='/repo',defaultBranch='main',gates=[],skills=[]),branch='paseo-bot/test',evidence={})
+        prompt=self.c.bot.prompt(dict(self.step,id='test'),record,'preflight')
+        self.assertIn('AGENTS.md if it exists',prompt);self.assertIn('optional AGENTS.md is not a blocker',prompt)
 
     def test_dependency_failure_blocks_child_without_launch(self):
         plan, digest = self.plan([self.step, dict(self.step, dependsOn=[0])])

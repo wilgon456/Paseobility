@@ -13,7 +13,7 @@ try{
     await page.getByText('Paseo 봇',{exact:true}).first().waitFor();
     if(state==='retry')await page.getByRole('button',{name:'재시도',exact:true}).click();
     if(state==='filtered-empty')await page.getByLabel('작업 검색',{exact:true}).fill('해당 결과가 없는 검색');
-    if(state==='confirm')await page.getByRole('dialog',{name:'작업 계획 확인',exact:true}).waitFor();
+    if(state==='confirm')await page.getByTestId('plan-card').scrollIntoViewIfNeeded();
     if(state==='detail')await page.getByRole('dialog',{name:'큐 상태 표시 수정',exact:true}).waitFor();
     await page.waitForTimeout(150);
     const file=`${state}-${width}-${scheme}.png`;await page.screenshot({path:path.join(out,file),fullPage:false});

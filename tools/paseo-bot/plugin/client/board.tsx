@@ -9,6 +9,7 @@ import {
   relativeTime,
   requesterLabel,
   safePr,
+  stageLabel,
 } from "../shared/model";
 import { Badge, Button, Empty, Glyph, Select, Skeleton, useUi } from "./ui";
 
@@ -26,22 +27,27 @@ export function TaskCard({
   now: number;
 }) {
   const t = useUi();
-  const [focused,setFocused]=useState(false);
+  const [focused, setFocused] = useState(false);
   const terminal = ["passed", "failed", "blocked", "unknown"].includes(
     task.state,
   );
   return (
     <View
       testID="task-card"
-      style={{ ...t.panel, borderColor:focused?t.c.accent:t.c.border, borderRadius: 12, overflow: "hidden" }}
+      style={{
+        ...t.panel,
+        borderColor: focused ? t.c.accent : t.c.border,
+        borderRadius: 12,
+        overflow: "hidden",
+      }}
     >
       <Pressable
         testID="task-open"
         accessibilityRole="button"
         accessibilityLabel={`${task.title}, ${task.state}`}
         onPress={onOpen}
-        onFocus={()=>setFocused(true)}
-        onBlur={()=>setFocused(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={({ pressed }) => ({
           minHeight: 64,
           padding: 16,
@@ -61,7 +67,7 @@ export function TaskCard({
           state={task.state}
           label={
             laneOf(task.state) === "running" && task.stage
-              ? task.stage
+              ? stageLabel(task.stage)
               : undefined
           }
         />
@@ -88,7 +94,18 @@ export function TaskCard({
             justifyContent: "space-between",
           }}
         >
-          <View style={{paddingHorizontal:6,paddingVertical:2,borderRadius:8,backgroundColor:t.c.surface2}}><Text style={{ ...t.small, color: t.c.foreground }}>{requesterLabel(task.requester)}</Text></View>
+          <View
+            style={{
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 8,
+              backgroundColor: t.c.surface2,
+            }}
+          >
+            <Text style={{ ...t.small, color: t.c.foreground }}>
+              {requesterLabel(task.requester)}
+            </Text>
+          </View>
           <Text style={t.small}>
             {duration(task.createdAt, terminal ? task.updatedAt : now)}
           </Text>
@@ -133,6 +150,7 @@ type Props = {
   now: number;
 };
 export function Board(p: Props) {
+  const [boardHeight, setBoardHeight] = useState(400);
   const t = useUi(),
     rows = p.data?.tasks ?? [];
   const set = (f: Partial<Filters>) => p.setFilters({ ...f, offset: 0 });
@@ -297,79 +315,92 @@ export function Board(p: Props) {
           }
         />
       ) : p.view === "kanban" ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator
+        <View
           style={{ flex: 1, minHeight: 240 }}
-          contentContainerStyle={{
-            gap: 12,
-            alignItems: "flex-start",
-            paddingBottom: 16,
-          }}
+          onLayout={(e) =>
+            setBoardHeight(Math.max(240, e.nativeEvent.layout.height))
+          }
         >
-          {lanes.map((lane) => (
-            <View
-              key={lane.id}
-              testID={`lane-${lane.id}`}
-              style={{ width: 248, gap: 12 }}
-            >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            style={{ flex: 1, minHeight: 240 }}
+            contentContainerStyle={{
+              gap: 12,
+              alignItems: "stretch",
+              height: boardHeight,
+            }}
+          >
+            {lanes.map((lane) => (
               <View
-                style={{
-                  flexDirection: "row",
-                  gap: 8,
-                  alignItems: "center",
-                  paddingVertical: 4,
-                  paddingHorizontal: 0,
-                }}
+                key={lane.id}
+                testID={`lane-${lane.id}`}
+                style={{ width: 248, gap: 12, height: boardHeight }}
               >
-                <Glyph
-                  name={
-                    lane.id === "running"
-                      ? "CircleDot"
-                      : lane.id === "success"
-                        ? "CircleCheck"
-                        : lane.id === "failed"
-                          ? "CircleX"
-                          : lane.id === "attention"
-                            ? "CircleAlert"
-                            : "CircleDashed"
-                  }
-                />
-                <Text style={{ ...t.body, fontWeight: "600" }}>
-                  {lane.label}
-                </Text>
-                <Text style={t.small}>
-                  {rows.filter((r) => laneOf(r.state) === lane.id).length}
-                </Text>
-              </View>
-              {rows
-                .filter((r) => laneOf(r.state) === lane.id)
-                .map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onOpen={() => p.open(task)}
-                    onRetry={() => p.retry(task)}
-                    now={p.now}
-                  />
-                ))}
-              {!rows.some((r) => laneOf(r.state) === lane.id) && (
                 <View
                   style={{
-                    borderWidth: 1,
-                    borderStyle: "dashed",
-                    borderColor: t.c.border,
-                    borderRadius: 12,
-                    padding: 16,
-                    minHeight: 80,
+                    flexDirection: "row",
+                    gap: 8,
+                    alignItems: "center",
+                    paddingVertical: 4,
+                    paddingHorizontal: 0,
                   }}
                 >
-                  <Text style={t.small}>이 상태의 작업이 없습니다.</Text>
+                  <Glyph
+                    name={
+                      lane.id === "running"
+                        ? "CircleDot"
+                        : lane.id === "success"
+                          ? "CircleCheck"
+                          : lane.id === "failed"
+                            ? "CircleX"
+                            : lane.id === "attention"
+                              ? "CircleAlert"
+                              : "CircleDashed"
+                    }
+                  />
+                  <Text style={{ ...t.body, fontWeight: "600" }}>
+                    {lane.label}
+                  </Text>
+                  <Text style={t.small}>
+                    {rows.filter((r) => laneOf(r.state) === lane.id).length}
+                  </Text>
                 </View>
-              )}
-            </View>
-          ))}
-        </ScrollView>
+                <ScrollView
+                  testID={`lane-scroll-${lane.id}`}
+                  style={{ flex: 1, minHeight: 0 }}
+                  contentContainerStyle={{ gap: 12, paddingBottom: 16 }}
+                >
+                  {rows
+                    .filter((r) => laneOf(r.state) === lane.id)
+                    .map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onOpen={() => p.open(task)}
+                        onRetry={() => p.retry(task)}
+                        now={p.now}
+                      />
+                    ))}
+                  {!rows.some((r) => laneOf(r.state) === lane.id) && (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderStyle: "dashed",
+                        borderColor: t.c.border,
+                        borderRadius: 12,
+                        padding: 16,
+                        minHeight: 80,
+                      }}
+                    >
+                      <Text style={t.small}>이 상태의 작업이 없습니다.</Text>
+                    </View>
+                  )}
+                </ScrollView>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
       ) : (
         <ScrollView
           style={{ flex: 1 }}

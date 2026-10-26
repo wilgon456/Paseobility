@@ -1,71 +1,101 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Markdown, useToast } from "@getpaseo/plugin/client/ui";
+import { ExternalLink, Markdown, useToast } from "@getpaseo/plugin/client/ui";
 import { ScrollView, Text, TextInput, View } from "react-native";
 import type { Action, Plan } from "../shared/contracts";
-import { makeTaskId } from "../shared/model";
+import { makeTaskId, profileLabel, safePr } from "../shared/model";
 import type { Props, ActionResult } from "./screen";
-import { Button, Empty, Glyph, Notice, Select, useUi } from "./ui";
+import { Button, Empty, Glyph, Notice, useUi } from "./ui";
 import { composerKeys } from "./web";
-export type DraftState={draft:string;project:string;request:{id:string;text:string}|null;y:number;bottom:boolean;problem:string};
+type Request = { id: string; text: string; conversationId?: string };
+export type DraftState = {
+  draft: string;
+  request: Request | null;
+  y: number;
+  bottom: boolean;
+  problem: string;
+};
 export function Chat(
   p: Props & {
     composerRef: RefObject<TextInput | null>;
     perform: (i: Action) => Promise<ActionResult>;
-    confirm: (p: Plan) => void;
+    admit: (p: Plan) => void;
     memory: (id: string) => void;
-    create: () => Promise<void>;
     openTask: (id: string) => void;
-    drafts: Map<string,DraftState>;
+    drafts: Map<string, DraftState>;
   },
 ) {
   const t = useUi(),
-    toast = useToast(),
-    [draft, setDraft] = useState(p.drafts.get(p.conversation)?.draft??""),
-    [project, setProject] = useState(p.drafts.get(p.conversation)?.project??""),
-    [problem, setProblem] = useState(p.drafts.get(p.conversation)?.problem??"");
-  const request = useRef<{ id: string; text: string } | null>(p.drafts.get(p.conversation)?.request??null),
+    toast = useToast();
+  const cached = p.drafts.get(p.conversation);
+  const [draft, setDraft] = useState(cached?.draft ?? ""),
+    [problem, setProblem] = useState(cached?.problem ?? "");
+  const request = useRef<Request | null>(cached?.request ?? null),
     busy = useRef(false),
-    scroll = useRef<ScrollView>(null),
-    atBottom = useRef(p.drafts.get(p.conversation)?.bottom??true),
-    [unread, setUnread] = useState(false);
-  const position=useRef(p.drafts.get(p.conversation)?.y??0),restored=useRef(false);
-  const latest=useRef({draft,project,problem});latest.current={draft,project,problem};
-  useEffect(()=>()=>{p.drafts.set(p.conversation,{...latest.current,request:request.current,y:position.current,bottom:atBottom.current});},[]);
+    scroll = useRef<ScrollView>(null);
+  const atBottom = useRef(cached?.bottom ?? true),
+    position = useRef(cached?.y ?? 0),
+    restored = useRef(false);
+  const [unread, setUnread] = useState(false);
+  const latest = useRef({ draft, problem });
+  latest.current = { draft, problem };
+  useEffect(
+    () => () => {
+      p.drafts.set(p.conversation, {
+        ...latest.current,
+        request: request.current,
+        y: position.current,
+        bottom: atBottom.current,
+      });
+    },
+    [],
+  );
   const messages = p.data?.messages ?? [],
     plan = p.data?.plans.find((p) => p.state === "pending");
   useEffect(() => {
     if (atBottom.current) scroll.current?.scrollToEnd({ animated: false });
     else setUnread(true);
-  }, [messages.length]);
+  }, [messages.length, plan?.id, p.data?.deliveryState]);
   async function send() {
     if (
       busy.current ||
       p.pending ||
       !draft.trim() ||
-      !p.conversation ||
-      p.error
+      p.error ||
+      !p.data?.configured
     )
       return;
-    const text = project
-      ? `[프로젝트: ${project}]\n${draft.trim()}`
-      : draft.trim();
-    request.current ??= { id: makeTaskId(), text };
+    request.current ??= {
+      id: makeTaskId(),
+      text: draft.trim(),
+      ...(!p.conversation ? { conversationId: makeTaskId() } : {}),
+    };
     busy.current = true;
     setProblem("");
     try {
-      await p.perform({
-        action: "send",
-        conversationId: p.conversation,
-        messageId: request.current.id,
-        text: request.current.text,
-      });
+      const r = request.current;
+      await p.perform(
+        r.conversationId
+          ? {
+              action: "start",
+              requestId: r.conversationId,
+              messageId: r.id,
+              text: r.text,
+            }
+          : {
+              action: "send",
+              conversationId: p.conversation,
+              messageId: r.id,
+              text: r.text,
+            },
+      );
       request.current = null;
       setDraft("");
+      p.drafts.delete(p.conversation);
       atBottom.current = true;
-      toast.show("봇에게 요청을 전달했습니다.");
+      toast.show("전달했어요.");
     } catch {
       setProblem(
-        "전달 여부를 확인하지 못했습니다. 초안을 보존했습니다. 다시 보내면 같은 요청 ID를 사용합니다.",
+        "전달 여부를 확인하지 못했어요. 다시 보내도 같은 요청으로 처리해요.",
       );
     } finally {
       busy.current = false;
@@ -73,7 +103,7 @@ export function Chat(
   }
   useEffect(
     () => composerKeys(() => void send()),
-    [draft, project, p.pending, p.error, p.conversation],
+    [draft, p.pending, p.error, p.conversation, p.data?.configured],
   );
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
@@ -81,36 +111,44 @@ export function Chat(
         testID="chat-history"
         ref={scroll}
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, gap: 20 }}
+        contentContainerStyle={{ padding: 16, gap: 24 }}
         onScroll={(e) => {
           const n = e.nativeEvent;
-          position.current=n.contentOffset.y;
+          position.current = n.contentOffset.y;
           atBottom.current =
             n.contentOffset.y + n.layoutMeasurement.height >=
             n.contentSize.height - 60;
         }}
         scrollEventThrottle={100}
-        onContentSizeChange={()=>{if(!restored.current){restored.current=true;if(atBottom.current)scroll.current?.scrollToEnd({animated:false});else scroll.current?.scrollTo({y:position.current,animated:false});}}}
+        onContentSizeChange={() => {
+          if (!restored.current) {
+            restored.current = true;
+            if (atBottom.current)
+              scroll.current?.scrollToEnd({ animated: false });
+            else
+              scroll.current?.scrollTo({
+                y: position.current,
+                animated: false,
+              });
+          }
+        }}
       >
-        {messages.length===100&&<Button label="이전 대화 보기" onPress={()=>p.setFilters({before:messages[0].time})}/>}
-        {p.filters.before!==undefined&&<Button label="최근 대화로 돌아가기" onPress={()=>p.setFilters({before:undefined})}/>}
-        {!p.conversation ? (
+        {messages.length === 100 && (
+          <Button
+            label="이전 대화 보기"
+            onPress={() => p.setFilters({ before: messages[0].time })}
+          />
+        )}
+        {p.filters.before !== undefined && (
+          <Button
+            label="최근 대화로 돌아가기"
+            onPress={() => p.setFilters({ before: undefined })}
+          />
+        )}
+        {messages.length === 0 ? (
           <Empty
             title="무엇을 도와드릴까요?"
-            body="개발 요청을 알려주시면 봇이 필요한 내용을 확인하고 작업 계획을 제안합니다."
-            action={
-              <Button
-                label="대화 시작"
-                primary
-                onPress={() => void p.create()}
-                disabled={p.pending || !p.data?.configured}
-              />
-            }
-          />
-        ) : messages.length === 0 ? (
-          <Empty
-            title="요청을 편하게 말씀해 주세요"
-            body="프로젝트나 작업 범위가 모호하면 봇이 먼저 질문합니다. 계획을 확인하기 전에는 실행하지 않습니다."
+            body="하고 싶은 일을 편하게 말씀해 주세요. 계획을 보여드리고, 접수하면 시작할게요."
           />
         ) : (
           messages.map((m) => (
@@ -134,11 +172,7 @@ export function Chat(
                     fontWeight: "600",
                   }}
                 >
-                  {m.role === "user"
-                    ? "실장님"
-                    : m.role === "assistant"
-                      ? "Paseo 봇"
-                      : "작업 알림"}
+                  {m.role === "user" ? "실장님" : "Paseo 봇"}
                 </Text>
                 <Text style={t.small}>
                   {new Date(m.time * 1000).toLocaleTimeString(undefined, {
@@ -156,10 +190,14 @@ export function Chat(
               )}
               {!!m.payload.taskIds?.length && (
                 <View style={{ gap: 4 }}>
-                  {m.payload.taskIds.map((id) => (
+                  {m.payload.taskIds.map((id, i) => (
                     <Button
                       key={id}
-                      label={`작업 보기 · ${id}`}
+                      label={
+                        m.payload.taskIds!.length === 1
+                          ? "작업 자세히 보기"
+                          : `작업 ${i + 1} 보기`
+                      }
                       icon="ArrowUpRight"
                       quiet
                       onPress={() => p.openTask(id)}
@@ -167,10 +205,15 @@ export function Chat(
                   ))}
                 </View>
               )}
+              {!!safePr(m.payload.prUrl) && (
+                <ExternalLink href={safePr(m.payload.prUrl)}>
+                  PR 자세히 보기
+                </ExternalLink>
+              )}
               {m.role === "assistant" && (
                 <View style={{ alignItems: "flex-start" }}>
                   <Button
-                    label="이 답변 기억하기"
+                    label="기억하기"
                     quiet
                     icon="Bookmark"
                     onPress={() => p.memory(m.id)}
@@ -181,37 +224,30 @@ export function Chat(
           ))
         )}
         {plan && (
-          <View
-            testID="plan-card"
-            style={{
-              ...t.panel,
-              padding: 16,
-              gap: 12,
-              borderColor: t.c.accent,
-            }}
-          >
+          <View testID="plan-card" style={{ ...t.panel, padding: 16, gap: 12 }}>
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
             >
               <Glyph name="ListChecks" />
-              <Text style={t.heading}>작업 계획 · {plan.tasks.length}건</Text>
+              <Text style={t.heading}>이렇게 진행할게요</Text>
             </View>
             {plan.tasks.map((task, i) => (
               <View key={i} style={{ gap: 4 }}>
                 <Text style={t.body}>
-                  {i + 1}. {task.title}
+                  {plan.tasks.length > 1 ? `${i + 1}. ` : ""}
+                  {task.title}
                 </Text>
                 <Text style={t.small}>
-                  {task.project} · {task.machine || "자동 배정"}
+                  {task.project} · {task.machine || "프로젝트 기본 머신"} ·{" "}
+                  {profileLabel(task.kind)}
                 </Text>
               </View>
             ))}
-            <Text style={t.small}>내용을 확인하면 큐에 접수합니다.</Text>
             <Button
-              label="계획 확인"
+              label="접수"
               primary
-              onPress={() => p.confirm(plan)}
-              disabled={p.pending || p.error}
+              onPress={() => p.admit(plan)}
+              disabled={p.pending || p.error || !p.data?.acceptsTasks}
             />
           </View>
         )}
@@ -219,13 +255,13 @@ export function Chat(
           <Notice
             title={
               p.data.deliveryState === "unknown"
-                ? "전달 확인이 필요합니다"
-                : "봇이 답변을 준비하고 있습니다"
+                ? "전달을 확인하고 있어요"
+                : "생각하고 있어요"
             }
           >
             {p.data.deliveryState === "unknown"
-              ? "중복 전송을 막기 위해 자동으로 다시 보내지 않았습니다. VAXPORT의 매니저 기록을 확인해 주세요."
-              : "답변이 오면 이 대화에 표시합니다."}
+              ? "중복 요청을 막기 위해 기록을 확인할게요."
+              : "곧 여기서 답해드릴게요."}
           </Notice>
         )}
       </ScrollView>
@@ -253,47 +289,6 @@ export function Chat(
             {problem}
           </Text>
         )}
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Select
-            label="프로젝트"
-            value={project}
-            options={[
-              { value: "", label: "봇과 정하기" },
-              ...(p.data?.projects ?? [])
-                .filter((p) => p.enabled)
-                .map((p) => ({ value: p.id, label: p.id })),
-            ]}
-            onChange={setProject}
-            disabled={!!request.current}
-          />
-          <Select
-            label="템플릿"
-            value=""
-            options={[
-              { value: "", label: "선택" },
-              { value: "bug", label: "버그 수정" },
-              { value: "feature", label: "기능 추가" },
-              { value: "refactor", label: "리팩터링" },
-              { value: "check", label: "상태 확인" },
-            ]}
-            onChange={(v) =>
-              setDraft(
-                (
-                  {
-                    bug: "이 문제를 재현하고 수정해 주세요.\n문제 현상: \n기대 동작: ",
-                    feature:
-                      "새 기능을 만들고 싶습니다.\n원하는 동작: \n완료 기준: ",
-                    refactor:
-                      "동작을 유지하면서 구조를 정리해 주세요.\n대상: \n개선할 점: ",
-                    check:
-                      "이 프로젝트의 현재 상태와 확인할 사항을 알려주세요.",
-                  } as Record<string, string>
-                )[v] ?? draft,
-              )
-            }
-            disabled={!!request.current}
-          />
-        </View>
         <TextInput
           ref={p.composerRef}
           testID="bot-composer"
@@ -303,7 +298,7 @@ export function Chat(
           onChangeText={setDraft}
           maxLength={11500}
           editable={!p.pending && !request.current}
-          placeholder="봇에게 요청하세요. 필요한 내용은 함께 정리합니다."
+          placeholder="무엇을 해 드릴까요?"
           placeholderTextColor={t.c.foregroundMuted}
           style={{
             ...t.body,
@@ -331,7 +326,9 @@ export function Chat(
             primary
             icon="ArrowUp"
             onPress={() => void send()}
-            disabled={p.pending || !draft.trim() || !p.conversation || p.error}
+            disabled={
+              p.pending || !draft.trim() || p.error || !p.data?.configured
+            }
           />
         </View>
       </View>

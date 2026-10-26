@@ -27,18 +27,22 @@ def handle(home, request, allow_submit=False):
     allowed = {'status': {'action', 'offset'}, 'result': {'action', 'id'}, 'submit': {'action', 'task'},
                'sync': {'action', 'offset', 'conversationId', 'before', 'query', 'project', 'machine', 'requester', 'scope', 'group', 'sort'},
                'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf'},
+               'start': {'action', 'requestId', 'messageId', 'text'},
                'approve': {'action', 'conversationId', 'planId', 'digest'}, 'reject': {'action', 'conversationId', 'planId'},
                'remember': {'action', 'conversationId', 'messageId', 'project'}}
     if action not in allowed or set(request) - allowed[action]:
         raise ValueError('Unsupported request')
     home = Path(home)
-    if action in ['create', 'send', 'approve', 'reject', 'remember']:
+    if action in ['create', 'start', 'send', 'approve', 'reject', 'remember']:
         if not allow_submit:
             raise ValueError('Read-only bridge')
         c = Conversations(home)
         try:
             if action == 'create':
                 return c.create(request['requestId'])
+            if action == 'start':
+                out = c.create(request['requestId'])
+                return dict(c.send(out['conversationId'], request['messageId'], request['text']), **out)
             if action == 'send':
                 return c.send(request['conversationId'], request['messageId'], request['text'], request.get('retryOf'))
             if action == 'approve':

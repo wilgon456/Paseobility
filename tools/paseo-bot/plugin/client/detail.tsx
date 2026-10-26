@@ -7,7 +7,7 @@ import {
 } from "@getpaseo/plugin/client/ui";
 import { Text, TextInput, View } from "react-native";
 import type { TaskRow } from "../shared/contracts";
-import { requesterLabel, safePr } from "../shared/model";
+import { requesterLabel, safePr, stageLabel } from "../shared/model";
 import { Badge, Button, Glyph, Notice, Skeleton, useUi } from "./ui";
 function JsonNode({
   name,
@@ -206,7 +206,7 @@ export function Detail({
                               }
                             />
                             <View style={{ flex: 1 }}>
-                              <Text style={t.body}>{stage}</Text>
+                              <Text style={t.body}>{stageLabel(stage)}</Text>
                               <Text style={t.small}>
                                 {done
                                   ? "검증 기록 있음"
@@ -237,7 +237,7 @@ export function Detail({
                           key={stage}
                           style={{ ...t.panel, padding: 16, gap: 8 }}
                         >
-                          <Text style={t.heading}>{stage}</Text>
+                          <Text style={t.heading}>{stageLabel(stage)}</Text>
                           <Text style={t.small}>
                             {String(run?.profile ?? "프로필 기록 없음")} ·{" "}
                             {String(run?.model ?? "모델 기록 없음")}
