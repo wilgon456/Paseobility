@@ -53,3 +53,64 @@ Nonzero exits, interruption, input waits, and old run records keep the previous
 manual-close behavior. No existing run is migrated and no timer sweeps old
 terminals. If `exec --wait` returns while the command is running, call `capture`
 later to finalize it; a disconnected controller cannot perform cleanup.
+
+## Health and cleanup
+
+`health HOST|all` runs a read-only payload through the same identity-checked
+`exec` path. It reports CPU, available/total RAM, home-volume disk space, top
+memory processes, same-name counts and parent/task cause hints, listening orphan
+dev servers, owned completed terminals and OS/managed temp sizes. `all` uses up
+to eight connections and retains individual offline/error results. JSON includes
+a readable `table`; `--format table` prints only that table. Use `--workspace ID`
+when the remote daemon requires one. Incomplete output fails closed; recover the
+recorded run before retrying. A terminal is briefly created to collect metrics.
+
+macOS/Linux need Bash and Python 3; psutil is optional. Standard OS commands
+provide the fallback. Windows uses PowerShell 5.1/CIM and needs no Python;
+process environments/elevation cannot be established by that fallback, so its
+process candidates always require a pick. Missing listener information is marked
+`portsKnown: false` and cannot establish an orphan dev server. Temp-size walks
+stop after 20,000 entries and report partial results. No raw process command line
+or environment is returned.
+
+`cleanup HOST` lists candidates with stable IDs. `--port N` filters process
+candidates by listening port; it never means “kill whatever owns this port”.
+`--apply` acts on AUTO only. After showing the dry-run, use
+`--apply --pick 'process:PID:START'` for individual CONFIRM candidates; multiple
+IDs can be space or comma separated. Unknown, changed, filtered and protected
+IDs are refused. There is no “all CONFIRM” switch.
+
+- AUTO: a recorded, completed terminal with intact output; tagged same-user
+  processes whose run ended or parent died; owned regular files older than two
+  days directly in our managed `temp/` directory. `--keep-terminal` is preserved.
+- CONFIRM: untagged node/python/bun with no live original parent, age at least six
+  hours and a listening port; same-name pileups (three or more); Windows process
+  candidates, including potentially elevated ones. Parent and scheduled-task
+  hints identify causes to investigate, rather than selecting a whole name.
+- NEVER: other users, system/service processes, daemon itself, SSH/remote session
+  trees and recognized agent trees. Unknown ownership is protected. Running,
+  truncated or unrecorded terminals are excluded. Any active/unknown agent in
+  the complete snapshot defers process cleanup, even for explicit picks.
+
+The target checks ownership, PID creation time, current eligibility and protected
+children again. POSIX sends TERM, waits two seconds and then KILL to an isolated
+whole process group; shared groups, escaped children or changed identities are
+skipped. Windows uses local `taskkill /T`, grace, then `/T /F` with fresh identity
+and tree checks. Access denied or uncertain termination is reported, never
+retried with elevation. No registry or scheduled task is changed.
+
+Managed roots are `~/.cache/paseo-multi` on POSIX and
+`%LOCALAPPDATA%\paseo-multi` on Windows. Only their immediate `temp/` files are
+quarantined, never arbitrary OS temp data. Locked or linked files are skipped;
+quarantine is retained for seven days and purged only during an explicit apply.
+JSONL action logs with reasons live at `<managed-root>/cleanup.jsonl`; terminal
+cleanup logs and preserved complete captures live at `runs/cleanup.jsonl` on the
+controller. Attempt logs are flushed before mutations. Treat these as private
+user data. Health starts no background sweep and installs no schedule.
+
+Every new exec exports `PASEO_MULTI_SESSION=<runId>` to its command tree and
+keeps the `paseo-multi-<runId>` terminal prefix. POSIX launches the command in a
+new session when Python 3 or `setsid` is available. Legacy commands sharing a
+process group are protected from automated process termination. The current
+controller can identify only its own run records; a matching terminal name
+alone is insufficient ownership evidence.

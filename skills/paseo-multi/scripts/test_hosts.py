@@ -9,6 +9,10 @@ import sys
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
+
+import health
+import remote_health
 
 SCRIPT = Path(__file__).with_name('hosts.py')
 FAKE_CLIENT = '''
@@ -20,8 +24,9 @@ export const connectToDaemon = mode==='missing-connect' ? undefined : async (opt
  if(mode==='redact') throw Error('failed '+options.target.host+' secret-key-123');
  const state=process.env.MULTI_HOST_TEST_CALLS+'.terminal';
  if(mode.startsWith('run-')) return {
-  getDaemonStatus:async()=>({serverId:'expected',version:'0.13.0'}),
+  getDaemonStatus:async()=>({serverId:'expected',version:'0.13.0',pid:999}),
   supportsBackgroundWorkspaces:()=>true,
+  fetchAgents:async()=>({entries:[],pageInfo:{hasMore:false}}),
   createTerminal:async(cwd,name,requestId,opts)=>{
    mark('exec');
    const terminal={id:name,name};
@@ -54,7 +59,7 @@ export const connectToDaemon = mode==='missing-connect' ? undefined : async (opt
   killTerminal:async()=>{
    mark('kill');
    // Closing is forbidden until the receipt is already durable and readable.
-   if(mode!=='run-manual') {
+   if(!['run-manual','run-cleanup'].includes(mode)) {
     const t=JSON.parse(fs.readFileSync(state));
     const base=path.dirname(process.env.MULTI_HOST_TEST_CALLS);
     const receipt=JSON.parse(fs.readFileSync(base+'/runs/results/'+t.name.slice(12)+'.json'));
@@ -70,7 +75,7 @@ export const connectToDaemon = mode==='missing-connect' ? undefined : async (opt
  const oldClient=mode.startsWith('old-client');
  return {
   getDaemonStatus:async()=>({serverId:mode==='mismatch'?'other':'expected',
-   version:mode==='old-client-011'?'0.11.4':mode==='old-client-012'?'0.12.0':'test'}),
+   pid:999,version:mode==='old-client-011'?'0.11.4':mode==='old-client-012'?'0.12.0':'test'}),
   // 0.12+ clients expose the host feature and throw if the flag reaches a host without it.
   ...(oldClient?{}:{supportsBackgroundWorkspaces:()=>mode!=='old-host'}),
   fetchAgents:async options=>{
@@ -252,7 +257,7 @@ class AdapterTests(unittest.TestCase):
     @unittest.skipIf(os.name == 'nt', 'Bash wrapper execution on POSIX')
     def test_bash_wrapper_preserves_output_and_exit_marker(self):
         import signal
-        for command, expected in [("printf 'quoted\\noutput'; exit 0", 0), ("printf 'failure'; exit 7", 7)]:
+        for command, expected in [("printf 'ENV=%s\\n' \"$PASEO_MULTI_SESSION\"; printf 'quoted\\noutput'; exit 0", 0), ("printf 'failure'; exit 7", 7)]:
             p, d = self.invoke('run-success', 'exec', 'PC', '--command', command,
                                '--wait', '0', '--keep-terminal')
             self.assertEqual(p.returncode, 0, d)
@@ -272,6 +277,8 @@ class AdapterTests(unittest.TestCase):
             self.assertIn('PASEO_RUN_' + d['result']['runId'] + '_BEGIN', output)
             self.assertIn('PASEO_RUN_' + d['result']['runId'] + '_EXIT=' + str(expected), output)
             self.assertIn('quoted\noutput' if expected == 0 else 'failure', output)
+            if expected == 0:
+                self.assertIn('ENV='+d['result']['runId'], output)
 
     def test_powershell_success_uses_same_save_before_close_flow(self):
         p, d = self.run_command('run-success', '--shell', 'powershell')
@@ -282,6 +289,56 @@ class AdapterTests(unittest.TestCase):
         wrapper = base64.b64decode(options['args'][-1]).decode('utf-16le')
         self.assertIn('_BEGIN', wrapper)
         self.assertIn('Start-Sleep', wrapper)
+
+
+    def test_run_provenance_is_inherited_and_keep_is_durable(self):
+        import base64
+        for shell in ['bash', 'powershell']:
+            p, d = self.run_command('run-success', '--shell', shell, '--keep-terminal')
+            run_id = d['result']['runId']
+            options = json.loads(Path(str(self.calls)+'.terminal.options').read_text())
+            wrapper = options['args'][-1] if shell=='bash' else base64.b64decode(options['args'][-1]).decode('utf-16le')
+            self.assertIn('PASEO_MULTI_SESSION', wrapper)
+            self.assertIn(run_id, wrapper)
+            self.assertTrue(json.loads((self.root/'runs'/(run_id+'.json')).read_text())['keepTerminal'])
+
+    def test_cleanup_terminal_requires_complete_owned_output(self):
+        p, d = self.run_command('run-pending')
+        run_id = d['result']['runId']
+        request = dict(action='cleanup-terminal', host=self.host, stateDir=str(self.root/'runs'), runId=run_id)
+        def rpc_call(mode):
+            env = dict(os.environ, PASEO_MULTI_HOST_CLIENT_MODULE=str(self.module), MULTI_HOST_TEST_MODE=mode,
+                       MULTI_HOST_TEST_CALLS=str(self.calls))
+            return subprocess.run([shutil.which('node'), str(SCRIPT.with_name('rpc.mjs'))], input=json.dumps(request),
+                                  env=env, capture_output=True, text=True, encoding='utf-8', timeout=10)
+        for mode in ['run-pending','run-truncated','run-trailing','run-duplicate-marker']:
+            reply = json.loads(rpc_call(mode).stdout)
+            self.assertFalse(reply['ok'], (mode, reply))
+            self.assertNotIn('kill', self.calls.read_text())
+        reply = json.loads(rpc_call('run-cleanup').stdout)
+        self.assertTrue(reply['ok'], reply)
+        self.assertEqual(reply['result']['status'], 'closed')
+        log = (self.root/'runs/cleanup.jsonl').read_text()
+        self.assertIn('owned completed run', log)
+        self.assertNotIn('secret-key-123', log)
+
+    def test_inventory_never_closes_and_protects_retained_runs(self):
+        p, d = self.run_command('run-pending')
+        request = dict(action='inventory', host=self.host, stateDir=str(self.root/'runs'))
+        env = dict(os.environ, PASEO_MULTI_HOST_CLIENT_MODULE=str(self.module), MULTI_HOST_TEST_MODE='run-cleanup',
+                   MULTI_HOST_TEST_CALLS=str(self.calls))
+        def inventory():
+            p = subprocess.run([shutil.which('node'), str(SCRIPT.with_name('rpc.mjs'))], input=json.dumps(request),
+                               env=env, capture_output=True, text=True, encoding='utf-8', timeout=10)
+            return json.loads(p.stdout)
+        reply = inventory()
+        self.assertTrue(reply['ok'], reply)
+        self.assertEqual(reply['result']['terminals'][0]['tier'], 'AUTO')
+        self.assertNotIn('kill', self.calls.read_text())
+        record = self.root/'runs'/(d['result']['runId']+'.json')
+        value=json.loads(record.read_text());value['keepTerminal']=True;record.write_text(json.dumps(value))
+        reply=inventory()
+        self.assertEqual(reply['result']['terminals'], [])
 
     def test_identity_mismatch_blocks_exec(self):
         p, d = self.invoke('mismatch', 'exec', 'PC', '--file', str(self.script))
@@ -470,6 +527,185 @@ class AdapterTests(unittest.TestCase):
         p, d = self.invoke('idle', 'import-saved', str(source), '--replace')
         self.assertFalse(d['ok'])
         self.assertEqual(before, self.config.read_bytes())
+
+
+
+
+class HealthPolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.base=dict(host=dict(label='PC', platform='macos', serverId='expected'), stateDir='/private/runs')
+        self.snapshot=dict(daemonPid=999, processCleanupSafe=True, terminals=[], endedRuns=[])
+        self.process=dict(id='process:12:start',kind='process',tier='CONFIRM',reason='orphan dev server',ports=[8786])
+        self.temp=dict(id='temp:ours',kind='temp',tier='AUTO',reason='managed old file',mtime=1)
+        self.metrics=dict(version=1,candidates=[self.process,self.temp])
+
+    def test_dry_run_apply_picks_and_port_filter(self):
+        calls=[]
+        def rpc(request):
+            calls.append(request)
+            return dict(self.snapshot)
+        def remote(rpc, base, request, workspace):
+            if request.get('apply'):
+                calls.append(request)
+                return [dict(id=p['id'], status='quarantined') for p in request['items']]
+            return json.loads(json.dumps(self.metrics))
+        with patch.object(health, 'remote', side_effect=remote):
+            result=health.cleanup(rpc,self.base)
+            self.assertTrue(result['dryRun'])
+            self.assertEqual(result['selected'], ['temp:ours'])
+            self.assertFalse(any(r.get('apply') for r in calls))
+            result=health.cleanup(rpc,self.base,apply=True)
+            self.assertEqual([p['id'] for p in calls[-1]['items']], ['temp:ours'])
+            result=health.cleanup(rpc,self.base,apply=True,port=8786,picks=[self.process['id']])
+            self.assertEqual(result['selected'], [self.process['id']])
+            with self.assertRaises(ValueError): health.cleanup(rpc,self.base,apply=True,picks=['other'])
+            with self.assertRaises(ValueError): health.cleanup(rpc,self.base,picks=[self.process['id']])
+
+    def test_fresh_busy_snapshot_blocks_processes_even_explicit_picks(self):
+        snapshots=iter([dict(self.snapshot),dict(self.snapshot,processCleanupSafe=False)])
+        with patch.object(health,'remote',return_value=self.metrics.copy()) as remote:
+            result=health.cleanup(lambda request:next(snapshots),self.base,apply=True,port=8786,picks=[self.process['id']])
+            self.assertEqual(result['actions'][0]['status'],'skipped')
+            self.assertEqual(remote.call_count,1)
+
+    def test_all_keeps_unreachable_hosts_without_substituting_local(self):
+        def report(rpc, base, workspace):
+            if base['host']['label']=='offline': raise ValueError('unreachable')
+            return dict(host=base['host']['label'])
+        hosts=[dict(label='online'),dict(label='offline')]
+        with patch.object(health,'report',side_effect=report):
+            result=health.health_all(hosts,None,Path('/private'))
+        self.assertTrue(result[0]['ok']);self.assertFalse(result[1]['ok'])
+        self.assertEqual(result[1]['host'],'offline')
+
+    def test_remote_output_is_checked_and_decoded(self):
+        import base64,gzip
+        def rpc(request):
+            return dict(status='completed',exitCode=0,output='PASEO_HEALTH_TOKEN_BEGIN\n'+base64.b64encode(gzip.compress(b'{"version":1}')).decode()+'\nPASEO_HEALTH_TOKEN_END')
+        with patch.object(health,'payload',return_value=dict(script='read only',shell='bash',token='TOKEN')):
+            self.assertEqual(health.remote(rpc,self.base,{}),dict(version=1))
+        with patch.object(health,'payload',return_value=dict(script='read only',shell='bash',token='TOKEN')):
+            with self.assertRaises(ValueError): health.remote(lambda _:dict(status='completed',exitCode=0,output='truncated'),self.base,{})
+
+    def row(self, **kw):
+        return dict(dict(pid=100,ppid=1,uid=501,pgid=100,name='bun',session=None,ageSeconds=22000,
+                         started='start',ports=[8786],parentDead=True,rssBytes=1,cause='parent absent'),**kw)
+
+    def test_posix_tiers_age_listener_protection_and_live_tags(self):
+        uid=501
+        with patch.object(remote_health.os,'getuid',create=True,return_value=uid):
+            self.assertEqual(remote_health.candidates([self.row()],999,[])[0]['tier'],'CONFIRM')
+            for row in [self.row(ageSeconds=100),self.row(ports=[]),self.row(parentDead=False),
+                        self.row(uid=0),self.row(uid=502),self.row(name='paseo'),self.row(pid=999),
+                        self.row(protected=True),self.row(session='running',parentDead=False)]:
+                self.assertEqual(remote_health.candidates([row],999,[]),[],row)
+            self.assertEqual(remote_health.candidates([self.row(session='ours')],999,[],['ours']),[])
+            self.assertEqual(remote_health.candidates([self.row(session='ours')],999,[])[0]['tier'],'AUTO')
+            self.assertEqual(remote_health.candidates([self.row(session='ours',parentDead=False)],999,['ours'])[0]['tier'],'AUTO')
+            rows=[self.row(pid=10,name='codex'),self.row(pid=11,ppid=10),self.row(pid=12,ppid=11)]
+            self.assertEqual(remote_health.candidates(rows,999,[]),[])
+
+
+    def test_successful_isolated_group_uses_term_then_kill_and_verifies(self):
+        import signal
+        row=self.row()
+        item=dict(row,id='process:100:start',kind='process',tier='CONFIRM',reason='orphan dev server')
+        with patch.object(remote_health.os,'getuid',create=True,return_value=501), patch.object(remote_health,'process_snapshot',side_effect=[([row],True),([row],True),([row],True),([],True)]), patch.object(remote_health,'temp_candidates',return_value=[]), patch.object(remote_health,'audit'), patch.object(remote_health.time,'sleep'), patch.object(remote_health.os,'killpg',create=True) as kill, patch.object(remote_health.signal,'SIGKILL',9,create=True):
+            result=remote_health.apply(dict(items=[item],daemonPid=999,picks=[item['id']],ended=[]))
+            self.assertEqual(result[0]['status'],'terminated')
+            self.assertEqual([args.args for args in kill.call_args_list],[(100,signal.SIGTERM),(100,9)])
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX advisory lock')
+    def test_locked_managed_file_is_not_moved(self):
+        import fcntl,time
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);root.chmod(0o700)
+            folder=root/'temp';folder.mkdir()
+            file=folder/'locked';file.write_text('keep');os.utime(file,(time.time()-200000,)*2)
+            with file.open('rb') as held, patch.object(remote_health,'MANAGED',root), patch.object(remote_health,'process_snapshot',return_value=([],True)):
+                fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                items=remote_health.temp_candidates()
+                result=remote_health.apply(dict(items=items,daemonPid=999,picks=[],ended=[]))
+                self.assertEqual(result[0]['status'],'skipped')
+                self.assertTrue(file.exists())
+
+    def test_pid_reuse_shared_group_and_protected_child_refuse_signals(self):
+        row=self.row()
+        item=dict(row,id='process:100:start',kind='process',tier='CONFIRM',reason='orphan dev server')
+        request=dict(items=[item],daemonPid=999,picks=[item['id']],ended=[])
+        for fresh in [[self.row(started='reused')],[self.row(pgid=7)],
+                      [row,self.row(pid=101,ppid=100,uid=0)],
+                      [row,self.row(pid=101,ppid=100,pgid=101)]]:
+            with patch.object(remote_health.os,'getuid',create=True,return_value=501), patch.object(remote_health,'process_snapshot',side_effect=[([row],True),(fresh,True)]), patch.object(remote_health,'temp_candidates',return_value=[]), patch.object(remote_health,'audit'), patch.object(remote_health.os,'killpg',create=True) as kill:
+                result=remote_health.apply(request)
+                self.assertEqual(result[0]['status'],'skipped')
+                kill.assert_not_called()
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX file locks; Windows collector tested separately')
+    def test_temp_quarantine_and_retention_never_touch_unmanaged_or_links(self):
+        import time
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)/'managed';root.mkdir(mode=0o700)
+            temp=root/'temp';temp.mkdir()
+            old=temp/'old';old.write_text('ours');os.utime(old,(time.time()-200000,)*2)
+            fresh=temp/'fresh';fresh.write_text('keep')
+            outside=Path(td)/'outside';outside.write_text('private')
+            if os.name!='nt': (temp/'link').symlink_to(outside)
+            with patch.object(remote_health,'MANAGED',root),patch.object(remote_health,'process_snapshot',return_value=([],True)):
+                items=remote_health.temp_candidates()
+                self.assertEqual([p['name'] for p in items],['old'])
+                if os.name=='nt': return
+                result=remote_health.apply(dict(items=items,daemonPid=999,picks=[],ended=[]))
+                self.assertEqual(result[0]['status'],'quarantined')
+                self.assertTrue(fresh.exists());self.assertEqual(outside.read_text(),'private')
+                q=list((root/'quarantine').iterdir())[0]
+                os.utime(q,(time.time()-700000,)*2)
+                remote_health.apply(dict(items=[],daemonPid=999,picks=[],ended=[]))
+                self.assertFalse(q.exists())
+                self.assertIn('purged',(root/'cleanup.jsonl').read_text())
+
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell/CIM integration')
+    def test_windows_collector_and_quarantine_without_python(self):
+        import base64,gzip,time
+        with tempfile.TemporaryDirectory() as td:
+            env=dict(os.environ,LOCALAPPDATA=td)
+            root=Path(td)/'paseo-multi';root.mkdir()
+            temp=root/'temp';temp.mkdir()
+            old=temp/'ours';old.write_text('owned test fixture')
+            os.utime(old,(time.time()-200000,)*2)
+            fresh=temp/'fresh';fresh.write_text('preserve')
+            def run(request):
+                data=health.payload('windows',request)
+                # Exercise the same compressed outer/encoded inner path as RPC.
+                inner=base64.b64encode(("$ErrorActionPreference='Stop'\n"+data['script']).encode('utf-16le')).decode()
+                wrapper='& powershell.exe -NoProfile -EncodedCommand '+inner
+                packed=base64.b64encode(gzip.compress(wrapper.encode())).decode()
+                loader="$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String('"+packed+"'));$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z); & ([scriptblock]::Create($r.ReadToEnd()))"
+                result=subprocess.run(['powershell.exe','-NoProfile','-EncodedCommand',base64.b64encode(loader.encode('utf-16le')).decode()],env=env,capture_output=True,text=True,timeout=180)
+                self.assertEqual(result.returncode,0,result.stderr)
+                lines=result.stdout.strip().splitlines()
+                self.assertIn('_BEGIN',lines[0],result.stdout)
+                return json.loads(gzip.decompress(base64.b64decode(''.join(lines[1:-1]))))
+            metrics=run(dict(daemonPid=os.getpid(),ended=[]))
+            self.assertEqual(metrics['platform'],'Windows')
+            self.assertGreater(metrics['ram']['totalBytes'],0)
+            items=[p for p in metrics['candidates'] if p['kind']=='temp']
+            self.assertEqual([p['name'] for p in items],['ours'])
+            actions=run(dict(apply=True,daemonPid=os.getpid(),ended=[],items=items,picks=[]))
+            if isinstance(actions,dict): actions=[actions]
+            self.assertEqual(actions[0]['status'],'quarantined',actions)
+            self.assertFalse(old.exists());self.assertTrue(fresh.exists())
+            self.assertEqual(len(list((root/'quarantine').iterdir())),1)
+
+    def test_payload_windows_stays_below_nested_wrapper_limit(self):
+        import base64
+        data=health.payload('windows',dict(daemonPid=999,ended=[]))
+        inner=base64.b64encode(("$ErrorActionPreference='Stop'\n"+data['script']).encode('utf-16le')).decode()
+        wrapper="$env:PASEO_MULTI_SESSION='"+str(uuid.uuid4())+"'; "+inner+'X'*300
+        packed=base64.b64encode(__import__('gzip').compress(wrapper.encode())).decode()
+        self.assertLess(len(inner),28000)
+        self.assertLess(len(base64.b64encode((packed+'X'*400).encode('utf-16le'))),28000)
 
 
 if __name__ == '__main__':
