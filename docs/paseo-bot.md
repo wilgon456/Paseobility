@@ -3,7 +3,9 @@
 A resident development-task manager for every registered Paseo project across
 MacBook, MAC_MINI, MAC_COM and VAXPORT. Source stays in this repository under
 `tools/paseo-bot`; private host credentials and project state stay outside Git.
-It adds no bundled skill or plugin UI and changes no existing Paseo agent.
+It adds no bundled skill and changes no existing Paseo agent. The optional
+[Paseo 봇 GUI plugin](paseo-bot-gui.md) reads this queue and submits over
+authenticated Tailscale SSH without an HTTP listener.
 
 ## Architecture and contract
 

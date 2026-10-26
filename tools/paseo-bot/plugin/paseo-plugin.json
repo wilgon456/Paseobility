@@ -1,0 +1,8 @@
+{
+  "id": "paseo-bot",
+  "name": "Paseo 봇",
+  "description": "VAXPORT 작업 큐, 결과 조회 및 인증된 작업 제출",
+  "requirements": {
+    "paseo": ">=0.13.0 <0.14.0"
+  }
+}
