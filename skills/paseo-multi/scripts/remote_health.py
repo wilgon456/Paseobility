@@ -278,13 +278,23 @@ def apply(request):
         audit(event); results.append(event)
     # Purge only quarantine files created by us, seven days after quarantine.
     quarantine = MANAGED/'quarantine'
-    if quarantine.is_dir() and not quarantine.is_symlink():
+    if request.get('purge', True) and quarantine.is_dir() and not quarantine.is_symlink():
         for file in quarantine.iterdir():
             info = file.lstat()
             if re.fullmatch(r'[a-f0-9-]{36}\.quarantined', file.name) and stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and time.time()-info.st_mtime > 604800:
-                audit(dict(id='quarantine:'+file.name, reason='seven day quarantine retention', status='purge-attempt'))
-                file.unlink()
-                audit(dict(id='quarantine:'+file.name, reason='seven day quarantine retention', status='purged'))
+                event=dict(id='quarantine:'+file.name, reason='seven day quarantine retention', status='skipped')
+                audit(dict(event, status='purge-attempt'))
+                try:
+                    import fcntl
+                    with os.fdopen(os.open(file, os.O_RDONLY|os.O_NOFOLLOW), 'rb') as stream:
+                        fcntl.flock(stream, fcntl.LOCK_EX|fcntl.LOCK_NB)
+                        if file.lstat().st_ino != os.fstat(stream.fileno()).st_ino:
+                            raise ValueError('Quarantine file changed')
+                        file.unlink()
+                    event['status']='purged'
+                except (OSError, ValueError) as error:
+                    event['detail']=str(error)
+                audit(event); results.append(event)
     return results
 
 

@@ -568,6 +568,19 @@ class HealthPolicyTests(unittest.TestCase):
             self.assertEqual(result['actions'][0]['status'],'skipped')
             self.assertEqual(remote.call_count,1)
 
+
+    def test_apply_without_new_candidates_still_purges_expired_quarantine(self):
+        self.metrics['candidates']=[]
+        requests=[]
+        def remote(rpc,base,request,workspace):
+            requests.append(request)
+            return [] if request.get('apply') else self.metrics
+        with patch.object(health,'remote',side_effect=remote):
+            health.cleanup(lambda _:self.snapshot,self.base,apply=True)
+        self.assertTrue(requests[-1]['apply'])
+        self.assertTrue(requests[-1]['purge'])
+        self.assertEqual(requests[-1]['items'],[])
+
     def test_all_keeps_unreachable_hosts_without_substituting_local(self):
         def report(rpc, base, workspace):
             if base['host']['label']=='offline': raise ValueError('unreachable')
@@ -679,12 +692,13 @@ class HealthPolicyTests(unittest.TestCase):
                 data=health.payload('windows',request)
                 # Exercise the same compressed outer/encoded inner path as RPC.
                 inner=base64.b64encode(("$ErrorActionPreference='Stop'\n"+data['script']).encode('utf-16le')).decode()
-                wrapper='& powershell.exe -NoProfile -EncodedCommand '+inner
+                wrapper='& powershell.exe -NoProfile -EncodedCommand '+inner+'; exit $LASTEXITCODE'
                 packed=base64.b64encode(gzip.compress(wrapper.encode())).decode()
                 loader="$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String('"+packed+"'));$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z); & ([scriptblock]::Create($r.ReadToEnd()))"
                 result=subprocess.run(['powershell.exe','-NoProfile','-EncodedCommand',base64.b64encode(loader.encode('utf-16le')).decode()],env=env,capture_output=True,text=True,timeout=180)
                 self.assertEqual(result.returncode,0,result.stderr)
                 lines=result.stdout.strip().splitlines()
+                self.assertTrue(lines, result.stderr)
                 self.assertIn('_BEGIN',lines[0],result.stdout)
                 return json.loads(gzip.decompress(base64.b64decode(''.join(lines[1:-1]))))
             metrics=run(dict(daemonPid=os.getpid(),ended=[]))

@@ -36,14 +36,14 @@ function Snapshot {
         $age=if ($p.CreationDate) { ((Get-Date)-$p.CreationDate).TotalSeconds } else { 0 }
         $cause='parent '+$p.ParentProcessId+' ('+$parent.Name+')'
         $scheduled=@($tasks[$p.Name.ToLowerInvariant()]); if ($scheduled.Count) { $cause+='; scheduled task: '+($scheduled -join ', ') }
-        @{pid=[int]$p.ProcessId;ppid=[int]$p.ParentProcessId;owner=$owner;name=$p.Name;started=$started;ageSeconds=$age;rssBytes=[long]$p.WorkingSetSize;session=$null;ports=@($ports[[int]$p.ProcessId] | Where-Object {$_});parentDead=(!$parent -or ($parent.CreationDate -gt $p.CreationDate));cause=$cause;protected=($p.CommandLine -match '(\bpaseo\b|\bsshd?\b|\bcodex\b|\bclaude\b|\bopencode\b)')}
+        @{sessionId=[int]$p.SessionId;pid=[int]$p.ProcessId;ppid=[int]$p.ParentProcessId;owner=$owner;name=$p.Name;started=$started;ageSeconds=$age;rssBytes=[long]$p.WorkingSetSize;session=$null;ports=@($ports[[int]$p.ProcessId] | Where-Object {$_});parentDead=(!$parent -or ($parent.CreationDate -gt $p.CreationDate));cause=$cause;protected=($p.CommandLine -match '(\bpaseo\b|\bsshd?\b|\bcodex\b|\bclaude\b|\bopencode\b)')}
     })
     @{rows=$rows;portsKnown=$portsKnown}
 }
 function Denied($rows, $daemonPid) {
     $deny=@{}; $roots=@{}
     foreach ($p in $rows) {
-        if (!$p.owner -or $p.owner -ne $multiUser -or $p.pid -le 4 -or $p.protected -or $p.name -match '(paseo|sshd?|mosh|codex|claude|opencode|services|svchost|wininit|csrss|lsass|taskhost|winlogon|conhost)') { $deny[$p.pid]=$true; if ($p.pid -ne $daemonPid -and ($p.name -match '(ssh|mosh|codex|claude|opencode)' -or $p.protected)) { $roots[$p.pid]=$true } }
+        if (!$p.owner -or $p.owner -match '^S-1-5-(18|19|20|80|82)(-|$)' -or $p.sessionId -eq 0 -or $p.owner -ne $multiUser -or $p.pid -le 4 -or $p.protected -or $p.name -match '(paseo|sshd?|mosh|codex|claude|opencode|services|svchost|wininit|csrss|lsass|taskhost|winlogon|conhost)') { $deny[$p.pid]=$true; if ($p.pid -ne $daemonPid -and ($p.name -match '(ssh|mosh|codex|claude|opencode)' -or $p.protected)) { $roots[$p.pid]=$true } }
     }
     $deny[[int]$daemonPid]=$true
     do { $changed=$false; foreach ($p in $rows) { if ($roots.ContainsKey($p.ppid) -and !$roots.ContainsKey($p.pid)) { $roots[$p.pid]=$true;$deny[$p.pid]=$true;$changed=$true } } } while ($changed)
@@ -134,12 +134,13 @@ if ($multiRequest.apply) {
         Audit $event; $event
     })
     $quarantine=Join-Path $multiRoot 'quarantine'
-    if(Test-Path -LiteralPath $quarantine){SafeDir $quarantine; Get-ChildItem -LiteralPath $quarantine -File | Where-Object {$_.Name -match '^[a-f0-9-]{36}\.quarantined$' -and !($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $_.LastWriteTimeUtc -lt [DateTime]::UtcNow.AddDays(-7)} | ForEach-Object {
+    $purged=@()
+    if($multiRequest.purge -ne $false -and (Test-Path -LiteralPath $quarantine)){SafeDir $quarantine; Get-ChildItem -LiteralPath $quarantine -File | Where-Object {$_.Name -match '^[a-f0-9-]{36}\.quarantined$' -and !($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $_.LastWriteTimeUtc -lt [DateTime]::UtcNow.AddDays(-7)} | ForEach-Object {
         if ((Get-Acl -LiteralPath $_.FullName).GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $multiUser) { return }
         $event=@{id='quarantine:'+$_.Name;reason='seven day quarantine retention';status='purge-attempt'};Audit $event
-        try{[IO.File]::Delete($_.FullName);$event.status='purged'}catch{$event.status='locked'};Audit $event
+        try{[IO.File]::Delete($_.FullName);$event.status='purged'}catch{$event.status='locked'};Audit $event; $purged+=@($event)
     }}
-    $multiResult=$events
+    $multiResult=@($events)+@($purged)
 } else {
     $os=Get-CimInstance Win32_OperatingSystem
     $cpu=@(Get-CimInstance Win32_Processor | ForEach-Object {$_.LoadPercentage} | Measure-Object -Average).Average

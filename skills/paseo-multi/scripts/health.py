@@ -106,9 +106,10 @@ def cleanup(rpc, base, apply=False, port=None, picks=(), workspace=None):
             blocked = [p for p in remote_items if p['kind']=='process']
             result['actions'].extend(dict(id=p['id'], status='skipped', reason='Active or unknown agent state; process trees protected.') for p in blocked)
             remote_items = [p for p in remote_items if p['kind']!='process']
-        if remote_items:
-            result['actions'].extend(remote(rpc, base, dict(apply=True, daemonPid=snap['daemonPid'],
-                ended=snap['endedRuns'], protected=snap.get('protectedRuns', []), items=remote_items, picks=list(picks)), workspace))
+    if remote_items or port is None:
+        result['actions'].extend(remote(rpc, base, dict(apply=True, daemonPid=snap['daemonPid'],
+            ended=snap['endedRuns'], protected=snap.get('protectedRuns', []), items=remote_items,
+            picks=list(picks), purge=port is None), workspace))
     return result
 
 
