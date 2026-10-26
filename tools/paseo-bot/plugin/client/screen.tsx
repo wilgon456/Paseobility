@@ -1,124 +1,616 @@
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { statusRpc, resultRpc, submitRpc, taskSchema } from "../shared/contracts";
-import type { Snapshot, Task } from "../shared/contracts";
-import { makeTaskId, stateLabel } from "../shared/model";
+import { Modal, useToast } from "@getpaseo/plugin/client/ui";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { Text, TextInput, View } from "react-native";
+import { actionRpc, resultRpc, syncInput, syncRpc } from "../shared/contracts";
+import type {
+  Action,
+  Filters,
+  Plan,
+  Snapshot,
+  TaskRow,
+} from "../shared/contracts";
+import { makeTaskId, relativeTime } from "../shared/model";
+import { Board } from "./board";
+import { Chat } from "./chat";
+import type { DraftState } from "./chat";
+import { Detail } from "./detail";
+import {
+  Button,
+  Glyph,
+  Notice,
+  Select,
+  Skeleton,
+  UiProvider,
+  useUi,
+} from "./ui";
+import { shortcuts } from "./web";
 
-export function BotScreen(props: PluginScreenProps) { return <Connected key={props.host.id} {...props} />; }
-function Connected({ theme, host, layout }: PluginScreenProps) {
-  const read = useRpc(statusRpc), result = useRpc(resultRpc), submit = useRpc(submitRpc);
-  const [offset, setOffset] = useState(0), [selected, select] = useState("");
-  const status = useQuery({ queryKey: ["paseo-bot", host.id, offset], queryFn: () => read({ offset }), retry: false, refetchInterval: 10000 });
-  const detail = useQuery({ queryKey: ["paseo-bot-result", host.id, selected], queryFn: () => result({ id: selected }), enabled: !!selected, retry: false, refetchInterval: 10000 });
-  const mutation = useMutation({ mutationFn: submit, retry: false, onSuccess: value => { select(value.id); setOffset(0); void status.refetch(); } });
-  return <BotView theme={theme} compact={layout.compact} data={status.data} loading={status.isPending} error={status.isError}
-    refreshing={status.isFetching} refresh={() => { void status.refetch(); if (selected) void detail.refetch(); }}
-    offset={offset} setOffset={setOffset} selected={selected} select={select} detail={detail.data}
-    detailLoading={detail.isPending && !!selected} detailError={detail.isError} submit={task => mutation.mutateAsync(task)} />;
+export function BotScreen(p: PluginScreenProps) {
+  return <Connected key={p.host.id} {...p} />;
 }
-type Props = {
-  theme: PluginTheme; compact: boolean; data?: Snapshot; loading: boolean; error: boolean; refreshing?: boolean;
-  refresh: () => void; offset: number; setOffset: (n: number) => void; selected: string; select: (id: string) => void;
-  detail?: Record<string, unknown>; detailLoading?: boolean; detailError?: boolean; submit: (task: Task) => Promise<unknown>;
+function Connected({ theme, host, layout }: PluginScreenProps) {
+  const read = useRpc(syncRpc),
+    act = useRpc(actionRpc),
+    result = useRpc(resultRpc);
+  const [filters, setFilters] = useState<Filters>(() => syncInput.parse({})),
+    [conversation, setConversation] = useState("");
+  const [selected, select] = useState<TaskRow | null>(null),
+    [pending, setPending] = useState(false);
+  const cache = useRef(new Map<string, Snapshot>());
+  const data = useQuery({
+    queryKey: ["paseo-bot-v2", host.id, conversation, filters],
+    queryFn: () => read({ ...filters, conversationId: conversation }),
+    retry: false,
+    refetchInterval: (q) =>
+      q.state.status === "error"
+        ? Math.min(30000, 5000 * 2 ** q.state.fetchFailureCount)
+        : q.state.data?.deliveryState
+          ? 2000
+          : Object.entries(q.state.data?.queue ?? {}).some(
+                ([k, v]) =>
+                  ["running", "dispatching", "ready"].includes(k) && v > 0,
+              )
+            ? 5000
+            : 10000,
+  });
+  const detail = useQuery({
+    queryKey: ["paseo-bot-detail", host.id, selected?.id],
+    queryFn: () => result({ id: selected!.id }),
+    enabled: !!selected,
+    retry: false,
+    refetchInterval: selected ? 10000 : false,
+  });
+  if (data.data) {
+    cache.current.set(conversation, data.data);
+    if (!conversation && data.data.conversations[0])
+      cache.current.set(data.data.conversations[0].id, data.data);
+  }
+  const snapshot = data.data ?? cache.current.get(conversation);
+  const lock = useRef(false);
+  async function action(input: Action) {
+    if (lock.current) throw Error("A request is pending");
+    lock.current = true;
+    setPending(true);
+    try {
+      const r = await act(input);
+      if (r.conversationId) setConversation(r.conversationId);
+      await data.refetch();
+      return r;
+    } finally {
+      lock.current = false;
+      setPending(false);
+    }
+  }
+  return (
+    <BotView
+      theme={theme}
+      compact={layout.compact}
+      data={snapshot}
+      loading={data.isPending}
+      error={data.isError}
+      refreshing={data.isFetching}
+      filters={filters}
+      setFilters={(f) => setFilters((old) => ({ ...old, ...f }))}
+      conversation={conversation || snapshot?.conversations[0]?.id || ""}
+      setConversation={(id) => {
+        setConversation(id);
+        setFilters((f) => ({ ...f, scope: "", offset: 0, before: undefined }));
+        select(null);
+      }}
+      action={action}
+      pending={pending}
+      refresh={() => void data.refetch()}
+      selected={selected}
+      select={select}
+      detail={detail.data}
+      detailLoading={detail.isPending}
+      detailError={detail.isError}
+    />
+  );
+}
+export type ActionResult = {
+  accepted?: boolean;
+  conversationId?: string;
+  messageId?: string;
+  taskIds?: string[];
+};
+export type Props = {
+  theme: PluginTheme;
+  compact: boolean;
+  data?: Snapshot;
+  loading: boolean;
+  error: boolean;
+  refreshing?: boolean;
+  filters: Filters;
+  setFilters: (f: Partial<Filters>) => void;
+  conversation: string;
+  setConversation: (id: string) => void;
+  action: (input: Action) => Promise<ActionResult>;
+  pending: boolean;
+  refresh: () => void;
+  selected: TaskRow | null;
+  select: (r: TaskRow | null) => void;
+  detail?: Record<string, unknown>;
+  detailLoading: boolean;
+  detailError: boolean;
 };
 export function BotView(p: Props) {
-  const c = p.theme.colors;
-  const body = { color: c.foreground, fontSize: 14, lineHeight: 24 };
-  const muted = { ...body, color: c.foregroundMuted };
-  const heading = { ...body, fontSize: 18, lineHeight: 28, fontWeight: "600" as const };
-  const [form, showForm] = useState(false), [raw, showRaw] = useState(false);
-  const [id, setId] = useState(makeTaskId), [project, setProject] = useState(""), [title, setTitle] = useState(""), [prompt, setPrompt] = useState("");
-  const [kind, setKind] = useState<Task["kind"]>("gpt"), [message, setMessage] = useState(""), [busy, setBusy] = useState(false);
-  // Freeze ambiguous submissions. Retry sends the identical body and idempotency key.
-  const frozen = useRef<Task | null>(null), inFlight = useRef(false);
-  const canSubmit = !!p.data?.acceptsTasks && !p.error;
-  function button(label: string, onPress: () => void, disabled = false, primary = false) {
-    return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-      style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 16, paddingVertical: 8, justifyContent: "center", borderRadius: 8,
-        borderWidth: 1, borderColor: c.border, backgroundColor: primary ? c.accent : pressed ? c.surface2 : c.surface1, opacity: disabled ? 0.5 : 1 })}>
-      <Text style={{ ...body, color: primary ? c.accentForeground : c.foreground, textAlign: "center" }}>{label}</Text>
-    </Pressable>;
-  }
-  function field(label: string, value: string, set: (s: string) => void, maxLength: number, multiline = false) {
-    return <View style={{ gap: 4 }}><Text style={body}>{label}</Text>
-      <TextInput accessibilityLabel={label} value={value} onChangeText={set} editable={!busy && !frozen.current} maxLength={maxLength}
-        multiline={multiline} autoCapitalize="none" style={{ ...body, minHeight: multiline ? 144 : 44, padding: 12, borderRadius: 8, borderWidth: 1,
-          borderColor: c.border, backgroundColor: c.surface1, textAlignVertical: "top" }} />
-    </View>;
-  }
-  async function send() {
-    if (inFlight.current || !canSubmit) return;
-    const parsed = taskSchema.safeParse(frozen.current ?? { id, project, title, prompt, kind });
-    if (!parsed.success || !p.data?.projects.some(x => x.id === parsed.data.project && x.enabled)) { setMessage("등록된 활성 프로젝트, 제목, 작업 내용을 확인하세요."); return; }
-    frozen.current = parsed.data; inFlight.current = true; setBusy(true); setMessage("");
+  return (
+    <UiProvider value={p.theme}>
+      <Console {...p} />
+    </UiProvider>
+  );
+}
+function Console(p: Props) {
+  const t = useUi(),
+    toast = useToast(),
+    [view, setView] = useState<"kanban" | "list">("kanban"),
+    [tab, setTab] = useState("chat");
+  const [confirm, setConfirm] = useState<Plan | null>(null),
+    [retry, setRetry] = useState<TaskRow | null>(null),
+    [memory, setMemory] = useState<string | null>(null),
+    [memoryProject, setMemoryProject] = useState("");
+  const searchRef = useRef<TextInput>(null),
+    composerRef = useRef<TextInput>(null),
+    [now, setNow] = useState(Date.now() / 1000);
+  const createId = useRef<string | null>(null),
+    retryId = useRef<{ task: string; id: string } | null>(null);
+  const drafts=useRef(new Map<string,DraftState>());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now() / 1000), 10000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(
+    () =>
+      shortcuts(
+        () => {
+          setTab("board");
+          setTimeout(() => searchRef.current?.focus(), 0);
+        },
+        () => {
+          setTab("chat");
+          setTimeout(() => composerRef.current?.focus(), 0);
+        },
+      ),
+    [],
+  );
+  async function perform(input: Action) {
     try {
-      await p.submit(parsed.data);
-      setMessage(`접수됨 · ${parsed.data.id}. 처리 결과는 작업 상태에서 확인하세요.`);
-      frozen.current = null; setId(makeTaskId()); setTitle(""); setPrompt("");
-    } catch { setMessage(`접수 확인이 필요합니다. 작업 ID ${id}를 목록에서 확인하세요. 재시도는 같은 요청을 보냅니다.`); }
-    finally { inFlight.current = false; setBusy(false); }
+      return await p.action(input);
+    } catch {
+      toast.error(
+        "요청을 확인하지 못했습니다. 연결을 확인하고 같은 요청으로 다시 시도하세요.",
+      );
+      throw Error("Request unconfirmed");
+    }
   }
-  const d = p.data;
-  return <ScrollView style={{ flex: 1, backgroundColor: c.surface0 }} contentContainerStyle={{ width: "100%", maxWidth: 1100, alignSelf: "center", padding: p.compact ? 16 : 24, gap: 24 }}>
-    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
-      <View style={{ flex: 1, minWidth: 160 }}><Text accessibilityRole="header" style={{ ...heading, fontSize: 24, lineHeight: 32 }}>Paseo 봇</Text>
-        <Text style={muted}>VAXPORT · {p.loading ? "연결 중" : p.error ? "연결 확인 필요" : d?.healthy ? "정상 작동" : "실행기 확인 필요"}</Text></View>
-      {button("새로고침", p.refresh, p.refreshing)}
-      {button(form ? "양식 닫기" : "새 작업", () => showForm(!form), false, true)}
+  async function create() {
+    createId.current ??= makeTaskId();
+    try {
+      await perform({ action: "create", requestId: createId.current });
+      createId.current = null;
+    } catch {}
+  }
+  async function approve() {
+    if (!confirm) return;
+    try {
+      const r = await perform({
+        action: "approve",
+        conversationId: p.conversation,
+        planId: confirm.id,
+        digest: confirm.digest,
+      });
+      toast.show(`${r.taskIds?.length ?? 0}개 작업을 접수했습니다.`, {
+        variant: "success",
+      });
+      setConfirm(null);
+    } catch {}
+  }
+  async function askRetry() {
+    if (!retry) return;
+    if(retryId.current?.task!==retry.id)retryId.current={task:retry.id,id:makeTaskId()};
+    try {
+      let id = p.conversation;
+      if (!id)
+        id = (await perform({ action: "create", requestId: makeTaskId() }))
+          .conversationId!;
+      await perform({
+        action: "send",
+        conversationId: id,
+        messageId: retryId.current.id,
+        text: "이 실패 작업의 원인을 검토하고 재시도 계획을 제안해 주세요. 기존 작업과 에이전트는 보존해 주세요.",
+        retryOf: retry.id,
+      });
+      setRetry(null);
+      retryId.current=null;
+      setTab("chat");
+      toast.show("봇에게 재검토를 요청했습니다.");
+    } catch {}
+  }
+  const queue = p.data?.queue ?? {},
+    counts = [
+      {
+        label: "대기",
+        n: (queue.queued ?? 0) + (queue.ready ?? 0),
+        icon: "CircleDashed",
+      },
+      {
+        label: "실행",
+        n:
+          (queue.running ?? 0) +
+          (queue.dispatching ?? 0) +
+          (queue.repairing ?? 0),
+        icon: "Activity",
+      },
+      { label: "성공", n: queue.passed ?? 0, icon: "CircleCheck" },
+      { label: "실패", n: queue.failed ?? 0, icon: "CircleX" },
+    ];
+  const current = p.data?.conversations.find((c) => c.id === p.conversation);
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: t.c.surface0,
+        padding: p.compact ? 16 : 24,
+        gap: 20,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 12,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <View style={{ flex: 1, minWidth: 180, gap: 4 }}>
+          <Text
+            accessibilityRole="header"
+            style={{ ...t.heading, fontSize: 24, lineHeight: 32 }}
+          >
+            Paseo 봇
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Glyph name={p.error ? "WifiOff" : "ShieldCheck"} size={14} />
+            <Text style={t.muted}>
+              VAXPORT ·{" "}
+              {p.error ? "다시 연결 중" : p.loading ? "연결 중" : "연결됨"}
+            </Text>
+          </View>
+        </View>
+        <Text style={t.small}>N 새 요청 · / 검색</Text>
+        <Button
+          label="새로고침"
+          icon="RefreshCw"
+          disabled={p.refreshing}
+          onPress={p.refresh}
+        />
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {counts.map((c) => (
+          <View
+            key={c.label}
+            style={{
+              ...t.panel,
+              flex: 1,
+              minWidth: p.compact ? 60 : 100,
+              padding: 12,
+              gap: 8,
+            }}
+          >
+            <View
+              style={{ flexDirection: "row", gap: 6, alignItems: "center" }}
+            >
+              <Glyph name={c.icon} size={14} />
+              <Text style={t.small}>{c.label}</Text>
+            </View>
+            <Text
+              style={{
+                ...t.heading,
+                fontSize: 22,
+                lineHeight: 28,
+                fontVariant: ["tabular-nums"],
+              }}
+            >
+              {p.loading ? "—" : c.n}
+            </Text>
+          </View>
+        ))}
+        <View
+          style={{ ...t.panel, flex: 2, minWidth: 220, padding: 12, gap: 4 }}
+        >
+          <Text style={t.body}>
+            {p.data?.healthy ? "실행기 정상" : "실행기 확인 필요"} ·{" "}
+            {(queue.blocked ?? 0) + (queue.unknown ?? 0)}건 검토 필요
+          </Text>
+          <Text style={t.small}>
+            마지막 하트비트 {relativeTime(p.data?.lastTickAt ?? 0, now)}
+          </Text>
+          <Text style={t.small}>
+            매니저{" "}
+            {p.data?.managerHealthy
+              ? p.data.deliveryState
+                ? "답변 준비 중"
+                : "대기 중"
+              : "연결 확인 중"}
+          </Text>
+        </View>
+      </View>
+      {p.error && (
+        <Notice title="VAXPORT와 연결이 끊겼습니다" error>
+          <Text style={t.muted}>
+            자동으로 다시 연결합니다.{" "}
+            {p.data
+              ? `마지막 확인 ${relativeTime(p.data.lastSyncAt, now)}. 표시된 정보는 이전 상태일 수 있습니다.`
+              : "Tailscale과 SSH 연결을 확인해 주세요."}
+          </Text>
+          <Button label="지금 다시 연결" onPress={p.refresh} />
+        </Notice>
+      )}
+      {p.data && !p.data.configured && (
+        <Notice title="대화 매니저 준비가 필요합니다">
+          VAXPORT에서 GUI 데이터 이관과 매니저 서비스를 준비해 주세요.
+        </Notice>
+      )}
+      {p.compact && (
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Button
+            label="대화"
+            selected={tab === "chat"}
+            onPress={() => setTab("chat")}
+          />
+          <Button
+            label="작업"
+            selected={tab === "board"}
+            onPress={() => setTab("board")}
+          />
+        </View>
+      )}
+      <View
+        style={{
+          flex: 1,
+          minHeight: 260,
+          flexDirection: p.compact ? "column" : "row",
+          gap: 20,
+        }}
+      >
+        {(!p.compact || tab === "chat") && (
+          <View
+            style={{
+              ...t.panel,
+              flex: p.compact ? 1 : 0.8,
+              minWidth: p.compact ? 0 : 320,
+              maxWidth: p.compact ? undefined : 500,
+              overflow: "hidden",
+            }}
+          >
+            <View
+              style={{
+                padding: 16,
+                borderBottomWidth: 1,
+                borderColor: t.c.border,
+                gap: 8,
+              }}
+            >
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Glyph name="Bot" />
+                <View style={{ flex: 1 }}>
+                  <Text style={t.heading}>봇과 대화</Text>
+                  <Text style={t.small}>
+                    {current?.status === "running"
+                      ? "요청을 살펴보고 있습니다"
+                      : "계획을 확인한 뒤 작업을 시작합니다"}
+                  </Text>
+                </View>
+                <Button
+                  label="새 대화"
+                  icon="Plus"
+                  quiet
+                  disabled={p.pending || !p.data?.configured || p.error}
+                  onPress={() => void create()}
+                />
+              </View>
+              {!!p.data?.conversations.length && (
+                <Select
+                  label="대화 세션"
+                  value={p.conversation}
+                  options={p.data.conversations.map((c) => ({
+                    value: c.id,
+                    label: c.title,
+                  }))}
+                  onChange={p.setConversation}
+                />
+              )}
+            </View>
+            {p.loading && !p.data ? (
+              <Skeleton label="대화를 불러오는 중" />
+            ) : (
+              <Chat
+                drafts={drafts.current}
+                key={p.conversation}
+                {...p}
+                composerRef={composerRef}
+                perform={perform}
+                confirm={setConfirm}
+                memory={setMemory}
+                create={create}
+                openTask={(id) => {
+                  const task = p.data?.tasks.find((t) => t.id === id);
+                  if (task) p.select(task);
+                  else {
+                    p.setFilters({
+                      query: id,
+                      offset: 0,
+                      scope: "",
+                      group: "",
+                      project: "",
+                      machine: "",
+                      requester: "",
+                    });
+                    setTab("board");
+                  }
+                }}
+              />
+            )}
+          </View>
+        )}
+        {(!p.compact || tab === "board") && (
+          <Board
+            data={p.data}
+            loading={p.loading}
+            filters={p.filters}
+            setFilters={p.setFilters}
+            view={view}
+            setView={setView}
+            open={p.select}
+            retry={(r) => setRetry(r)}
+            searchRef={searchRef}
+            conversation={p.conversation}
+            now={now}
+          />
+        )}
+      </View>
+      {p.selected && (
+        <Detail
+          key={p.selected.id}
+          task={p.selected}
+          data={p.detail}
+          loading={p.detailLoading}
+          error={p.detailError}
+          close={() => p.select(null)}
+          retry={() => {
+            setRetry(p.selected);
+            p.select(null);
+          }}
+        />
+      )}
+      {confirm && (
+        <Modal
+          title="작업 계획 확인"
+          open
+          onOpenChange={(open) => {
+            if (!open) setConfirm(null);
+          }}
+        >
+          <Modal.Content>
+            <Text style={t.muted}>
+              아래 내용으로 접수하면 봇이 작업을 시작합니다. 변경할 부분이
+              있으면 대화로 알려주세요.
+            </Text>
+            {confirm.tasks.map((task, i) => (
+              <View key={i} style={{ ...t.panel, padding: 16, gap: 8 }}>
+                <Text style={t.heading}>
+                  {i + 1}. {task.title}
+                </Text>
+                <Text style={t.small}>
+                  {task.project} · {task.machine || "자동 배정"} · {task.kind}
+                </Text>
+                <Text selectable style={t.body}>
+                  {task.prompt}
+                </Text>
+                {!!task.dependsOn?.length && (
+                  <Text style={t.small}>
+                    선행 작업: {task.dependsOn.map((n) => n + 1).join(", ")}
+                  </Text>
+                )}
+              </View>
+            ))}
+            <Button
+              label="확인하고 접수"
+              primary
+              icon="Check"
+              disabled={p.pending || p.error}
+              onPress={() => void approve()}
+            />
+            <Button
+              label="취소하고 수정하기"
+              disabled={p.pending}
+              onPress={() => {
+                void perform({
+                  action: "reject",
+                  conversationId: p.conversation,
+                  planId: confirm.id,
+                })
+                  .then(() => setConfirm(null))
+                  .catch(() => {});
+              }}
+            />
+          </Modal.Content>
+        </Modal>
+      )}
+      {retry && (
+        <Modal
+          title="실패 작업 재검토"
+          open
+          onOpenChange={(open) => {
+            if (!open) setRetry(null);
+          }}
+        >
+          <Modal.Content>
+            <Text style={t.heading}>{retry.title}</Text>
+            <Text style={t.body}>
+              봇이 실패 원인과 기존 에이전트를 확인한 뒤 새 계획을 제안합니다.
+              계획을 다시 확인해야 새 작업이 접수됩니다.
+            </Text>
+            <Text style={t.small}>원래 작업과 기록은 그대로 보존합니다.</Text>
+            <Button
+              label="봇에게 재검토 요청"
+              primary
+              disabled={p.pending || p.error}
+              onPress={() => void askRetry()}
+            />
+            <Button label="돌아가기" onPress={() => setRetry(null)} />
+          </Modal.Content>
+        </Modal>
+      )}
+      {memory && (
+        <Modal
+          title="프로젝트에 기억하기"
+          open
+          onOpenChange={(open) => {
+            if (!open) setMemory(null);
+          }}
+        >
+          <Modal.Content>
+            <Text style={t.muted}>
+              선택한 봇 답변을 이 프로젝트의 참고 기록으로 저장합니다. 실행
+              권한이나 승인으로 사용하지 않습니다.
+            </Text>
+            <Select
+              label="기억할 프로젝트"
+              value={memoryProject}
+              options={(p.data?.projects ?? [])
+                .filter((p) => p.enabled)
+                .map((p) => ({ value: p.id, label: p.id }))}
+              onChange={setMemoryProject}
+            />
+            <Button
+              label="확인하고 기억하기"
+              primary
+              disabled={!memoryProject || p.pending}
+              onPress={() => {
+                void perform({
+                  action: "remember",
+                  conversationId: p.conversation,
+                  messageId: memory,
+                  project: memoryProject,
+                })
+                  .then(() => {
+                    setMemory(null);
+                    toast.show("프로젝트 참고 기록에 저장했습니다.");
+                  })
+                  .catch(() => {});
+              }}
+            />
+          </Modal.Content>
+        </Modal>
+      )}
     </View>
-    {p.error && <Text accessibilityRole="alert" style={body}>VAXPORT에 연결하지 못했습니다. Tailscale과 SSH 연결 설정을 확인한 뒤 새로고침하세요. 마지막으로 읽은 정보가 표시될 수 있습니다.</Text>}
-    {p.loading && <Text accessibilityLiveRegion="polite" style={muted}>큐를 불러오는 중…</Text>}
-    {d && <View style={{ gap: 8 }}>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>{Object.entries(d.queue).map(([state, count]) => <Text key={state} style={body}>{stateLabel(state)} {count}</Text>)}</View>
-      <Text style={muted}>최근 실행 신호 {d.lastTickAt ? new Date(d.lastTickAt * 1000).toLocaleString() : "없음"} · 10초마다 갱신</Text>
-    </View>}
-    {form && <View style={{ gap: 16, borderColor: c.border, borderWidth: 1, borderRadius: 8, padding: 16 }}>
-      <Text accessibilityRole="header" style={heading}>새 작업 제출</Text>
-      {!canSubmit && <Text style={body}>현재 제출할 수 없습니다. SSH 연결, 쓰기 허용 설정과 VAXPORT 큐 소유자를 확인하세요.</Text>}
-      {field("프로젝트 ID", project, setProject, 200)}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{d?.projects.filter(x => x.enabled).map(x => <View key={x.id}>{button(x.id, () => setProject(x.id), busy || !!frozen.current)}</View>)}</View>
-      {field("제목", title, setTitle, 300)}
-      <View style={{ gap: 4 }}><Text style={body}>작업 유형</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {([ ["gpt", "일반"], ["hard", "복잡한 작업"], ["refactor", "리팩터링"], ["sync", "Git 확인"] ] as const).map(([value, label]) => <View key={value}>{button(`${kind === value ? "선택: " : ""}${label}`, () => setKind(value), busy || !!frozen.current, kind === value)}</View>)}
-      </View></View>
-      {field("작업 내용 (최대 40,000자)", prompt, setPrompt, 40000, true)}
-      <Text selectable style={muted}>작업 ID {id}</Text>
-      <Text style={muted}>제출하면 봇이 작업을 시작합니다. 시크릿을 입력하지 마세요.</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{button(busy ? "접수 확인 중…" : frozen.current ? "같은 요청 재시도" : "작업 제출", () => void send(), busy || !canSubmit, true)}
-        {frozen.current && button("새 요청 작성", () => { frozen.current = null; setId(makeTaskId()); setMessage(""); }, busy)}
-      </View>
-      {!!message && <Text accessibilityLiveRegion="polite" style={body}>{message}</Text>}
-    </View>}
-    <View style={{ flexDirection: p.compact ? "column" : "row", gap: 24, alignItems: "stretch" }}>
-      <View style={{ flex: p.compact ? undefined : 1, minWidth: 0, gap: 8 }}>
-        <Text accessibilityRole="header" style={heading}>작업 목록{d ? ` · ${d.total}` : ""}</Text>
-        {d?.tasks.length === 0 && <Text style={muted}>등록된 작업이 없습니다. 새 작업을 제출할 수 있습니다.</Text>}
-        {d?.tasks.map(task => <Pressable key={task.id} accessibilityRole="button" accessibilityLabel={`${task.title}, ${stateLabel(task.state)}`} accessibilityState={{ selected: p.selected === task.id }} onPress={() => { p.select(task.id); showRaw(false); }}
-          style={({ pressed }) => ({ minHeight: 64, padding: 12, gap: 4, borderRadius: 8, borderWidth: 1, borderColor: p.selected === task.id ? c.accent : c.border, backgroundColor: pressed || p.selected === task.id ? c.surface2 : c.surface1 })}>
-          <Text style={body}>{task.title}</Text><Text style={muted}>{stateLabel(task.state)} · {task.project}</Text><Text selectable style={{ ...muted, fontSize: 12 }}>{task.id}</Text>
-        </Pressable>)}
-        {d && d.total > 100 && <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{button("이전 100개", () => p.setOffset(Math.max(0, p.offset - 100)), p.offset === 0)}{button("다음 100개", () => p.setOffset(p.offset + 100), p.offset + 100 >= d.total)}</View>}
-      </View>
-      <View style={{ flex: p.compact ? undefined : 1, minWidth: 0, gap: 12 }}>
-        <Text accessibilityRole="header" style={heading}>작업 결과</Text>
-        {!p.selected && <Text style={muted}>목록에서 작업을 선택하세요.</Text>}
-        {!!p.selected && <Text selectable style={muted}>{p.selected}</Text>}
-        {p.detailLoading && <Text style={muted}>결과를 불러오는 중…</Text>}
-        {p.detailError && <Text accessibilityRole="alert" style={body}>결과를 읽지 못했습니다. 새로고침으로 다시 확인하세요.</Text>}
-        {p.detail && <View style={{ gap: 12 }}>
-          <Text style={body}>{stateLabel(String(p.detail.state))}</Text>
-          {!!p.detail.stage && <Text style={muted}>단계 · {String(p.detail.stage)}</Text>}
-          {!!p.detail.summary && <Text selectable style={body}>{String(p.detail.summary)}</Text>}
-          {!!p.detail.reason && <Text selectable style={body}>{String(p.detail.reason)}</Text>}
-          <Text style={muted}>배포 · {p.detail.deployment === "not-run" ? "실행하지 않음" : String(p.detail.deployment ?? "정보 없음")}</Text>
-          {button(raw ? "상세 JSON 닫기" : "상세 JSON 보기", () => showRaw(!raw))}
-          {raw && <Text selectable style={{ ...body, fontSize: 12 }}>{JSON.stringify(p.detail, null, 2)}</Text>}
-        </View>}
-      </View>
-    </View>
-  </ScrollView>;
+  );
 }

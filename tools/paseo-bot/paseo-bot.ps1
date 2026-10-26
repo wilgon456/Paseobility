@@ -7,6 +7,7 @@ param(
   [string]$File,
   [string]$State = (Join-Path $env:USERPROFILE '.config\paseo-bot'),
   [string]$Python,
+  [ValidateSet('cli','grok')][string]$Producer = 'cli',
   [Parameter(ValueFromPipeline=$true)][AllowEmptyString()][string]$Json
 )
 begin { $chunks = New-Object 'System.Collections.Generic.List[string]' }
@@ -33,6 +34,7 @@ end {
     $argv = $prefix + @('-X','utf8',(Join-Path $PSScriptRoot 'paseo_bot.py'),'--state',$State,$Command)
     if ($Id) { $argv += $Id }
     if ($File) { $argv += @('--file',$File) }
+    if ($Command -eq 'submit') { $argv += @('--producer',$Producer) }
     # .NET Framework's ProcessStartInfo lacks ArgumentList. Quote CreateProcess
     # arguments explicitly; no shell or PowerShell expression is evaluated.
     function Quote-NativeArgument([string]$value) {

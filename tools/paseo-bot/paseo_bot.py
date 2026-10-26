@@ -2,7 +2,7 @@
 """Resident Paseo dispatcher. Python stdlib; private SQLite inbox, JSON outbox."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import ntpath
@@ -249,6 +249,7 @@ class Bot:
         self.db.executescript('''
           CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, digest TEXT NOT NULL, body TEXT NOT NULL, state TEXT NOT NULL, record TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY, task_id TEXT, time REAL NOT NULL, state TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS task_origins(task_id TEXT PRIMARY KEY, context TEXT NOT NULL);
         ''')
         self.db.commit()
 
@@ -298,11 +299,11 @@ class Bot:
         machine = self.config().get('machineAliases', {}).get(machine, machine)
         return fleet.select_host(fleet.load_hosts(fleet.DEFAULT_CONFIG), machine)
 
-    def submit(self, body):
+    def submit(self, body, origin=None):
         with lock(self.home, 'intake.lock'):
-            return self._submit(body)
+            return self._submit(body, origin)
 
-    def _submit(self, body):
+    def _submit(self, body, origin=None, commit=True):
         if not self.ownership()['acceptsTasks']:
             raise ValueError('Queue is standby, retired or bound to another host; intake disabled.')
         allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine'}
@@ -323,9 +324,10 @@ class Bot:
                 raise ValueError('Task ID already belongs to a different request.')
             return self.result(body['id'])
         record = {'version': 1, 'id': body['id'], 'project': body['project'], 'state': 'queued', 'createdAt': time.time(), 'runs': [], 'evidence': {}, 'delivery': 'file-outbox', 'deployment': 'not-run'}
-        with self.db:
+        with self.db if commit else nullcontext():
             self.db.execute('INSERT INTO tasks VALUES (?,?,?,?,?)', (body['id'], digest, encoded, 'queued', json.dumps(record)))
             self.db.execute('INSERT INTO events(task_id,time,state) VALUES (?,?,?)', (body['id'], time.time(), 'queued'))
+            self.db.execute('INSERT INTO task_origins VALUES (?,?)', (body['id'], json.dumps(scrub(origin or {'requester': 'cli'}))))
         return record
 
     def result(self, task_id):
@@ -546,7 +548,21 @@ class Bot:
                            'activeTask': None, 'mode': owner['mode'], 'dispatchEnabled': False})
                 return
             rows = self.db.execute('SELECT body,record FROM tasks ORDER BY rowid').fetchall()
-            active = next(((json.loads(b), json.loads(r)) for b, r in rows if json.loads(r)['state'] not in TERMINAL), None)
+            active = None
+            for b, encoded in rows:
+                record = json.loads(encoded)
+                if record['state'] in TERMINAL:
+                    continue
+                origin = self.db.execute('SELECT context FROM task_origins WHERE task_id=?', (record['id'],)).fetchone()
+                dependencies = json.loads(origin[0]).get('dependsOn', []) if origin else []
+                parents = [self.result(i)['state'] for i in dependencies]
+                if any(s in TERMINAL and s != 'passed' for s in parents):
+                    self.save(dict(record, state='blocked', reason='A prerequisite did not pass; dependent task was not dispatched.'))
+                    continue
+                if any(s != 'passed' for s in parents):
+                    continue
+                active = (json.loads(b), record)
+                break
             if active:
                 body, record = active
                 try:
@@ -612,6 +628,7 @@ def main():
     sub.add_parser('discover')
     submit = sub.add_parser('submit')
     submit.add_argument('--file', type=Path, help='UTF-8 task JSON; omit to read stdin')
+    submit.add_argument('--producer', choices=['cli', 'grok'], default='cli', help='Trusted local producer attribution; not a separate authentication boundary')
     result = sub.add_parser('result')
     result.add_argument('id')
     status = sub.add_parser('status')
@@ -632,7 +649,7 @@ def main():
                 out = bot.discover()
         elif args.command == 'submit':
             text = args.file.read_text(encoding='utf-8-sig') if args.file else sys.stdin.buffer.read(200000).decode('utf-8-sig')
-            out = bot.submit(json.loads(text))
+            out = bot.submit(json.loads(text), {'requester': args.producer})
         elif args.command == 'status':
             out = bot.status(args.id)
         elif args.command == 'owner':

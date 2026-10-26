@@ -7,6 +7,8 @@ import sqlite3
 import sys
 from pathlib import Path
 from paseo_bot import Bot, ID, private_file, scrub
+from gui_projection import snapshot
+from gui_state import Conversations
 
 MAX_INPUT = 200000
 
@@ -22,16 +24,38 @@ def handle(home, request, allow_submit=False):
     if not isinstance(request, dict):
         raise ValueError('Invalid request')
     action = request.get('action')
-    allowed = {'status': {'action', 'offset'}, 'result': {'action', 'id'}, 'submit': {'action', 'task'}}
+    allowed = {'status': {'action', 'offset'}, 'result': {'action', 'id'}, 'submit': {'action', 'task'},
+               'sync': {'action', 'offset', 'conversationId', 'before', 'query', 'project', 'machine', 'requester', 'scope', 'group', 'sort'},
+               'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf'},
+               'approve': {'action', 'conversationId', 'planId', 'digest'}, 'reject': {'action', 'conversationId', 'planId'},
+               'remember': {'action', 'conversationId', 'messageId', 'project'}}
     if action not in allowed or set(request) - allowed[action]:
         raise ValueError('Unsupported request')
     home = Path(home)
+    if action in ['create', 'send', 'approve', 'reject', 'remember']:
+        if not allow_submit:
+            raise ValueError('Read-only bridge')
+        c = Conversations(home)
+        try:
+            if action == 'create':
+                return c.create(request['requestId'])
+            if action == 'send':
+                return c.send(request['conversationId'], request['messageId'], request['text'], request.get('retryOf'))
+            if action == 'approve':
+                return c.approve(request['conversationId'], request['planId'], request['digest'])
+            if action == 'reject':
+                return c.reject(request['conversationId'], request['planId'])
+            return c.remember(request['conversationId'], request['messageId'], request['project'])
+        finally:
+            c.db.close()
     if action == 'submit':
         if not allow_submit:
             raise ValueError('Read-only bridge')
         bot = Bot(home)
         try:
             # Exactly the same admission/owner fence/idempotency as CLI submit.
+            if bot.db.execute("SELECT 1 FROM sqlite_master WHERE name='gui_conversations'").fetchone():
+                raise ValueError('GUI v2 requires an approved manager plan')
             return scrub(bot.submit(request['task']))
         finally:
             bot.db.close()
@@ -49,6 +73,8 @@ def handle(home, request, allow_submit=False):
             if not row:
                 raise ValueError('Unknown task')
             return scrub(json.loads(row[0]))
+        if action == 'sync':
+            return snapshot(db, home, request, allow_submit, read_json)
         offset = request.get('offset', 0)
         if type(offset) is not int or offset < 0 or offset > 1000000:
             raise ValueError('Invalid offset')
