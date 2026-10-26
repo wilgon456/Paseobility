@@ -317,3 +317,10 @@ Native process stdin is UTF-8 as well as PowerShell pipeline input. The wrapper
 restores both console input/output encodings. Keep source repositories outside
 the private queue directory on Windows: the native coding sandbox needs to
 traverse project directories, while queue credentials/policy retain private ACLs.
+
+Review fingerprints use native PowerShell on Windows and Python on POSIX, with
+identical byte framing for the Git diff and sorted untracked file contents. This
+keeps Windows worker verification independent of a per-user Python installation
+that a sandbox may not expose. Windows untracked reparse points fail closed;
+ordinary tracked files and binary/Unicode untracked files are covered by the
+cross-language fingerprint contract test.

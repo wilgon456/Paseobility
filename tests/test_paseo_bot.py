@@ -160,6 +160,31 @@ class BotTests(unittest.TestCase):
         self.assertFalse(m.same_remote_path('/Users/A/repo', '/users/a/repo'))
         self.assertFalse(m.same_remote_path('C:\\repo', 'D:\\repo'))
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell fingerprint interoperability')
+    def test_powershell_snapshot_matches_python_for_binary_untracked_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo = root/'repo'
+            repo.mkdir()
+            def git(*args):
+                subprocess.run(['git',*args],cwd=repo,check=True,capture_output=True)
+            git('init','-b','main')
+            git('config','user.name','Fixture')
+            git('config','user.email','fixture@example.invalid')
+            git('config','core.autocrlf','false')
+            (repo/'file.txt').write_bytes(b'before\n')
+            git('add','.')
+            git('commit','-m','fixture')
+            (repo/'file.txt').write_bytes(b'after\r\n')
+            (repo/'한글.bin').write_bytes(b'\x00\xffbinary')
+            (repo/'a.bin').write_bytes(b'first')
+            script = root/'snapshot.ps1'
+            script.write_text(m.SNAPSHOT_POWERSHELL,encoding='utf-8-sig')
+            expected = subprocess.run([sys.executable,'-c',m.SNAPSHOT_SCRIPT],cwd=repo,capture_output=True,encoding='utf-8')
+            actual = subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(script)],cwd=repo,capture_output=True,encoding='utf-8',errors='replace')
+            self.assertEqual(actual.returncode,0,actual.stderr)
+            self.assertEqual(actual.stdout.strip(),expected.stdout.strip())
+
     def test_bom_json_file_and_json_status_cli(self):
         task = self.home/'task.json'
         body = dict(self.body, title='작업 Unicode')

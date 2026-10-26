@@ -44,6 +44,61 @@ for name in sorted(subprocess.check_output(['git','ls-files','--others','--exclu
     content = os.fsencode(os.readlink(p)) if p.is_symlink() else p.read_bytes()
     h.update(len(name).to_bytes(8,'big') + name + len(content).to_bytes(8,'big') + content)
 print(h.hexdigest())'''
+SNAPSHOT_POWERSHELL = r'''function Get-GitBytes([string]$arguments) {
+    $info = New-Object Diagnostics.ProcessStartInfo
+    $info.FileName = 'git.exe'
+    $info.Arguments = $arguments
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $info
+    [void]$process.Start()
+    $memory = New-Object IO.MemoryStream
+    $process.StandardOutput.BaseStream.CopyTo($memory)
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) { throw 'Git snapshot command failed' }
+    $bytes = $memory.ToArray()
+    $memory.Dispose(); $process.Dispose()
+    return ,$bytes
+}
+function Write-Length($stream, [UInt64]$length) {
+    $bytes = [BitConverter]::GetBytes($length)
+    if ([BitConverter]::IsLittleEndian) { [Array]::Reverse($bytes) }
+    $stream.Write($bytes,0,8)
+}
+$utf8 = New-Object Text.UTF8Encoding($false)
+$stream = New-Object IO.MemoryStream
+[byte[]]$diff = Get-GitBytes 'diff --binary HEAD --'
+$stream.Write($diff,0,$diff.Length)
+[byte[]]$rawNames = Get-GitBytes 'ls-files --others --exclude-standard -z'
+$names = [Collections.Generic.SortedDictionary[string,string]]::new([StringComparer]::Ordinal)
+foreach ($name in $utf8.GetString($rawNames).Split([char]0)) {
+    if (!$name) { continue }
+    $key = [BitConverter]::ToString($utf8.GetBytes($name)).Replace('-','')
+    $names.Add($key,$name)
+}
+foreach ($name in $names.Values) {
+    $item = Get-Item -LiteralPath $name -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Untracked reparse point needs explicit snapshot support'
+    }
+    [byte[]]$nameBytes = $utf8.GetBytes($name)
+    [byte[]]$content = [IO.File]::ReadAllBytes($item.FullName)
+    Write-Length $stream $nameBytes.LongLength
+    $stream.Write($nameBytes,0,$nameBytes.Length)
+    Write-Length $stream $content.LongLength
+    $stream.Write($content,0,$content.Length)
+}
+$sha = [Security.Cryptography.SHA256]::Create()
+$digest = [BitConverter]::ToString($sha.ComputeHash($stream.ToArray())).Replace('-','').ToLowerInvariant()
+$sha.Dispose(); $stream.Dispose()
+Write-Output $digest'''
+
+
+def snapshot_details(target):
+    windows = bool(re.match(r'^[A-Za-z]:[\\/]|^\\\\', target['repo']))
+    return ('PowerShell', SNAPSHOT_POWERSHELL) if windows else ('Python', SNAPSHOT_SCRIPT)
 
 
 def classify(body):
@@ -332,8 +387,9 @@ class Bot:
             for h in (json.loads(row[0]) for row in history) if h['project'] == body['project']
         ][:3]
         if stage in ['review', 'postflight']:
-            details['snapshotInstruction'] = 'After gates, execute this exact Python code in the worktree; include the printed SHA256 in the JSON snapshot field.'
-            details['snapshotPython'] = SNAPSHOT_SCRIPT
+            language, code = snapshot_details(target)
+            details['snapshotInstruction'] = 'After gates, execute this exact '+language+' code in the worktree; include the printed SHA256 in the JSON snapshot field.'
+            details['snapshot'+language] = code
             common += 'The final JSON MUST include a top-level snapshot field with the actual computed 64-character SHA256. A summary saying the snapshot matches is insufficient. '
         if stage == 'preflight':
             instruction = ('Read-only git preparation in the source checkout. Do not modify working files or change branches. '
@@ -462,7 +518,7 @@ class Bot:
                 correction = ('Your final receipt was missing required fields or invalid JSON. This is one format correction, not authorization to edit code or change the verdict. '
                               'Recheck evidence read-only and return exactly one PASEO_BOT_RESULT=<JSON> line containing ALL required fields: '
                               + ', '.join(sorted(required)) + '. Do not infer or copy a missing value from the expected result. If unavailable return verdict blocked. '
-                              'For snapshot, recompute the following exact Python code in the worktree and include its actual output as the snapshot string:\n' + SNAPSHOT_SCRIPT)
+                              'For snapshot, recompute the following exact '+snapshot_details(r['target'])[0]+' code in the worktree and include its actual output as the snapshot string:\n' + snapshot_details(r['target'])[1])
                 self.rpc(h, 'repair', agentId=run['agentId'], attempt=run['attempt'], prompt=correction)
                 r['state'] = 'running'
                 return self.save(r)
