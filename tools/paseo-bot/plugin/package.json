@@ -1,11 +1,12 @@
 {
   "name": "paseo-bot-plugin",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/transport.test.mjs tests/ui.test.mjs",
-    "preview": "node tests/preview.mjs"
+    "test": "node --experimental-strip-types --test tests/transport.test.mjs tests/model.test.mjs tests/ui.test.mjs",
+    "preview": "node tests/preview.mjs",
+    "screenshots": "node tests/capture.mjs"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.13.0",
@@ -13,6 +14,7 @@
     "@types/node": "^22.20.5",
     "@types/react": "~19.2.0",
     "esbuild": "^0.25.12",
+    "lucide-react": "^0.468.0",
     "playwright": "^1.56.1",
     "react": "19.1.0",
     "react-dom": "^19.1.0",

@@ -1,39 +1,97 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync} from 'node:fs';
 import {chromium} from 'playwright';
 import {preview} from './preview.mjs';
-const chrome=[process.env.CHROME_PATH,'/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge','/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe','C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe','/usr/bin/google-chrome'].find(p=>p&&existsSync(p));
-test('production view: list/result, form validation, submit and ambiguous retry',async()=>{
-  const p=await preview();
-  let browser;
+import {chrome} from './browser.mjs';
+test('conversation, confirmed admission, read-only kanban, filters, result and retry controls',async()=>{
+  const p=await preview();let browser;
   try{
     browser=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});
-    const page=await browser.newPage({viewport:{width:390,height:844}});
-    const errors=[];page.on('pageerror',e=>errors.push(e.message));
+    const page=await browser.newPage({viewport:{width:1440,height:1000},permissions:['clipboard-read','clipboard-write']});const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(p.url);
-    await page.getByRole('button',{name:'큐 상태와 작업 결과 연결 확인, 검증 통과'}).click();
-    await page.getByRole('button',{name:'상세 JSON 보기',exact:true}).click();
-    assert.ok((await page.getByText(/"exitCode": 0/).textContent()).includes('exitCode'));
-    await page.getByRole('button',{name:'새 작업',exact:true}).click();
-    await page.getByRole('button',{name:'작업 제출',exact:true}).click();
-    await page.getByText('등록된 활성 프로젝트, 제목, 작업 내용을 확인하세요.').waitFor();
-    await page.getByRole('button',{name:'fixture-project',exact:true}).click();
-    await page.getByLabel('제목',{exact:true}).fill('한글 제출 테스트');
-    await page.getByLabel('작업 내용 (최대 40,000자)',{exact:true}).fill('작업을 제출합니다.');
-    await page.getByRole('button',{name:'작업 제출',exact:true}).click();
-    await page.getByText(/접수됨 · gui-/).waitFor();
-    await page.goto(p.url+'?state=submit-failure');
-    await page.getByRole('button',{name:'새 작업',exact:true}).click();
-    await page.getByRole('button',{name:'fixture-project',exact:true}).click();
-    await page.getByLabel('제목',{exact:true}).fill('불명확한 응답');
-    await page.getByLabel('작업 내용 (최대 40,000자)',{exact:true}).fill('같은 ID를 유지');
-    await page.getByRole('button',{name:'작업 제출',exact:true}).click();
-    await page.getByRole('button',{name:'같은 요청 재시도',exact:true}).waitFor();
-    assert.equal(await page.getByLabel('제목',{exact:true}).isEditable(),false);
-    await page.getByRole('button',{name:'새 요청 작성',exact:true}).click();
-    assert.equal(await page.getByLabel('제목',{exact:true}).isEditable(),true);
-    for(const state of ['empty','error','loading']){await page.goto(p.url+'?state='+state);await page.getByText(state==='empty'?'등록된 작업이 없습니다. 새 작업을 제출할 수 있습니다.':state==='loading'?'큐를 불러오는 중…':/VAXPORT에 연결하지 못했습니다/).waitFor();}
+    await page.getByRole('heading',{name:'Paseo 봇',exact:true}).waitFor();
+    assert.equal(await page.getByTestId('secondary-board').count(),0);
+    assert.equal(await page.getByRole('button',{name:/프로젝트:|템플릿:/}).count(),0);
+    await page.getByRole('button',{name:'접수',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'접수했어요.'}).waitFor();
+    assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='approve').length),1);
+    await page.getByRole('button',{name:'작업 보기',exact:true}).click();
+    assert.equal(await page.locator('[draggable="true"]').count(),0);
+    assert.equal(await page.getByTestId('task-card').count(),6);
+    await page.getByRole('button',{name:'목록',exact:true}).click();
+    await page.getByLabel('작업 검색',{exact:true}).fill('테스트 실패');
+    assert.equal(await page.getByTestId('task-card').count(),1);
+    await page.getByRole('button',{name:'재시도',exact:true}).click();
+    await page.getByRole('dialog',{name:'다시 해 볼까요?',exact:true}).waitFor();
+    assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='send').length),0);
+    await page.getByRole('button',{name:'돌아가기',exact:true}).click();
+    await page.getByRole('button',{name:'재시도',exact:true}).click();
+    await page.getByRole('button',{name:'새 계획 요청',exact:true}).click();
+    assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='send'&&a.retryOf==='fixture-4').length),1);
+    await page.getByLabel('작업 검색',{exact:true}).fill('');
+    await page.getByRole('button',{name:'요청자: 전체',exact:true}).click();
+    await page.getByRole('radio',{name:'Grok 봇',exact:true}).click();
+    assert.equal(await page.getByTestId('task-card').count(),1);
+    await page.getByLabel('작업 검색',{exact:true}).fill('does-not-exist');
+    await page.getByText('조건에 맞는 작업이 없습니다',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'필터 초기화',exact:true}).click();
+    await page.getByRole('button',{name:'큐 상태 표시 수정, passed',exact:true}).click();
+    await page.getByRole('button',{name:'단계 기록',exact:true}).click();
+    await page.getByText('npm test · 종료 코드 0',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'결과 JSON',exact:true}).click();
+    await page.getByRole('button',{name:'원문 복사',exact:true}).click();
+    assert.ok((await page.evaluate(()=>navigator.clipboard.readText())).includes('postflight'));
+    await page.getByRole('button',{name:'패널 닫기',exact:true}).click();
+    const input=page.getByLabel('봇에게 요청하기',{exact:true});await input.fill('한글 입력 테스트');
+    await input.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true});
+    assert.equal(await input.inputValue(),'한글 입력 테스트');
+    await page.keyboard.press('Shift+Enter');assert.ok((await input.inputValue()).includes('\n'));
+    await page.keyboard.press('Enter');
+    await page.getByRole('status').filter({hasText:'전달했어요.'}).waitFor();
+    assert.equal(await input.inputValue(),'');
+    await page.getByRole('button',{name:'작업 닫기',exact:true}).focus();await page.keyboard.press('/');
+    await page.waitForFunction(()=>document.querySelector('[aria-label="작업 검색"]')===document.activeElement);
     assert.deepEqual(errors,[]);
   }finally{await browser?.close();await new Promise(r=>p.server.close(r));}
+});
+test('ambiguous chat send keeps the same request ID and immutable draft',async()=>{
+  const p=await preview();let b;
+  try{
+    b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});const page=await b.newPage({viewport:{width:1200,height:1000}});
+    await page.goto(p.url+'?state=send-failure');const field=page.getByLabel('봇에게 요청하기',{exact:true});await field.fill('중복 없이 전달');
+    await page.getByRole('button',{name:'보내기',exact:true}).click();await page.getByText(/전달 여부를 확인하지 못했어요/).waitFor();
+    assert.equal(await field.isEditable(),false);await page.getByRole('button',{name:'보내기',exact:true}).click();
+    const actions=await page.evaluate(()=>window.__actions.filter(a=>a.action==='send'));assert.equal(actions.length,2);assert.equal(actions[0].messageId,actions[1].messageId);assert.equal(actions[0].text,actions[1].text);
+  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
+});
+test('light/dark phone, tablet and desktop: no page overflow and 44px controls',async()=>{
+  const p=await preview();let b;
+  try{
+    b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});
+    for(const colorScheme of ['light','dark'])for(const width of [375,768,1440]){
+      const page=await b.newPage({viewport:{width,height:1000},colorScheme});await page.goto(p.url+'?state=kanban');await page.getByTestId('task-card').first().waitFor();
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${colorScheme} ${width} overflow`);
+      const buttons=await page.getByRole('button').all();for(const button of buttons){const r=await button.boundingBox();if(r&&r.height>0)assert.ok(r.height>=43.5,`Small target ${await button.getAttribute('aria-label')}: ${r.height}`);}
+      await page.close();
+    }
+    for(const state of ['empty','loading','error']){const page=await b.newPage();await page.goto(p.url+'?state='+state);await page.getByText(state==='empty'?'무엇을 도와드릴까요?':state==='loading'?'Paseo 봇':'연결을 다시 확인하고 있어요',{exact:true}).first().waitFor();await page.close();}
+  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
+});
+
+test('one sentence starts a conversation without a session form',async()=>{
+ const p=await preview();let b;
+ try{b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});const page=await b.newPage();await page.goto(p.url+'?state=first');
+ assert.equal(await page.getByTestId('secondary-board').count(),0);
+ await page.getByLabel('봇에게 요청하기',{exact:true}).fill('로그인 오류를 고쳐 줘');await page.getByRole('button',{name:'보내기',exact:true}).click();
+ await page.getByText('로그인 오류를 고쳐 줘',{exact:true}).waitFor();const actions=await page.evaluate(()=>window.__actions);assert.equal(actions.length,1);assert.equal(actions[0].action,'start');assert.equal(actions[0].text,'로그인 오류를 고쳐 줘');
+ }finally{await b?.close();await new Promise(r=>p.server.close(r));}
+});
+test('primary chat is centered and long kanban lanes remain independently reachable',async()=>{
+ const p=await preview();let b;
+ try{b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});const page=await b.newPage({viewport:{width:1440,height:1000}});await page.goto(p.url);
+ const chat=await page.getByTestId('main-chat').boundingBox();assert.ok(Math.abs(chat.x+chat.width/2-720)<2);
+ await page.goto(p.url+'?state=long-board');const lane=page.getByTestId('lane-scroll-attention');await lane.waitFor();
+ assert.ok(await lane.evaluate(e=>e.scrollHeight>e.clientHeight+100));await lane.evaluate(e=>e.scrollTop=e.scrollHeight);
+ await page.getByRole('button',{name:'검토 작업 29, blocked',exact:true}).click();await page.getByRole('dialog',{name:'검토 작업 29',exact:true}).waitFor();
+ }finally{await b?.close();await new Promise(r=>p.server.close(r));}
 });

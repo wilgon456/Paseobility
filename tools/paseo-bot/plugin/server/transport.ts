@@ -34,7 +34,7 @@ export function sshArgs(c: Connection, submit: boolean) {
 }
 export const SAFE_ERROR = "VAXPORT 연결을 확인하세요. 제출 결과가 불명확하면 같은 작업 ID로 조회한 뒤 재시도하세요.";
 export async function requestBridge(request: Record<string, unknown>, config = loadConnection(), runner = spawn): Promise<unknown> {
-  const args = sshArgs(config, request.action === "submit");
+  const args = sshArgs(config, !["status", "sync", "result"].includes(String(request.action)));
   const payload = JSON.stringify(request);
   if (Buffer.byteLength(payload) > 200000) throw Error(SAFE_ERROR);
   return new Promise((resolve, reject) => {
@@ -52,7 +52,7 @@ export async function requestBridge(request: Record<string, unknown>, config = l
       try {
         const data = JSON.parse(out + decoder.end());
         if (code !== 0 || data.ok !== true) return fail();
-        if (request.action === "status" && data.result?.host?.toLowerCase() !== config.expectedHost.toLowerCase()) return fail();
+        if (["status", "sync"].includes(String(request.action)) && data.result?.host?.toLowerCase() !== config.expectedHost.toLowerCase()) return fail();
         finished = true; clearTimeout(timer); resolve(data.result);
       } catch { fail(); }
     });

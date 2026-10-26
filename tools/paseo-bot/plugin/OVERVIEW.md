@@ -1,10 +1,10 @@
 # Paseo 봇
 
-A separate sidebar screen for the VAXPORT queue. Registers `queue` with
+A conversation-first sidebar screen for the VAXPORT manager and queue. Registers `queue` with
 `addScreen` / `addSidebarHeaderItem`, like Paseobility and Agent Observatory.
 The original `plugin/` and its install remain independent.
 
-See [GUI setup and security](../../../docs/paseo-bot-gui.md).
+See [v2 setup, conversation admission and security](../../../docs/paseo-bot-gui-v2.md).
 
 Development (Node 22):
 
