@@ -26,6 +26,10 @@ Keep this adapter for what native hosts do not cover: shell execution, terminal 
 ```bash
 python3 scripts/hosts.py status MAC_MINI
 python3 scripts/hosts.py agents VAX_COM
+python3 scripts/hosts.py health all
+python3 scripts/hosts.py cleanup MAC_MINI
+python3 scripts/hosts.py cleanup MAC_MINI --apply
+python3 scripts/hosts.py cleanup MAC_MINI --apply --port 8786 --pick 'process:PID:START'
 python3 scripts/hosts.py exec MAC_MINI --command 'uname -a; df -h /' --wait 20
 python3 scripts/hosts.py exec VAX_COM --file /absolute/path/task.ps1 --wait 120
 python3 scripts/hosts.py runs
@@ -44,6 +48,22 @@ Each invocation is independent, so run several hosts concurrently.
 - The terminal keeps the script in its command line until it closes. A script carrying a credential gets `close RUN_ID --interrupt` right after it completes.
 - Capture is a terminal screen (wide characters may gain spaces), not raw bytes. Use checksums or encoded output for byte-exact data. Very large Windows scripts are refused before dispatch; stage a file on the host instead.
 - Agents, projects, workspaces and schedules: `cli HOST -- ...` with installed `paseo ... --help` or the Paseo skill. Use the user's chosen provider/profile. `cli` allows `daemon status`/`daemon reload` but routes other daemon lifecycle commands to `restart`.
+
+## Health and cleanup
+
+`health HOST|all` reports resource use, same-name pileups with parent/task hints,
+orphan listeners, completed owned terminals and temp sizes. Default output is
+JSON plus a table field; `--format table` prints the readable report. It uses a
+short-lived diagnostic terminal; pass `--workspace ID` if required.
+
+`cleanup HOST` is dry-run by default. `--apply` acts only on AUTO: completed
+owned runs and old files in managed temp paths. Show CONFIRM candidates first;
+only explicit IDs from that list in `--pick` authorize them. `--port` narrows
+candidates without authorizing a kill. Active/unknown agent state defers process
+cleanup. System, daemon, SSH, agent trees and other users are always protected.
+Never change registry/startup entries or scheduled tasks; report the cause.
+Read [health and cleanup details](references/connections.md#health-and-cleanup)
+for tiers, safe tree termination, quarantine, audit logs and platform limits.
 
 ## Disruptive actions
 

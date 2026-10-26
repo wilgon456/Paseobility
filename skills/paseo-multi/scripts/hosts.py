@@ -9,6 +9,8 @@ import stat
 import subprocess
 import sys
 
+import health
+
 DEFAULT_CONFIG = Path.home() / '.config/paseo-multi/hosts.json'
 
 
@@ -107,6 +109,15 @@ def main():
     imp.add_argument('--replace', action='store_true')
     for action in ('status', 'agents'):
         sub.add_parser(action).add_argument('host')
+    for action in ('health', 'cleanup'):
+        p = sub.add_parser(action)
+        p.add_argument('host')
+        p.add_argument('--workspace', help='Remote workspace for the diagnostic terminal')
+        p.add_argument('--format', choices=['json', 'table'], default='json')
+        if action == 'cleanup':
+            p.add_argument('--apply', action='store_true')
+            p.add_argument('--port', type=int, choices=range(1, 65536), metavar='1..65535')
+            p.add_argument('--pick', nargs='+', default=[], help='Exact candidate IDs from a dry-run (space or comma separated)')
     rst = sub.add_parser('restart')
     rst.add_argument('host')
     rst.add_argument('--force', action='store_true',
@@ -157,6 +168,9 @@ def main():
                  'platform': h.get('platform', 'unknown'), 'serverId': h['serverId']} for h in hosts]
     if args.action == 'runs':
         return [json.loads(p.read_text(encoding='utf-8')) for p in sorted((config.parent / 'runs').glob('*.json'))]
+    if args.action == 'health' and args.host.casefold() == 'all':
+        result = health.health_all(hosts, rpc, config.parent / 'runs', args.workspace)
+        return {'reports': result, 'table': health.table(result)} if args.format == 'json' else health.table(result)
     req = {'action': args.action, 'stateDir': str(config.parent / 'runs'),
            'force': getattr(args, 'force', False)}
     if args.action in ('capture', 'close'):
@@ -170,6 +184,13 @@ def main():
     else:
         host = select_host(hosts, args.host)
     req['host'] = host
+    if args.action in ('health', 'cleanup'):
+        if args.action == 'health':
+            result = health.report(rpc, req, args.workspace)
+        else:
+            picks = [p for item in args.pick for p in item.split(',') if p]
+            result = health.cleanup(rpc, req, args.apply, args.port, picks, args.workspace)
+        return dict(result, table=health.table(result)) if args.format == 'json' else health.table(result)
     if args.action == 'exec':
         shell = args.shell or {'macos': 'bash', 'linux': 'bash', 'windows': 'powershell'}.get(host.get('platform'))
         if shell is None:
@@ -203,7 +224,8 @@ if __name__ == '__main__':
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
     try:
-        print(json.dumps({'ok': True, 'result': main()}, ensure_ascii=False, indent=2))
+        result = main()
+        print(result if isinstance(result, str) else json.dumps({'ok': True, 'result': result}, ensure_ascii=False, indent=2))
     except (ValueError, OSError, subprocess.TimeoutExpired) as e:
         message = str(e) if isinstance(e, ValueError) else type(e).__name__
         if isinstance(e, subprocess.TimeoutExpired):

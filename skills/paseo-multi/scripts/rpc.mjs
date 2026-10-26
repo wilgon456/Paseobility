@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {gzipSync} from 'node:zlib';
 import {pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
 import {loadResult, saveResult, claimCleanup} from './results.mjs';
@@ -102,6 +103,45 @@ function findTerminal(run, terminals) {
   if (terminal && terminal.name !== run.name) throw Error('Terminal ownership/name changed; refusing close.');
   return terminal;
 }
+function finishedOutput(run, result) {
+  const begin = 'PASEO_RUN_' + run.runId + '_BEGIN';
+  const end = new RegExp('^PASEO_RUN_' + run.runId + '_EXIT=(-?\\d+)\\r?$', 'gm');
+  const matches = [...result.output.matchAll(end)];
+  return result.status === 'completed' && matches.length === 1 &&
+    result.output.split('\n').filter(l => l.replace(/\r$/, '') === begin).length === 1 &&
+    result.output.indexOf(begin) < matches[0].index &&
+    !result.output.slice(matches[0].index + matches[0][0].length).trim();
+}
+function recordedRuns() {
+  if (!fs.existsSync(req.stateDir)) return [];
+  const dir = fs.lstatSync(req.stateDir);
+  if (!dir.isDirectory() || dir.isSymbolicLink() ||
+      (process.platform !== 'win32' && (dir.mode & 0o077))) throw Error('Unsafe run directory.');
+  return fs.readdirSync(req.stateDir).filter(f => /^[a-f0-9-]{36}\.json$/.test(f)).map(f => {
+    const file = path.join(req.stateDir, f);
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || (process.platform !== 'win32' && (stat.mode & 0o077)))
+      throw Error('Unsafe run record; cleanup inventory refused.');
+    const run = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (f !== run.runId + '.json' || run.name !== 'paseo-multi-' + run.runId)
+      throw Error('Invalid run identity; cleanup inventory refused.');
+    return run;
+  }).filter(run => run.serverId === req.host.serverId && run.host === req.host.label);
+}
+function auditCleanup(event) {
+  fs.mkdirSync(req.stateDir, {recursive: true, mode: 0o700});
+  const stat = fs.lstatSync(req.stateDir);
+  if (!stat.isDirectory() || stat.isSymbolicLink() ||
+      (process.platform !== 'win32' && (stat.mode & 0o077))) throw Error('Unsafe audit directory.');
+  const fd = fs.openSync(path.join(req.stateDir, 'cleanup.jsonl'),
+    fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | (fs.constants.O_NOFOLLOW ?? 0), 0o600);
+  try {
+    const info = fs.fstatSync(fd);
+    if (!info.isFile() || (process.platform !== 'win32' && (info.mode & 0o077))) throw Error('Unsafe audit file.');
+    fs.writeFileSync(fd, JSON.stringify(scrub({time: new Date().toISOString(), ...event})) + '\n');
+    fs.fsyncSync(fd);
+  } finally { fs.closeSync(fd); }
+}
 async function cleanupSaved(run, saved) {
   const result = {...saved.result, resultSaved: true};
   const terminal = findTerminal({...run, terminalId: result.terminalId}, await client.listTerminals());
@@ -173,6 +213,73 @@ async function main() {
   if (req.action === 'status') return {host: req.host.label, serverId: status.serverId,
     version: status.version, pid: status.pid, startedAt: status.startedAt, providers: status.providers};
   const scope = backgroundScope(status.version);
+  if (req.action === 'inventory' || req.action === 'cleanup-terminal') {
+    if (!Number.isInteger(status.pid) || status.pid <= 1) throw Error('Unknown daemon PID; cleanup inventory refused.');
+    const runs = recordedRuns();
+    if (req.action === 'cleanup-terminal') {
+      const run = runs.find(r => r.runId === req.runId);
+      if (!run || run.keepTerminal) throw Error('Run ownership missing or terminal explicitly retained.');
+      const result = await capture(run, false);
+      if (!finishedOutput(run, result)) throw Error('Complete run output not confirmed; terminal retained.');
+      const terminal = findTerminal({...run, terminalId: result.terminalId}, await client.listTerminals());
+      if (!terminal) return {id: 'terminal:' + run.runId, status: 'already absent'};
+      // This explicit cleanup also supports failed/legacy completed runs. Preserve
+      // their complete capture in the private fsynced audit before closing.
+      const event = {id: 'terminal:' + run.runId, reason: 'owned completed run', output: result.output};
+      auditCleanup({...event, status: 'attempt'});
+      let claim;
+      try { claim = fs.openSync(path.join(req.stateDir, run.runId + '.cleanup-attempt'), 'wx', 0o600); }
+      catch (error) {
+        if (error.code === 'EEXIST') return {id: event.id, status: 'close-unconfirmed', reason: 'Previous cleanup attempt; inspect before manual close.'};
+        throw error;
+      }
+      try { fs.writeFileSync(claim, 'Inspect before manual close.\n'); fs.fsyncSync(claim); }
+      finally { fs.closeSync(claim); }
+      const reply = await client.killTerminal(terminal.id);
+      const remaining = findTerminal({...run, terminalId: terminal.id}, await client.listTerminals());
+      const outcome = {...event, status: reply?.error || remaining ? 'close-unconfirmed' : 'closed'};
+      auditCleanup(outcome);
+      return {id: outcome.id, reason: outcome.reason, status: outcome.status};
+    }
+    let safe = scope.visible, warning;
+    try {
+      const rows = await agents(scope);
+      safe &&= rows.every(a => ['idle', 'error', 'closed'].includes(a.status) &&
+        a.pendingPermissionCount === 0 && a.attentionReason !== 'permission' &&
+        (!a.requiresAttention || a.attentionReason === 'finished'));
+    } catch { safe = false; }
+    if (!safe) warning = 'Active or unknown agent state; process cleanup is deferred.';
+    const terminals = await client.listTerminals();
+    if (!Array.isArray(terminals.terminals) || terminals.error) throw Error('Cannot list terminals safely.');
+    const candidates = [], endedRuns = [], protectedRuns = [], terminalReport = [];
+    for (const t of terminals.terminals) {
+      if (typeof t.name !== 'string' || !t.name.startsWith('paseo-multi-')) continue;
+      const run = runs.find(r => r.name === t.name && (!r.terminalId || r.terminalId === t.id));
+      terminalReport.push({terminalId: t.id, name: t.name,
+        status: run ? (run.keepTerminal ? 'explicitly retained' : 'running/unknown') : 'unrecorded; protected'});
+    }
+    for (const run of runs) {
+      if (run.keepTerminal) protectedRuns.push(run.runId);
+      const terminal = findTerminal(run, terminals);
+      if (!terminal) {
+        if (!run.keepTerminal && loadResult(req.stateDir, run)) endedRuns.push(run.runId);
+        else protectedRuns.push(run.runId);
+        continue;
+      }
+      try {
+        const result = await capture(run, false);
+        if (finishedOutput(run, result)) {
+          const row = terminalReport.find(t => t.terminalId === terminal.id);
+          if (row && !run.keepTerminal) row.status = 'completed';
+          if (!run.keepTerminal) endedRuns.push(run.runId);
+          if (!run.keepTerminal) candidates.push({id: 'terminal:' + run.runId,
+            kind: 'terminal', tier: 'AUTO', reason: 'owned completed run', runId: run.runId,
+            terminalId: terminal.id, name: run.name});
+        } else protectedRuns.push(run.runId);
+      } catch { protectedRuns.push(run.runId); }
+    }
+    return {daemonPid: status.pid, processCleanupSafe: safe, warning, terminals: candidates, terminalReport, endedRuns, protectedRuns};
+  }
   if (req.action === 'agents') return {host: req.host.label, agents: await agents(scope),
     ...(scope.visible ? {} : {warning: 'Background-workspace agents are not visible to the installed Paseo client; update it to list them.'})};
   if (req.action === 'restart') {
@@ -193,19 +300,36 @@ async function main() {
     const runId = randomUUID();
     const run = {runId, host: req.host.label, serverId: req.host.serverId,
       terminalId: null, name: 'paseo-multi-' + runId, createdAt: new Date().toISOString(),
+      ...(req.keepTerminal ? {keepTerminal: true} : {}),
       ...(req.keepTerminal ? {} : {cleanupPolicy: 'saved-success-v1'})};
     const marker = 'PASEO_RUN_' + runId + '_EXIT=';
     let command, args;
     if (req.shell === 'powershell') {
       command = 'powershell.exe';
-      const inner = Buffer.from("$ErrorActionPreference='Stop'\n" + req.script, 'utf16le').toString('base64');
-      const wrapper = `Write-Output 'PASEO_RUN_${runId}_BEGIN'; & powershell.exe -NoProfile -EncodedCommand ${inner}; $rc=$LASTEXITCODE; Write-Output ('${marker}' + $rc); while ($true) {Start-Sleep -Seconds 60}`;
-      args = ['-NoProfile', '-EncodedCommand', Buffer.from(wrapper, 'utf16le').toString('base64')];
+      let innerText = "$ErrorActionPreference='Stop'\n" + req.script;
+      let prefix = '';
+      if (req.compactWrapper) {
+        const packed = gzipSync(Buffer.from(innerText)).toString('base64');
+        prefix = `$env:PASEO_MULTI_SCRIPT='${packed}'; `;
+        innerText = "$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String($env:PASEO_MULTI_SCRIPT));Remove-Item Env:PASEO_MULTI_SCRIPT;$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z,[Text.Encoding]::UTF8); & ([scriptblock]::Create($r.ReadToEnd()))";
+      }
+      const inner = Buffer.from(innerText, 'utf16le').toString('base64');
+      const wrapper = `${prefix}$env:PASEO_MULTI_SESSION='${runId}'; Write-Output 'PASEO_RUN_${runId}_BEGIN'; & powershell.exe -NoProfile -EncodedCommand ${inner}; $rc=$LASTEXITCODE; Write-Output ('${marker}' + $rc); while ($true) {Start-Sleep -Seconds 60}`;
+      let outer = wrapper;
+      if (req.compactWrapper) {
+        const packed = gzipSync(Buffer.from(wrapper)).toString('base64');
+        outer = `$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String('${packed}'));$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z,[Text.Encoding]::UTF8); & ([scriptblock]::Create($r.ReadToEnd()))`;
+      }
+      args = ['-NoProfile', '-EncodedCommand', Buffer.from(outer, 'utf16le').toString('base64')];
+      if (inner.length > 28000) throw Error('PowerShell inner script exceeds Windows command-line limit. No command was submitted.');
       if (args.join(' ').length > 28000) throw Error('PowerShell script exceeds Windows command-line limit; use a shorter host-side script. No command was submitted.');
     } else {
       command = '/bin/bash';
       const literal = "'" + req.script.replaceAll("'", "'\\''") + "'";
-      args = ['-c', `printf 'PASEO_RUN_${runId}_BEGIN\\n'; /bin/bash -c ${literal}; rc=$?; printf '\\n${marker}%s\\n' "$rc"; while :; do sleep 60; done`];
+      // New command trees have their own session, enabling safe whole-group
+      // cleanup without signalling the terminal wrapper or unrelated shells.
+      const launch = `if command -v python3 >/dev/null 2>&1; then python3 -c 'import os,sys; os.setsid(); os.execv("/bin/bash", ["/bin/bash", "-c", sys.argv[1]])' ${literal}; elif command -v setsid >/dev/null 2>&1; then setsid /bin/bash -c ${literal}; else /bin/bash -c ${literal}; fi`;
+      args = ['-c', `export PASEO_MULTI_SESSION='${runId}'; printf 'PASEO_RUN_${runId}_BEGIN\\n'; ${launch}; rc=$?; printf '\\n${marker}%s\\n' "$rc"; while :; do sleep 60; done`];
     }
     fs.mkdirSync(req.stateDir, {recursive: true, mode: 0o700});
     const recordPath = path.join(req.stateDir, runId + '.json');
