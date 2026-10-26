@@ -291,6 +291,19 @@ class AdapterTests(unittest.TestCase):
         self.assertIn('Start-Sleep', wrapper)
 
 
+
+    def test_health_windows_compact_wrapper_fits_actual_command_line(self):
+        data=health.payload('windows',dict(daemonPid=999,ended=[]))
+        request=dict(action='exec',host=self.host,stateDir=str(self.root/'runs'),script=data['script'],
+                     shell='powershell',wait=0,compactWrapper=True)
+        env=dict(os.environ,PASEO_MULTI_HOST_CLIENT_MODULE=str(self.module),MULTI_HOST_TEST_MODE='run-success',
+                 MULTI_HOST_TEST_CALLS=str(self.calls))
+        result=subprocess.run([shutil.which('node'),str(SCRIPT.with_name('rpc.mjs'))],input=json.dumps(request),
+                              env=env,capture_output=True,text=True,encoding='utf-8',timeout=15)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        options=json.loads(Path(str(self.calls)+'.terminal.options').read_text())
+        self.assertLess(len(' '.join(options['args'])),28000)
+
     def test_run_provenance_is_inherited_and_keep_is_durable(self):
         import base64
         for shell in ['bash', 'powershell']:
@@ -691,8 +704,14 @@ class HealthPolicyTests(unittest.TestCase):
             def run(request):
                 data=health.payload('windows',request)
                 # Exercise the same compressed outer/encoded inner path as RPC.
-                inner=base64.b64encode(("$ErrorActionPreference='Stop'\n"+data['script']).encode('utf-16le')).decode()
-                wrapper='& powershell.exe -NoProfile -EncodedCommand '+inner+'; exit $LASTEXITCODE'
+                # Elevated Windows tokens can default new fixture ownership to
+                # Administrators. Give our fixture the exact ownership contract.
+                fixture="$env:PSModulePath=(Join-Path $PSHOME 'Modules')+[IO.Path]::PathSeparator+$env:PSModulePath;"
+                fixture+="foreach($f in @(Get-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'paseo-multi'))+@(Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'paseo-multi') -Recurse)){ $a=Get-Acl -LiteralPath $f.FullName;$a.SetOwner([Security.Principal.WindowsIdentity]::GetCurrent().User);Set-Acl -LiteralPath $f.FullName -AclObject $a };"
+                fixture+="$ErrorActionPreference='Stop';\n"+data['script']
+                env['PASEO_MULTI_SCRIPT']=base64.b64encode(gzip.compress(fixture.encode())).decode()
+                inner="$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String($env:PASEO_MULTI_SCRIPT));Remove-Item Env:PASEO_MULTI_SCRIPT;$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z,[Text.Encoding]::UTF8); & ([scriptblock]::Create($r.ReadToEnd()))"
+                wrapper='& powershell.exe -NoProfile -EncodedCommand '+base64.b64encode(inner.encode('utf-16le')).decode()+'; exit $LASTEXITCODE'
                 packed=base64.b64encode(gzip.compress(wrapper.encode())).decode()
                 loader="$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String('"+packed+"'));$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z); & ([scriptblock]::Create($r.ReadToEnd()))"
                 result=subprocess.run(['powershell.exe','-NoProfile','-EncodedCommand',base64.b64encode(loader.encode('utf-16le')).decode()],env=env,capture_output=True,text=True,timeout=180)
@@ -712,14 +731,6 @@ class HealthPolicyTests(unittest.TestCase):
             self.assertFalse(old.exists());self.assertTrue(fresh.exists())
             self.assertEqual(len(list((root/'quarantine').iterdir())),1)
 
-    def test_payload_windows_stays_below_nested_wrapper_limit(self):
-        import base64
-        data=health.payload('windows',dict(daemonPid=999,ended=[]))
-        inner=base64.b64encode(("$ErrorActionPreference='Stop'\n"+data['script']).encode('utf-16le')).decode()
-        wrapper="$env:PASEO_MULTI_SESSION='"+str(uuid.uuid4())+"'; "+inner+'X'*300
-        packed=base64.b64encode(__import__('gzip').compress(wrapper.encode())).decode()
-        self.assertLess(len(inner),28000)
-        self.assertLess(len(base64.b64encode((packed+'X'*400).encode('utf-16le'))),28000)
 
 
 if __name__ == '__main__':

@@ -306,8 +306,15 @@ async function main() {
     let command, args;
     if (req.shell === 'powershell') {
       command = 'powershell.exe';
-      const inner = Buffer.from("$ErrorActionPreference='Stop'\n" + req.script, 'utf16le').toString('base64');
-      const wrapper = `$env:PASEO_MULTI_SESSION='${runId}'; Write-Output 'PASEO_RUN_${runId}_BEGIN'; & powershell.exe -NoProfile -EncodedCommand ${inner}; $rc=$LASTEXITCODE; Write-Output ('${marker}' + $rc); while ($true) {Start-Sleep -Seconds 60}`;
+      let innerText = "$ErrorActionPreference='Stop'\n" + req.script;
+      let prefix = '';
+      if (req.compactWrapper) {
+        const packed = gzipSync(Buffer.from(innerText)).toString('base64');
+        prefix = `$env:PASEO_MULTI_SCRIPT='${packed}'; `;
+        innerText = "$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String($env:PASEO_MULTI_SCRIPT));Remove-Item Env:PASEO_MULTI_SCRIPT;$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z,[Text.Encoding]::UTF8); & ([scriptblock]::Create($r.ReadToEnd()))";
+      }
+      const inner = Buffer.from(innerText, 'utf16le').toString('base64');
+      const wrapper = `${prefix}$env:PASEO_MULTI_SESSION='${runId}'; Write-Output 'PASEO_RUN_${runId}_BEGIN'; & powershell.exe -NoProfile -EncodedCommand ${inner}; $rc=$LASTEXITCODE; Write-Output ('${marker}' + $rc); while ($true) {Start-Sleep -Seconds 60}`;
       let outer = wrapper;
       if (req.compactWrapper) {
         const packed = gzipSync(Buffer.from(wrapper)).toString('base64');

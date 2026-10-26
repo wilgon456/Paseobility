@@ -1,5 +1,9 @@
 # Windows PowerShell 5.1, CIM fallback; no Python/psutil dependency.
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+# A daemon launched from pwsh can pass its incompatible PS7 module path to
+# Windows PowerShell 5.1. Prefer this process's own built-in modules only here.
+$env:PSModulePath = (Join-Path $PSHOME 'Modules') + [IO.Path]::PathSeparator + $env:PSModulePath
 $multiRoot = Join-Path $env:LOCALAPPDATA 'paseo-multi'
 $multiUser = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 function Size($folder) {
@@ -35,7 +39,7 @@ function Snapshot {
         $started=if ($p.CreationDate) { $p.CreationDate.ToUniversalTime().ToString('o') } else { $null }
         $age=if ($p.CreationDate) { ((Get-Date)-$p.CreationDate).TotalSeconds } else { 0 }
         $cause='parent '+$p.ParentProcessId+' ('+$parent.Name+')'
-        $scheduled=@($tasks[$p.Name.ToLowerInvariant()]); if ($scheduled.Count) { $cause+='; scheduled task: '+($scheduled -join ', ') }
+        $scheduled=@($tasks[$p.Name.ToLowerInvariant()] | Where-Object {$_}); if ($scheduled.Count) { $cause+='; scheduled task: '+($scheduled -join ', ') }
         @{sessionId=[int]$p.SessionId;pid=[int]$p.ProcessId;ppid=[int]$p.ParentProcessId;owner=$owner;name=$p.Name;started=$started;ageSeconds=$age;rssBytes=[long]$p.WorkingSetSize;session=$null;ports=@($ports[[int]$p.ProcessId] | Where-Object {$_});parentDead=(!$parent -or ($parent.CreationDate -gt $p.CreationDate));cause=$cause;protected=($p.CommandLine -match '(\bpaseo\b|\bsshd?\b|\bcodex\b|\bclaude\b|\bopencode\b)')}
     })
     @{rows=$rows;portsKnown=$portsKnown}
@@ -63,8 +67,20 @@ function Candidates($rows, $daemonPid) {
         }
     })
 }
+function KillTree($targetId, $force) {
+    $ErrorActionPreference='Continue'
+    $multiKillArgs=@('/PID',[string]$targetId,'/T')
+    if ($force) { $multiKillArgs+=@('/F') }
+    & taskkill.exe @multiKillArgs 2>$null | Out-Null
+    $LASTEXITCODE
+}
 function SafeDir($dir) {
-    if (!(Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    if (!(Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $createdAcl=Get-Acl -LiteralPath $dir
+        $createdAcl.SetOwner([Security.Principal.WindowsIdentity]::GetCurrent().User)
+        Set-Acl -LiteralPath $dir -AclObject $createdAcl
+    }
     if ((Get-Item -LiteralPath $dir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse point refused' }
     $acl=Get-Acl -LiteralPath $dir
     if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $multiUser) { throw 'Managed directory owner mismatch' }
@@ -109,7 +125,7 @@ if ($multiRequest.apply) {
                 $tree=@{};$tree[[int]$current[0].pid]=$true
                 do {$changed=$false;foreach($p in $fresh.rows){if($tree.ContainsKey($p.ppid) -and !$tree.ContainsKey($p.pid)){$tree[$p.pid]=$true;$changed=$true}}}while($changed)
                 if (@($fresh.rows | Where-Object {$tree.ContainsKey($_.pid) -and $deny.ContainsKey($_.pid)}).Count) { throw 'Protected process in tree' }
-                & taskkill.exe /PID $current[0].pid /T 2>$null | Out-Null
+                $null=KillTree $current[0].pid $false
                 Start-Sleep -Seconds 2
                 $after=Snapshot
                 $survivor=@($after.rows | Where-Object {$_.pid -eq $current[0].pid})
@@ -123,7 +139,7 @@ if ($multiRequest.apply) {
                     }}
                     $newDenied=Denied $after.rows $multiRequest.daemonPid
                     foreach($p in $after.rows){if($tree.ContainsKey($p.pid) -and $newDenied.ContainsKey($p.pid)){throw 'Tree protection changed'}}
-                    & taskkill.exe /PID $current[0].pid /T /F 2>$null | Out-Null
+                    $null=KillTree $current[0].pid $true
                 }
                 # Do not claim success on access denied or a remaining child.
                 $remaining=Snapshot
