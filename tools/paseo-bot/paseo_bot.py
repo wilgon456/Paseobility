@@ -394,8 +394,14 @@ class Bot:
             details['snapshot'+language] = code
             common += 'The final JSON MUST include a top-level snapshot field with the actual computed 64-character SHA256. A summary saying the snapshot matches is insufficient. '
         if stage == 'preflight':
+            # This agent inspects the source checkout, never the requested change.
+            # Passing the implementation request here caused a live provider to
+            # perform it despite the read-only phase instructions.
+            details = {k: details[k] for k in ['project', 'phase', 'repo', 'defaultBranch', 'skills']}
             instruction = ('Read-only git preparation in the source checkout. Do not modify working files or change branches. '
+                           'You are NOT the implementation agent. Do not run gates, fix files, reset, clean, stash, commit or fetch. '
                            'Run git rev-parse --show-toplevel, git status --short, then git ls-remote --exit-code origin refs/heads/' + target['defaultBranch'] + ' as separate commands. '
+                           'If status contains any changes or untracked files, report blocked and preserve them. Return files=[] and gates=[] for a clean preparation pass. '
                            'Do not query init.defaultBranch: that optional setting is irrelevant to an existing repo. A missing optional setting is not a missing branch. '
                            'Never fetch or write source .git: provider sandboxes may protect it. Read the remote branch SHA with ls-remote, '
                            'then verify that exact commit object already exists locally using git cat-file -e "SHA^{commit}" (replace SHA with the actual remote SHA). '
@@ -420,6 +426,8 @@ class Bot:
             return False
         if not SHA.fullmatch(e.get('head', '')) or not isinstance(e.get('cwd'), str) or not e['cwd']:
             raise ValueError('Missing git/worktree evidence.')
+        if stage == 'preflight' and (not same_remote_path(e['cwd'], record['target']['repo']) or e.get('files') != [] or e.get('gates') != []):
+            raise ValueError('Read-only preparation must report the clean source checkout without changes or gate execution.')
         expected = record['target']['defaultBranch'] if stage == 'preflight' else record['branch']
         if e.get('branch') != expected:
             raise ValueError('Branch evidence does not match task.')

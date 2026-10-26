@@ -52,6 +52,8 @@ class Fake:
         if action == 'observe':
             stage = self.launches[-1]['title'].split()[-1]
             e = {'verdict': 'pass', 'summary': 'Verified fixture', 'branch': 'main' if stage == 'preflight' else 'paseo-bot/task-1', 'head': 'a' * 40, 'cwd': '/repo' if stage == 'preflight' else '/worktree', 'gates': [{'command': 'python -m unittest', 'exitCode': 1 if self.bad_gate else 0}], 'files': ['file.py'], 'snapshot': 'b' * 64}
+            if stage == 'preflight':
+                e['files'] = []; e['gates'] = []
             if stage == 'postflight' and self.changed_snapshot:
                 e['snapshot'] = 'c' * 64
             if stage == 'work' and self.changed_head:
@@ -99,6 +101,26 @@ class BotTests(unittest.TestCase):
         self.assertEqual(self.fake.launches[2]['workspaceId'], r['workspaceId'])
         self.assertEqual(r['deployment'], 'not-run')
         self.assertEqual(json.loads((self.home/'results/task-1.json').read_text())['state'], 'passed')
+
+    def test_preparation_cannot_accept_an_implementation_receipt(self):
+        record = dict(target=self.target('MAC_MINI'), branch='paseo-bot/task-1')
+        evidence = dict(verdict='pass', head='a'*40, cwd='/repo', branch='main', files=['file.py'], gates=[])
+        with self.assertRaises(ValueError): self.bot.validate_evidence(evidence, record, 'preflight')
+        evidence.update(files=[], gates=[dict(command='python -m unittest',exitCode=0)])
+        with self.assertRaises(ValueError): self.bot.validate_evidence(evidence, record, 'preflight')
+        evidence.update(gates=[],cwd='/wrong-source')
+        with self.assertRaises(ValueError): self.bot.validate_evidence(evidence, record, 'preflight')
+        evidence.update(cwd='/repo')
+        self.assertTrue(self.bot.validate_evidence(evidence,record,'preflight'))
+
+    def test_preparation_never_receives_task_or_previous_implementation_requests(self):
+        record = dict(id='task-1',target=self.target('MAC_MINI'),branch='paseo-bot/task-1',evidence={})
+        prompt = self.bot.prompt(self.body,record,'preflight')
+        self.assertNotIn(self.body['prompt'],prompt)
+        self.assertNotIn(self.body['title'],prompt)
+        self.assertNotIn('projectHistory',prompt)
+        self.assertIn('preserve them',prompt)
+        self.assertIn(self.body['prompt'],self.bot.prompt(self.body,record,'work'))
 
     def test_standby_is_healthy_but_cannot_admit_or_dispatch(self):
         self.bot.submit(self.body)
