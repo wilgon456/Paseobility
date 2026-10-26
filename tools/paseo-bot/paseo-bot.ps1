@@ -13,10 +13,12 @@ begin { $chunks = New-Object 'System.Collections.Generic.List[string]' }
 process { if ($PSBoundParameters.ContainsKey('Json')) { $chunks.Add($Json) } }
 end {
   $oldConsole = [Console]::OutputEncoding
+  $oldInput = [Console]::InputEncoding
   $code = 1
   try {
     $utf8 = New-Object Text.UTF8Encoding($false)
     [Console]::OutputEncoding = $utf8
+    [Console]::InputEncoding = $utf8
     $prefix = @()
     if (!$Python) {
       $launcher = Get-Command python.exe -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch '\\WindowsApps\\' } | Select-Object -First 1
@@ -85,6 +87,6 @@ end {
   } catch {
     [Console]::WriteLine('{"ok":false,"error":"PowerShell bot invocation failed. Check Python, command, file and state path."}')
     $code = 1
-  } finally { [Console]::OutputEncoding = $oldConsole }
+  } finally { [Console]::OutputEncoding = $oldConsole; [Console]::InputEncoding = $oldInput }
   exit $code
 }

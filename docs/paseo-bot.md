@@ -312,3 +312,8 @@ fall back to relay. Verify SSH host keys through an already authenticated contro
 path, preserve existing registry/known-host backups, and use strict host-key
 checking. Do not print connection material, change private keys or restart
 working daemons just to move the controller.
+
+Native process stdin is UTF-8 as well as PowerShell pipeline input. The wrapper
+restores both console input/output encodings. Keep source repositories outside
+the private queue directory on Windows: the native coding sandbox needs to
+traverse project directories, while queue credentials/policy retain private ACLs.

@@ -195,6 +195,11 @@ class BotTests(unittest.TestCase):
         r = subprocess.run(base+[str(wrapper),'status','-State',str(self.home)],capture_output=True,encoding='utf-8')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('queue', json.loads(r.stdout))
+        stdin_task = dict(self.body, id='unicode-native-stdin', title='표준입력 한글')
+        r = subprocess.run(base+[str(wrapper),'submit','-State',str(self.home)],input=json.dumps(stdin_task,ensure_ascii=False),capture_output=True,encoding='utf-8')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        saved = json.loads(self.bot.db.execute('SELECT body FROM tasks WHERE id=?',('unicode-native-stdin',)).fetchone()[0])
+        self.assertEqual(saved['title'], '표준입력 한글')
 
     def test_idempotent_submission_and_conflict(self):
         self.bot.submit(self.body)
