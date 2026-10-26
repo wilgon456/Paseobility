@@ -420,8 +420,10 @@ class Bot:
             try:
                 receipt = self.rpc(h, 'launch', **args)
             except ValueError as error:
-                # Leave dispatching for reconciliation on the next tick.
                 r['launchDiagnostic'] = {'stage': getattr(error, 'stage', 'operation'), 'reason': getattr(error, 'reason', 'operation')}
+                if isinstance(error, BridgeFailure) and error.stage in ['connect', 'identity', 'profile']:
+                    r.update(state='blocked', reason='Pre-launch '+error.stage+' check failed ('+error.reason+'); no agent creation was attempted.')
+                # CLI/receipt failures remain dispatching for reconciliation.
                 self.save(r)
                 return r
             r['runs'].append(dict(receipt, stage=stage, attempt=r['attempt']))

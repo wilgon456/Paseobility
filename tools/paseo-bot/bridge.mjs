@@ -71,8 +71,15 @@ async function main() {
     const p=matches[0];
     // CLI has no feature flags. Refuse rather than silently drop configured values.
     if(!p.provider || !p.model || Object.keys(p.featureValues ?? {}).length) throw Error('profile unsupported');
-    const providers=await client.getProvidersSnapshot({cwd:req.repo});
-    const entry=providers.entries?.find(e=>e.provider===p.provider);
+    let entry;
+    // A fresh cwd can initially publish an incomplete provider snapshot while
+    // discovery warms. Only repeat this read-only probe, never agent creation.
+    for(let probe=0;probe<5;probe++) {
+      const providers=await client.getProvidersSnapshot({cwd:req.repo});
+      entry=providers.entries?.find(e=>e.provider===p.provider);
+      if(entry?.enabled===false || (entry?.enabled && entry.status==='ready'))break;
+      if(probe<4)await new Promise(resolve=>setTimeout(resolve,400*(probe+1)));
+    }
     if(!entry?.enabled || entry.status!=='ready')throw Error('provider unavailable');
     const mode=p.modeId ?? entry.defaultModeId;
     if(mode && !entry.modes?.some(m=>m.id===mode))throw Error('unknown mode');

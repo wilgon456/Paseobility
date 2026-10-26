@@ -6,16 +6,16 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const bridge=fileURLToPath(new URL('./bridge.mjs',import.meta.url));
-function fixture(t,{wrongIdentity=false,features=false,noMode=false}={}) {
+function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false}={}) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bot-bridge-test-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  fs.mkdirSync(path.join(dir,'utils'));
  const module=path.join(dir,'utils/client.js');
  fs.writeFileSync(path.join(dir,'package.json'),'{"type":"module"}');
- fs.writeFileSync(module,`export async function connectToDaemon(){return {
+ fs.writeFileSync(module,`let probes=0;export async function connectToDaemon(){return {
  getDaemonStatus:async()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1'}),
  getDaemonConfig:async()=>({config:{agentProfiles:[{name:'gpt-task',provider:'codex',model:'fixture-model',thinkingOptionId:'high',${noMode?'':"modeId:'read-only',"}featureValues:${features?'{fast_mode:true}':'{}'},notes:'Fixture profile'}]}}),
- getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:'ready',defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}]}]}),
+ getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:${warming?"(++probes>2?'ready':'loading')":"'ready'"},defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}]}]}),
  listProjects:async()=>({projects:[{projectRootPath:'/repo',projectDisplayName:'fixture'}]}),
  fetchAgents:async()=>({entries:[{agent:{id:'owned',labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree',status:'idle'}}],pageInfo:{hasMore:false}}),
  fetchAgent:async()=>({agent:{id:'owned',status:'idle',labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree'}}),
@@ -54,4 +54,8 @@ test('absent profile mode materializes live configured provider default',t=>{
 });
 test('format correction targets only an owned idle agent',t=>{
  const f=fixture(t);assert.equal(f.call({action:'repair',agentId:'owned',attempt:'attempt',prompt:'complete the JSON receipt read-only'}).ok,true);assert.equal(f.call({action:'repair',agentId:'owned',attempt:'other',prompt:'invalid'}).ok,false);
+});
+
+test('fresh provider snapshots warm before any launch side effect',t=>{
+ const f=fixture(t,{warming:true});const r=f.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'warming',attempt:'attempt',prompt:'read fixture',workspaceId:'w1'});assert.equal(r.ok,true);assert.equal(r.result.provider,'codex');
 });

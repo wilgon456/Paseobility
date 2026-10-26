@@ -235,6 +235,21 @@ class BotTests(unittest.TestCase):
         self.assertEqual(r['state'], 'unknown')
         self.assertEqual(len(self.fake.launches), 1)
 
+    def test_known_prelaunch_failure_is_blocked_without_recovery(self):
+        original = self.bot.rpc
+        def rpc(host, action, **kwargs):
+            if action == 'launch':
+                raise m.BridgeFailure('profile', 'provider-unavailable')
+            if action == 'recover':
+                self.fail('A known pre-launch failure must not need recovery')
+            return original(host, action, **kwargs)
+        self.bot.rpc = rpc
+        self.bot.submit(self.body)
+        result = self.drive()
+        self.assertEqual(result['state'], 'blocked')
+        self.assertEqual(result['launchDiagnostic']['reason'], 'provider-unavailable')
+        self.assertEqual(len(self.fake.launches), 0)
+
     def test_lost_ack_adopts_unique_label(self):
         self.fake.fail_launch = True
         self.bot.submit(self.body)
