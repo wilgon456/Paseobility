@@ -396,7 +396,8 @@ class Bot:
                            'Run git rev-parse --show-toplevel, git status --short, then git ls-remote --exit-code origin refs/heads/' + target['defaultBranch'] + ' as separate commands. '
                            'Do not query init.defaultBranch: that optional setting is irrelevant to an existing repo. A missing optional setting is not a missing branch. '
                            'Never fetch or write source .git: provider sandboxes may protect it. Read the remote branch SHA with ls-remote, '
-                           'then verify that exact commit object already exists locally using git cat-file -e SHA^{commit}. '
+                           'then verify that exact commit object already exists locally using git cat-file -e "SHA^{commit}" (replace SHA with the actual remote SHA). '
+                           'Always quote the entire revision expression: PowerShell parses unquoted braces as a script block. '
                            'Return head as that exact verified remote SHA. Include branch=the configured default branch. '
                            'If remote lookup fails or that object is absent, report blocked with a needs-host-fetch reason; do not use a stale tracking ref. '
                            'Report missing/non-git/incorrect path or missing base as blocked. Gate execution is deferred.')
