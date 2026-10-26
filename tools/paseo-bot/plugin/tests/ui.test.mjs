@@ -86,3 +86,12 @@ test('one sentence starts a conversation without a session form',async()=>{
  await page.getByText('로그인 오류를 고쳐 줘',{exact:true}).waitFor();const actions=await page.evaluate(()=>window.__actions);assert.equal(actions.length,1);assert.equal(actions[0].action,'start');assert.equal(actions[0].text,'로그인 오류를 고쳐 줘');
  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
 });
+test('primary chat is centered and long kanban lanes remain independently reachable',async()=>{
+ const p=await preview();let b;
+ try{b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});const page=await b.newPage({viewport:{width:1440,height:1000}});await page.goto(p.url);
+ const chat=await page.getByTestId('main-chat').boundingBox();assert.ok(Math.abs(chat.x+chat.width/2-720)<2);
+ await page.goto(p.url+'?state=long-board');const lane=page.getByTestId('lane-scroll-attention');await lane.waitFor();
+ assert.ok(await lane.evaluate(e=>e.scrollHeight>e.clientHeight+100));await lane.evaluate(e=>e.scrollTop=e.scrollHeight);
+ await page.getByRole('button',{name:'검토 작업 29, blocked',exact:true}).click();await page.getByRole('dialog',{name:'검토 작업 29',exact:true}).waitFor();
+ }finally{await b?.close();await new Promise(r=>p.server.close(r));}
+});

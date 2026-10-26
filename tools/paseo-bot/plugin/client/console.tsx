@@ -178,6 +178,7 @@ export function Console(p: Props) {
           flex: 1,
           minHeight: 300,
           flexDirection: p.compact ? "column" : "row",
+          justifyContent: "center",
           gap: 24,
         }}
       >
