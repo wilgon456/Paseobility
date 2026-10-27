@@ -23,7 +23,9 @@ class PosixScannerHelperTests(unittest.TestCase):
             for name in ('bash', 'cat', 'date', 'dirname', 'find', 'git', 'grep',
                          'mkdir', 'mktemp', 'rm', 'sed', 'awk', 'rg'):
                 (tools / name).symlink_to(shutil.which(name))
-            (target / 'fixture.js').write_text('GITHUB_TOKEN="fixture-sensitive-value-123"')
+            payload = target / 'skills/paseo-spyware-check/scripts/fixture.js'
+            payload.parent.mkdir(parents=True)
+            payload.write_text('GITHUB_TOKEN="fixture-sensitive-value-123"')
             config = root / 'invalid-rg-config'
             config.write_text('--invalid-fixture-flag\n')
             for attempt in range(2):
@@ -35,6 +37,7 @@ class PosixScannerHelperTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 report = (output / 'report.md').read_text()
                 self.assertEqual(report.count('fixture.js:1:'), 1)
+                self.assertIn('| High |', report)
                 self.assertNotIn('fixture-sensitive-value-123', report)
 
     def test_repeatable_fixtures_ignore_host_scanners(self):
@@ -58,13 +61,41 @@ class PosixScannerHelperTests(unittest.TestCase):
 
 @unittest.skipUnless(SHELLS, 'PowerShell required for Windows scanner-helper behavior')
 class ScannerHelperTests(unittest.TestCase):
+    def test_partial_install_returns_failure_after_remaining_commands(self):
+        for shell in SHELLS:
+            with self.subTest(shell=shell), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                calls = root / 'calls'
+                wrapper = root / 'installer-probe.ps1'
+                wrapper.write_text('''
+$ErrorActionPreference = 'Stop'
+function global:winget {}
+function global:pipx {}
+function global:cmd.exe {
+  Add-Content -LiteralPath $env:INSTALL_CALLS -Value ($args -join ' ') -Encoding UTF8
+  $global:LASTEXITCODE = if (($args -join ' ') -match 'Gitleaks.Gitleaks') { 19 } else { 0 }
+}
+& $env:FIXTURE_INSTALLER -Yes
+''', encoding='utf-8')
+                result = subprocess.run([shell, '-NoProfile', '-File', str(wrapper)],
+                    capture_output=True, text=True, timeout=15,
+                    env=dict(os.environ, INSTALL_CALLS=str(calls),
+                             FIXTURE_INSTALLER=str(SCRIPT.with_name('install-scanners.ps1'))))
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                commands = calls.read_text(encoding='utf-8-sig').splitlines()
+                self.assertEqual(len(commands), 3)
+                self.assertIn('AquaSecurity.Trivy', commands[1])
+                self.assertIn('pipx install semgrep', commands[2])
+
     def test_report_omits_values_and_osv_receives_current_flags(self):
         for shell in SHELLS:
             with self.subTest(shell=shell), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 target, report = root / 'target', root / 'report'
                 target.mkdir()
-                (target / 'fixture.js').write_text('GITHUB_TOKEN="fixture-sensitive-value-123"')
+                payload = target / 'skills/paseo-spyware-check/scripts/fixture.js'
+                payload.parent.mkdir(parents=True)
+                payload.write_text('GITHUB_TOKEN="fixture-sensitive-value-123"')
                 wrapper = root / 'probe.ps1'
                 wrapper.write_text('''
 $ErrorActionPreference = 'Stop'
@@ -88,6 +119,7 @@ function global:osv-scanner {
                 self.assertEqual(result.returncode, 0, result.stderr)
                 content = (report / 'report.md').read_text(encoding='utf-8-sig')
                 self.assertIn('fixture.js:1:', content)
+                self.assertIn('| High |', content)
                 self.assertNotIn('fixture-sensitive-value-123', content)
                 output = json.loads((report / 'osv-scanner.json').read_text(encoding='utf-8-sig'))
                 self.assertEqual(output['results'], [])

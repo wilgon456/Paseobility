@@ -73,11 +73,17 @@ if ($DryRun) {
   exit 0
 }
 
+$InstallFailed = $false
 foreach ($cmd in $planned) {
   Write-Host "[run] $cmd"
   cmd.exe /d /s /c $cmd
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "[failed] $cmd (exit=$LASTEXITCODE)"
+    $InstallFailed = $true
+  }
 }
 
 Write-Host ""
 Write-Host "== Scanner status after install =="
 Show-Status
+if ($InstallFailed) { exit 1 }

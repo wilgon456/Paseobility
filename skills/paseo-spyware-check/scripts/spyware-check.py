@@ -68,18 +68,18 @@ EXECUTABLE_SUFFIXES = frozenset({
 })
 
 SECRET_TOKEN_PATTERN = re.compile(
-    r"gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{20,}|"
+    r"github_pat_[A-Za-z0-9_]{40,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]{20,}|"
     r"sk-[A-Za-z0-9_-]{16,}|AIza[0-9A-Za-z_-]{30,}|ya29\.[0-9A-Za-z_-]{20,}|"
     r"glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|dop_v1_[A-Za-z0-9]{20,}",
     re.IGNORECASE,
 )
 ASSIGNED_SECRET_PATTERN = re.compile(
-    r"(?i)((?:api[_-]?key|token|password|secret)\s*[:=]\s*)"
-    r"(?:['\"])?[^\s,'\";]+(?:['\"])?"
+    r"(?i)((?:api[_-]?key|token|password|secret)['\"]?\s*[:=]\s*)"
+    r"(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|`[^`\r\n]*`|[^\s,'\";]+)"
 )
 ASSIGNED_SECRET_VALUE_PATTERN = re.compile(
     r"(?ix)\b(?P<key>(?:[A-Z][A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD)|"
-    r"API[_-]?KEY|TOKEN|PASSWORD|SECRET))\b\s*[:=]\s*"
+    r"API[_-]?KEY|TOKEN|PASSWORD|SECRET))\b['\"]?\s*[:=]\s*"
     r"(?P<value>(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|`[^`\r\n]*`|[^\s,;#]+))"
 )
 HIGH_PATTERNS = (
@@ -355,14 +355,14 @@ def _redact_evidence(line: str) -> str:
 def _source_role(path: Path) -> str:
     name = path.name.casefold()
     parts = {part.casefold() for part in path.parts}
-    if name in DOCUMENTATION_NAMES or path.suffix.casefold() in {".md", ".markdown", ".txt"} or parts & {"docs", "documentation", "examples", "references"}:
+    if name in DOCUMENTATION_NAMES or path.suffix.casefold() in {".md", ".markdown", ".txt"}:
         return "documentation"
-    if parts & {"test", "tests", "fixtures", "fixture"}:
-        return "data"
     if name in CONFIGURATION_NAMES or name in HIGH_SIGNAL_NAMES:
         return "configuration"
     if path.suffix.casefold() in EXECUTABLE_SUFFIXES:
         return "executable"
+    if parts & {"docs", "documentation", "examples", "references"}:
+        return "documentation"
     return "data"
 
 
@@ -658,7 +658,7 @@ def _scan_files_with_metadata(root: Path) -> tuple[list[dict[str, Any]], dict[st
             continue
         files_considered += 1
         relative = candidate.relative_to(root).as_posix()
-        role = _source_role(candidate)
+        role = _source_role(Path(relative))
         size = candidate.stat().st_size
         if size > MAX_SCAN_BYTES:
             truncated = True
@@ -671,7 +671,16 @@ def _scan_files_with_metadata(root: Path) -> tuple[list[dict[str, Any]], dict[st
             continue
         text = candidate.read_text(encoding="utf-8", errors="replace")
         files_scanned += 1
-        self_reference = scanner_payload or relative.startswith("skills/paseo-spyware-check/")
+        scanner_relative = (
+            relative.removeprefix("skills/paseo-spyware-check/")
+            if relative.startswith("skills/paseo-spyware-check/")
+            else relative if scanner_payload else ""
+        )
+        bundled_file = Path(__file__).parents[1] / scanner_relative
+        self_reference = (
+            bool(scanner_relative) and bundled_file.is_file()
+            and candidate.read_bytes() == bundled_file.read_bytes()
+        )
         rows = _package_json_findings(relative, text, role)
         for number, line in enumerate(text.splitlines(), start=1):
             rows.extend(_line_findings(relative, line, number, role))

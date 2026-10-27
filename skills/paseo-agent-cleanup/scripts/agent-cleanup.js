@@ -8,7 +8,7 @@ const path = require("node:path");
 
 const ACTIVE_STATUS_PATTERN = /(^|[\s_-])(running|initializing|working|active|starting|queued|pending|busy|executing|in[\s_-]?progress)([\s_-]|$)/i;
 const INACTIVE_STATUSES = new Set(["idle", "error", "closed"]);
-const DISPOSABLE_MARKER_PATTERN = /(^|[\s/_.-])(disposable|fixture|fixtures|smoke|temp|temporary|test|tests|testing|validation|validate|verification|verify)([\s/_.-]|$)/i;
+const DISPOSABLE_MARKER_PATTERN = /(^|[\s/\\_.-])(disposable|fixture|fixtures|smoke|temp|temporary|test|tests|testing|validation|validate|verification|verify)([\s/\\_.-]|$)/i;
 
 function usage() {
   console.log(`Usage:

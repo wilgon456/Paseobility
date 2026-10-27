@@ -229,6 +229,7 @@ function validatePortableFileName(name) {
 
 function validateArtifactNamePolicy(name) {
   validatePortableFileName(name);
+  assertValid(name.toLowerCase() !== "artifact.json", "artifact.json is reserved for artifact metadata");
   if (SECRET_NAME_PATTERNS.some((pattern) => pattern.test(name))) {
     throw validationError(`refusing secret-looking file name: ${name}`);
   }
@@ -612,10 +613,10 @@ function relativeArtifactPath(config, absolutePath) {
 
 function readStagedPayload(config, relativePath) {
   const stageLine = git(
-    ["ls-files", "--stage", "--", relativePath],
+    ["ls-files", "--stage", "-z", "--", relativePath],
     config.checkoutPath
   ).stdout;
-  const match = stageLine.match(/^(100644|100755) [0-9a-f]+ 0\t(.+)$/);
+  const match = stageLine.match(/^(100644|100755) [0-9a-f]+ 0\t(.+)\0$/);
   assertValid(match && match[2] === relativePath, "staged artifact is not a regular Git blob");
   return gitBuffer(["show", `:${relativePath}`], config.checkoutPath).stdout;
 }

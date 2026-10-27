@@ -157,7 +157,7 @@ classify_finding_line() {
   reason="suspicious static pattern"
 
   case "$path" in
-    README.md|README.*|skills/paseo-spyware-check/SKILL.md|skills/paseo-spyware-check/scripts/*)
+    README.md|README.*|skills/paseo-spyware-check/SKILL.md)
       severity="Info"
       reason="self-reference or scanner documentation"
       ;;

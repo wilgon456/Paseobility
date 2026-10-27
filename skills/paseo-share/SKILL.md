@@ -37,11 +37,11 @@ setup <repo-url> [--machine <name>] [--branch <name>]
 publish <file...> [--note <text>]
 list [--limit <number>]
 latest
-fetch <artifact-id|latest> [--output <directory>] [--force]
+fetch <artifact-id|latest> [--output <path>] [--force]
 status
 ```
 
-`--json` works on `publish`, `list`, `latest`, `fetch` and `status`.
+`--json` works on `onboard`, `setup`, `publish`, `list`, `latest`, `fetch` and `status`.
 
 ## First use
 
@@ -62,6 +62,9 @@ onboarding.
    runs the same onboarding; the CLI infers the machine name unless the user
    wants a friendly one (`--machine macbook`).
 
+For custom remotes, verify repository privacy with the provider before `setup`;
+the helper cannot verify visibility for an arbitrary Git remote.
+
 ## Share
 
 "Share this", "upload this result", "휴대폰에서 보게 올려줘" authorize
@@ -73,7 +76,8 @@ publishing the files the user means.
 - Reply with each artifact ID and the CLI's links as `[미리보기](...)` and
   `[다운로드](...)`. Private links need GitHub/Forgejo login on mobile.
 - Any file type up to 50 MiB (GitHub's large-file warning) is accepted. For a
-  folder, zip it first.
+  folder, zip it first. The filename `artifact.json` (any letter case) is
+  reserved for metadata and is refused before staging.
 - The CLI refuses secret-looking names (`.env`, `*.pem`, `*.key`, SSH keys,
   `credentials`, `secrets`) and text content with private-key or access-token
   signatures. Never rename or edit a refused file to get it through; Git
@@ -85,12 +89,16 @@ publishing the files the user means.
   requests. Show a short list (ID, machine, time, name) only when several
   artifacts fit equally.
 - Preview links are enough for viewing. When the user wants to work with an
-  artifact here, `fetch <id> --output <dir>` and use the returned path.
+  artifact here, `fetch <id> --output <path>` and use the returned path.
+  An existing directory receives the original filename; otherwise the path
+  is the destination filename, not a new directory. Create a directory first
+  when that is the intended destination.
 - `fetch` never overwrites a different existing file: an identical file is
   reused, otherwise it writes `name (2).ext` and reports the path. `--force`
   overwrites only when the user asked to replace the file.
 
-Every command syncs from the remote first. Artifacts are immutable under
+`publish`, `list`, `latest` and `fetch` sync from the remote first. `status`
+only reads local configuration and does not test connectivity. Artifacts are immutable under
 `artifacts/<machine>/<year>/<month>/<id>/` with an `artifact.json`; fetch
 verifies path, size and SHA-256 and skips malformed entries. Do not edit the
 managed clone by hand.

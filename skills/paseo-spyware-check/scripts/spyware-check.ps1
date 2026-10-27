@@ -51,7 +51,7 @@ function Get-Severity {
     [string]$Line
   )
 
-  if ($RelativePath -match '^(README\.md|README\..*|skills[\\/]paseo-spyware-check[\\/]SKILL\.md|skills[\\/]paseo-spyware-check[\\/]scripts[\\/].*)$') {
+  if ($RelativePath -match '^(README\.md|README\..*|skills[\\/]paseo-spyware-check[\\/]SKILL\.md)$') {
     return @("Info", "self-reference or scanner documentation")
   }
 

@@ -450,6 +450,16 @@ test("rejects traversal, control characters, and Windows reserved filenames", ()
   assert.equal(validatePortableFileName("한글-result_01.txt"), "한글-result_01.txt");
 });
 
+test("rejects payload names colliding with artifact metadata on any platform", (t) => {
+  const value = fixture(t);
+  for (const name of ["artifact.json", "ARTIFACT.JSON"]) {
+    assert.throws(() => validateArtifactMetadata({
+      ...value.metadata, name,
+      relativePath: `${path.posix.dirname(value.metadata.relativePath)}/${name}`,
+    }, value.config), /reserved.*metadata/);
+  }
+});
+
 test("rejects payload size and checksum tampering", (t) => {
   const value = fixture(t);
   assert.throws(
@@ -520,18 +530,28 @@ test("end to end: multi-file publish, any type, secret refusal, fetch fallback a
 
   const src = path.join(root, "src");
   fs.mkdirSync(src);
-  fs.writeFileSync(path.join(src, "notes.txt"), "hello\n");
+  const noteName = "한글-notes.txt";
+  fs.writeFileSync(path.join(src, noteName), "hello\n");
   fs.writeFileSync(path.join(src, "build.zip"), Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0, 1, 2]));
   fs.writeFileSync(path.join(src, "leak.log"), "token ghp_" + "a".repeat(36) + "\n");
 
-  const refused = cli(["publish", path.join(src, "notes.txt"), path.join(src, "leak.log")]);
+  const refused = cli(["publish", path.join(src, noteName), path.join(src, "leak.log")]);
   assert.notEqual(refused.status, 0);
   assert.match(refused.stderr, /leak\.log.*access-token signature/);
   fs.writeFileSync(path.join(src, ".env"), "A=1\n");
   assert.match(cli(["publish", path.join(src, ".env")]).stderr, /secret-looking file name/);
 
-  const published = JSON.parse(ok(["publish", path.join(src, "notes.txt"), path.join(src, "build.zip"), "--json"]).stdout);
-  assert.deepEqual(published.map((item) => item.name), ["notes.txt", "build.zip"]);
+  const published = JSON.parse(ok(["publish", path.join(src, noteName), path.join(src, "build.zip"), "--json"]).stdout);
+  assert.deepEqual(published.map((item) => item.name), [noteName, "build.zip"]);
+  for (const name of ["artifact.json", "ARTIFACT.JSON"]) {
+    const reserved = path.join(src, name);
+    fs.writeFileSync(reserved, '{"user":"payload"}\n');
+    const result = cli(["publish", reserved]);
+    assert.notEqual(result.status, 0, "metadata filename must not overwrite its payload");
+    const checkout = path.join(env.PASEO_SHARE_HOME, "repo");
+    assert.equal(spawnSync("git", ["-C", checkout, "status", "--porcelain"], {encoding: "utf8"}).stdout, "");
+  }
+
   const listed = JSON.parse(ok(["list", "--json"]).stdout);
   assert.equal(listed.length, 2);
 
@@ -549,7 +569,7 @@ test("end to end: multi-file publish, any type, secret refusal, fetch fallback a
 
   const hook = path.join(remote, "hooks", "pre-receive");
   fs.writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-  const failedPush = cli(["publish", path.join(src, "notes.txt")]);
+  const failedPush = cli(["publish", path.join(src, noteName)]);
   assert.notEqual(failedPush.status, 0);
   assert.match(failedPush.stderr, /push not confirmed/);
   fs.unlinkSync(hook);

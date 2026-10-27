@@ -93,12 +93,17 @@ if ! has_cmd brew; then
   exit 1
 fi
 
+install_failed=0
 for cmd in "${commands[@]}"; do
   echo "[run] $cmd"
   # shellcheck disable=SC2086
-  $cmd
+  if ! $cmd; then
+    echo "[failed] $cmd" >&2
+    install_failed=1
+  fi
 done
 
 echo
 echo "== Scanner status after install =="
 print_status
+exit "$install_failed"
