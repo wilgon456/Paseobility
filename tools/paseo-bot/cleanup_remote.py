@@ -14,6 +14,9 @@ import time
 from urllib.parse import urlsplit
 
 LIMIT = 64 * 1024 * 1024
+# Ignored files under these directories are rebuilt by tools (gate runs create
+# them); they are not work to preserve and only bloat the evidence patch.
+REGENERABLE = {'__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', 'node_modules', '.next', '.turbo', '.parcel-cache'}
 # Never wait for a credential prompt inside an unattended helper terminal.
 QUIET = dict(os.environ, GIT_TERMINAL_PROMPT='0', GCM_INTERACTIVE='never', GH_PROMPT_DISABLED='1')
 
@@ -32,6 +35,8 @@ def patch_bytes(root, base='HEAD', exclude=None):
     if git(root, 'ls-files', '--stage', '-z').find(b'160000 ') >= 0:
         raise ValueError('submodule requires manual preservation')
     names = git(root, 'ls-files', '--others', '-z').split(b'\0')
+    ignored = set(git(root, 'ls-files', '--others', '--ignored', '--exclude-standard', '-z').split(b'\0'))
+    names = [n for n in names if not (n in ignored and REGENERABLE & set(os.fsdecode(n).split('/')[:-1]))]
     if not isinstance(base, str) or not all(c in '0123456789abcdef' for c in base) or len(base) not in (40, 64):
         if base != 'HEAD':
             raise ValueError('invalid base')
@@ -169,8 +174,8 @@ def finish(repo, worktree, branch):
     # A failed lookup cannot establish that there is no PR: retain the branch.
     try:
         full = github_repo(repo)
-        owner = full.split('/')[0]
-        prs = json.loads(gh(repo, 'pr', 'list', '--repo', full, '--state', 'open', '--head', owner + ':' + branch,
+        # `gh pr list --head` matches the bare branch name; an owner: prefix matches nothing.
+        prs = json.loads(gh(repo, 'pr', 'list', '--repo', full, '--state', 'open', '--head', branch,
                             '--json', 'headRefName,state', '--limit', '100'))
         if not isinstance(prs, list) or any(not isinstance(pr, dict) for pr in prs):
             raise ValueError('invalid PR response')
