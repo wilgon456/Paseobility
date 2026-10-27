@@ -76,6 +76,8 @@ function global:cmd.exe {
   $global:LASTEXITCODE = if (($args -join ' ') -match 'Gitleaks.Gitleaks') { 19 } else { 0 }
 }
 & $env:FIXTURE_INSTALLER -Yes
+# `exit` inside a called script only sets LASTEXITCODE; surface it as this process's code.
+exit $LASTEXITCODE
 ''', encoding='utf-8')
                 result = subprocess.run([shell, '-NoProfile', '-File', str(wrapper)],
                     capture_output=True, text=True, timeout=15,
