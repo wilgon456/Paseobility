@@ -27,7 +27,10 @@ def post(secret, payload, delivery_id):
         return {'outcome': 'delivered' if 200 <= status < 300 else 'rejected', 'http_status': status}
     except HTTPError as error:
         status = error.code
-        error.close()  # Never read, log or persist response bodies or Location headers.
+        try:
+            error.close()  # Never read, log or persist response bodies or Location headers.
+        except (AttributeError, KeyError, OSError):
+            pass  # Python 3.9 raises KeyError when an HTTPError carries no body stream.
         return {'outcome': 'retry' if status == 429 or 500 <= status < 600 else 'rejected', 'http_status': status}
     except (URLError, TimeoutError, OSError):
         # The receiver may have accepted the POST. Do not blindly replay it.

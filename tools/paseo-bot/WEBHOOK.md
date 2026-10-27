@@ -59,7 +59,9 @@ never read or logged.
 
 The JSON body contains `task_id`, `project`, `machine`, `state`, `summary`,
 `pr_url`, and `requester`. Producers can supply the optional `pr_url` and
-`requester` fields during task intake; absent values are empty strings. For a
+`requester` fields during task intake; absent values are empty strings. When a
+`publish: draft-pr` target published the passed work, `pr_url` is that draft PR
+(the notification is sent after cleanup, so the link already exists). For a
 blocked task without a summary, its reason becomes the summary.
 If routing failed before a target machine was selected, `machine` names the
 resident host that produced the blocked result.

@@ -393,7 +393,7 @@ class BotTests(unittest.TestCase):
 
     def test_routes_each_machine_explicitly(self):
         for machine in self.fake.busy:
-            t, h = self.bot.route(dict(self.body, machine=machine))
+            t, h, _ = self.bot.route(dict(self.body, machine=machine))
             self.assertEqual(t['machine'], machine)
             self.assertEqual(h['label'], machine)
         with self.assertRaises(ValueError):
@@ -402,7 +402,7 @@ class BotTests(unittest.TestCase):
     def test_no_profile_or_disabled_target_blocks(self):
         self.config['projects'][0]['targets'][1]['enabled'] = False
         m.write_json(self.bot.registry_path, self.config)
-        t, _ = self.bot.route(self.body)
+        t, _, _ = self.bot.route(self.body)
         self.assertEqual(t['machine'], 'MAC_COM')
         for t in self.config['projects'][0]['targets']:
             t['enabled'] = False
@@ -569,7 +569,9 @@ class BotTests(unittest.TestCase):
         self.assertIn('Verified fixture', prompt)
         self.assertNotIn('DO_NOT_CROSS_PROJECTS', prompt)
 
-    def test_two_queued_tasks_do_not_launch_concurrently(self):
+    def test_two_queued_tasks_never_share_a_machine(self):
+        self.config['projects'][0]['targets'] = [self.target('MAC_MINI')]
+        m.write_json(self.bot.registry_path, self.config)
         self.bot.submit(self.body)
         self.bot.submit(dict(self.body, id='task-2'))
         self.fake.status = 'timeout'
@@ -578,6 +580,113 @@ class BotTests(unittest.TestCase):
         self.assertEqual(self.bot.result('task-1')['state'], 'running')
         self.assertEqual(self.bot.result('task-2')['state'], 'queued')
         self.assertEqual(len(self.fake.launches), 1)
+
+    def test_different_machines_progress_in_parallel(self):
+        self.bot.submit(self.body)
+        self.bot.submit(dict(self.body, id='task-2'))
+        self.fake.status = 'timeout'
+        for _ in range(3):
+            self.bot.tick()
+        first, second = self.bot.result('task-1'), self.bot.result('task-2')
+        self.assertEqual((first['state'], second['state']), ('running', 'running'))
+        self.assertNotEqual(first['machine'], second['machine'])
+        self.assertEqual(json.loads((self.home/'health.json').read_text())['activeTasks'], ['task-1', 'task-2'])
+
+    def test_transient_observation_failure_keeps_running_until_grace(self):
+        self.config['transientGraceSeconds'] = 60
+        m.write_json(self.bot.registry_path, self.config)
+        self.bot.submit(self.body)
+        for _ in range(4): self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'running')
+        self.fake.status = 'timeout'  # The work agent is still busy.
+        observe = self.fake.__call__
+        def offline(host, action, **kw):
+            if action == 'observe':
+                raise m.TransientBridgeError('lost')
+            return observe(host, action, **kw)
+        self.bot.rpc = offline
+        for _ in range(3): self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual(r['state'], 'running')
+        self.assertEqual(r['transientFailures'], 3)
+        self.bot.rpc = observe  # Connection returns: the same agent continues and the marker clears.
+        self.bot.tick()
+        self.assertNotIn('transientSince', self.bot.result('task-1'))
+        self.bot.rpc = offline
+        self.bot.tick()
+        with patch.object(m.time, 'time', return_value=m.time.time() + 120):
+            self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual(r['cleanup']['resultState'], 'blocked')  # Evidence capture precedes the verdict.
+        self.assertIn('retry window', r['reason'])
+        self.assertEqual(len(self.fake.launches), 2)
+
+    def test_permanent_bridge_failure_still_blocks(self):
+        self.bot.submit(self.body)
+        for _ in range(4): self.bot.tick()
+        observe = self.fake.__call__
+        def foreign(host, action, **kw):
+            if action == 'observe':
+                raise m.BridgeFailure('identity', 'ownership')
+            return observe(host, action, **kw)
+        self.bot.rpc = foreign
+        self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual(r['cleanup']['resultState'], 'blocked')
+        self.assertNotIn('transientSince', r)
+
+    def test_draft_pr_publish_runs_before_archive_and_reaches_webhook(self):
+        for t in self.config['projects'][0]['targets']:
+            t['publish'] = 'draft-pr'
+        m.write_json(self.bot.registry_path, self.config)
+        calls = []
+        original = self.fake.__call__
+        def rpc(host, action, **kw):
+            if action == 'publish-workspace':
+                calls.append(kw)
+                return {'prUrl': 'https://github.com/o/r/pull/7', 'commit': 'e' * 40, 'stateSha': 'f' * 64}
+            if action == 'archive-workspace':
+                calls.append(kw)
+            return original(host, action, **kw)
+        self.bot.rpc = rpc
+        self.bot.submit(self.body)
+        r = self.drive()
+        self.assertEqual(r['state'], 'passed')
+        self.assertEqual(r['prUrl'], 'https://github.com/o/r/pull/7')
+        self.assertEqual(calls[0]['defaultBranch'], 'main')
+        self.assertEqual(calls[0]['branch'], 'paseo-bot/task-1')
+        self.assertIn('task-1', calls[0]['body'])
+        self.assertEqual(calls[1]['stateSha'], 'f' * 64)
+        payload = json.loads(self.bot.db.execute('SELECT payload FROM webhook_jobs').fetchone()[0])
+        self.assertEqual(payload['pr_url'], 'https://github.com/o/r/pull/7')
+
+    def test_failed_work_is_never_published(self):
+        for t in self.config['projects'][0]['targets']:
+            t['publish'] = 'draft-pr'
+        m.write_json(self.bot.registry_path, self.config)
+        self.fake.work_verdict = 'fail'
+        self.bot.submit(self.body)
+        self.assertEqual(self.drive()['state'], 'failed')
+        self.assertEqual(self.fake.cleaned, ['snapshot-workspace', 'archive-workspace', 'finish-workspace'])
+
+    def test_invalid_publish_receipt_preserves_workspace(self):
+        for t in self.config['projects'][0]['targets']:
+            t['publish'] = 'draft-pr'
+        m.write_json(self.bot.registry_path, self.config)
+        original = self.fake.__call__
+        self.bot.rpc = lambda host, action, **kw: {'prUrl': 'https://evil.example/pull/1', 'commit': 'e' * 40, 'stateSha': 'f' * 64} if action == 'publish-workspace' else original(host, action, **kw)
+        self.bot.submit(self.body)
+        r = self.drive()
+        self.assertEqual((r['state'], r['cleanup']['status']), ('passed', 'failed'))
+        self.assertNotIn('archive-workspace', self.fake.cleaned)
+        with self.assertRaises(ValueError):
+            m.validate_config(dict(self.config, projects=[dict(self.config['projects'][0], targets=[dict(self.target('X'), publish='push')])]))
+
+    def test_webhook_failure_is_visible_in_health(self):
+        self.bot.submit(self.body)
+        with patch.object(m.webhook_queue, 'drain', side_effect=RuntimeError('boom')):
+            self.bot.tick()
+        self.assertEqual(json.loads((self.home/'health.json').read_text())['webhook'], 'error')
 
     def test_permission_wait_never_approved(self):
         self.fake.status = 'permission'

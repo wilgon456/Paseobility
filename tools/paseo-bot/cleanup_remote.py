@@ -14,10 +14,12 @@ import time
 from urllib.parse import urlsplit
 
 LIMIT = 64 * 1024 * 1024
+# Never wait for a credential prompt inside an unattended helper terminal.
+QUIET = dict(os.environ, GIT_TERMINAL_PROMPT='0', GCM_INTERACTIVE='never', GH_PROMPT_DISABLED='1')
 
 
 def git(cwd, *args, accepted=(0,)):
-    p = subprocess.run(['git', '-c', 'core.quotepath=true', *args], cwd=cwd,
+    p = subprocess.run(['git', '-c', 'core.quotepath=true', *args], cwd=cwd, env=QUIET,
                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     if p.returncode not in accepted:
         raise ValueError('git operation failed')
@@ -69,6 +71,77 @@ def make_patch(root, filename, base='HEAD'):
     return {'file': filename, 'size': len(patch), 'sha256': hashlib.sha256(patch).hexdigest()}
 
 
+def github_repo(repo):
+    remote = git(repo, 'remote', 'get-url', 'origin').decode('utf-8').strip()
+    scp = re.fullmatch(r'(?:git@)?github\.com:([^/]+)/([^/]+)', remote)
+    if scp:
+        owner, name = scp.groups()
+    else:
+        parsed = urlsplit(remote)
+        if parsed.scheme not in ('https', 'ssh') or parsed.hostname != 'github.com':
+            raise ValueError('unsupported forge')
+        parts = parsed.path.strip('/').split('/')
+        if len(parts) != 2:
+            raise ValueError('unsupported repository')
+        owner, name = parts
+    name = name.removesuffix('.git')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', owner) or not re.fullmatch(r'[A-Za-z0-9_.-]+', name):
+        raise ValueError('unsupported repository')
+    return owner + '/' + name
+
+
+def gh(cwd, *args):
+    p = subprocess.run(['gh', *args], cwd=cwd, env=QUIET, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    if p.returncode:
+        raise ValueError('gh operation failed')
+    return p.stdout.decode('utf-8')
+
+
+def evidence_file(root, filename, sha256):
+    file = root / filename
+    if file.parent != root or not filename.startswith('.paseo-bot-evidence-') or file.is_symlink():
+        raise ValueError('invalid evidence path')
+    if hashlib.sha256(file.read_bytes()).hexdigest() != sha256:
+        raise ValueError('remote evidence changed')
+
+
+def publish(request):
+    """Commit the evidenced tree once, push the bot branch and open one draft PR."""
+    root = Path(request['worktree'])
+    filename, base, branch = request['file'], request['base'], request['branch']
+    if not re.fullmatch(r'paseo-bot/[A-Za-z0-9][A-Za-z0-9_.-]*', branch) or not re.fullmatch(r'[0-9a-f]{40}', base) \
+            or not re.fullmatch(r'[A-Za-z0-9_./-]+', request['defaultBranch']) or '..' in request['defaultBranch']:
+        raise ValueError('invalid publish request')
+    evidence_file(root, filename, request['sha256'])
+    if git(root, 'symbolic-ref', '--short', 'HEAD').decode().strip() != branch:
+        raise ValueError('unexpected branch')
+    # The work agent may already have committed (and even pushed or merged) on the
+    # task branch; anything else in the history is not ours to publish.
+    git(root, 'merge-base', '--is-ancestor', base, 'HEAD')
+    # Commit only the exact content captured as evidence after review.
+    if hashlib.sha256(patch_bytes(root, base, exclude=filename)).hexdigest() != request['sha256']:
+        raise ValueError('workspace changed since evidence')
+    git(root, 'add', '-A', '--', '.', ':(exclude).paseo-bot-evidence-*')
+    if git(root, 'diff', '--cached', '--name-only', '-z'):
+        git(root, 'commit', '--no-verify', '-q', '-m', request['title'], '-m', request['body'])
+    head = git(root, 'rev-parse', 'HEAD').decode().strip()
+    state = hashlib.sha256(patch_bytes(root, base, exclude=filename)).hexdigest()
+    if head == base:
+        return {'prUrl': '', 'commit': base, 'stateSha': state}  # Nothing changed: no PR.
+    git(root, 'push', '-q', 'origin', 'HEAD:refs/heads/' + branch)
+    repo = github_repo(root)
+    # An existing PR for the branch (open, merged or deliberately closed by the agent) wins.
+    existing = json.loads(gh(root, 'pr', 'list', '--repo', repo, '--state', 'all', '--head', branch, '--json', 'url', '--limit', '5'))
+    if existing:
+        url = existing[0]['url']
+    else:
+        url = gh(root, 'pr', 'create', '--repo', repo, '--draft', '--base', request['defaultBranch'], '--head', branch,
+                 '--title', request['title'], '--body', request['body']).strip().splitlines()[-1].strip()
+    if not re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*', url):
+        raise ValueError('invalid PR receipt')
+    return {'prUrl': url, 'commit': head, 'stateSha': state}
+
+
 def finish(repo, worktree, branch):
     # Never force-remove a remaining worktree: another actor may have added data
     # since the evidence was captured, and archive may have failed its teardown.
@@ -94,29 +167,11 @@ def finish(repo, worktree, branch):
     if not removed:
         return {'worktreeRemoved': False, 'branch': 'not-checked'}
     # A failed lookup cannot establish that there is no PR: retain the branch.
-    def gh(*args):
-        p = subprocess.run(['gh', *args], cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        if p.returncode:
-            raise ValueError('PR lookup failed')
-        return json.loads(p.stdout)
     try:
-        remote = git(repo, 'remote', 'get-url', 'origin').decode('utf-8').strip()
-        scp = re.fullmatch(r'(?:git@)?github\.com:([^/]+)/([^/]+)', remote)
-        if scp:
-            owner, name = scp.groups()
-        else:
-            parsed = urlsplit(remote)
-            if parsed.scheme not in ('https', 'ssh') or parsed.hostname != 'github.com':
-                raise ValueError('unsupported forge')
-            parts = parsed.path.strip('/').split('/')
-            if len(parts) != 2:
-                raise ValueError('unsupported repository')
-            owner, name = parts
-        name = name.removesuffix('.git')
-        if not re.fullmatch(r'[A-Za-z0-9_.-]+', owner) or not re.fullmatch(r'[A-Za-z0-9_.-]+', name):
-            raise ValueError('unsupported repository')
-        prs = gh('pr', 'list', '--repo', owner + '/' + name, '--state', 'open', '--head', owner + ':' + branch,
-                 '--json', 'headRefName,state', '--limit', '100')
+        full = github_repo(repo)
+        owner = full.split('/')[0]
+        prs = json.loads(gh(repo, 'pr', 'list', '--repo', full, '--state', 'open', '--head', owner + ':' + branch,
+                            '--json', 'headRefName,state', '--limit', '100'))
         if not isinstance(prs, list) or any(not isinstance(pr, dict) for pr in prs):
             raise ValueError('invalid PR response')
         if any(pr.get('headRefName') == branch and pr.get('state') == 'OPEN' for pr in prs):
@@ -134,15 +189,14 @@ def main():
     elif request['action'] == 'verify':
         root = Path(request['worktree'])
         filename = request['file']
-        file = root / filename
-        if file.parent != root or not filename.startswith('.paseo-bot-evidence-') or file.is_symlink():
-            raise ValueError('invalid evidence path')
-        if hashlib.sha256(file.read_bytes()).hexdigest() != request['sha256']:
-            raise ValueError('remote evidence changed')
+        evidence_file(root, filename, request['sha256'])
+        # After a draft-PR publish the tree is committed; compare with the published state.
         digest = hashlib.sha256(patch_bytes(root, request['base'], exclude=filename)).hexdigest()
-        if digest != request['sha256']:
+        if digest != request.get('stateSha', request['sha256']):
             raise ValueError('workspace changed since evidence')
         result = {'verified': True}
+    elif request['action'] == 'publish':
+        result = publish(request)
     elif request['action'] == 'finish':
         result = finish(request['repo'], request['worktree'], request['branch'])
     else:
