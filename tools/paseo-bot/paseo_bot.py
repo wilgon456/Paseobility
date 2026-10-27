@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Resident Paseo dispatcher. Python stdlib; private SQLite inbox, JSON outbox."""
 import argparse
+import base64
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 import hashlib
@@ -364,6 +365,10 @@ class Bot:
         return json.loads(row[0])
 
     def save(self, record):
+        record = dict(record)
+        if record.get('state') in ('passed', 'failed', 'blocked') and record.get('workspaceId') and not record.get('cleanup'):
+            record['cleanup'] = {'phase': 'snapshot', 'resultState': record['state']}
+            record['state'] = 'cleaning'
         record = scrub(dict(record, updatedAt=time.time()))
         with self.db:
             previous = self.db.execute('SELECT state,body FROM tasks WHERE id=?', (record['id'],)).fetchone()
@@ -374,6 +379,51 @@ class Bot:
         # Regenerated after a crash between the DB commit and outbox publication.
         write_json(self.home / 'results' / (record['id'] + '.json'), record)
         return record
+
+    def cleanup(self, h, r):
+        info = r['cleanup']
+        args = dict(repo=r['target']['repo'], projectId=r['projectId'], workspaceId=r['workspaceId'],
+                    worktree=r['worktree'], runs=r['runs'])
+        if info['phase'] == 'snapshot':
+            result = self.rpc(h, 'snapshot-workspace', **args, base=r['evidence']['preflight']['head'])
+            patch = base64.b64decode(result['patch'], validate=True)
+            digest = hashlib.sha256(patch).hexdigest()
+            if len(patch) != result['size'] or digest != result['sha256'] or len(patch) > 64 * 1024 * 1024:
+                raise ValueError('Evidence transfer failed integrity check.')
+            directory = self.home / 'evidence'
+            private_dir(directory)
+            dest = directory / (r['id'] + '.patch')
+            if dest.exists() or dest.is_symlink():
+                private_file(dest)
+                if hashlib.sha256(dest.read_bytes()).hexdigest() != digest:
+                    raise ValueError('Existing evidence differs.')
+            else:
+                temporary = directory / ('.' + uuid.uuid4().hex + '.tmp')
+                try:
+                    with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as f:
+                        f.write(patch); f.flush(); os.fsync(f.fileno())
+                    os.replace(temporary, dest)
+                    if os.name != 'nt':
+                        directory_fd = os.open(directory, os.O_RDONLY)
+                        try: os.fsync(directory_fd)
+                        finally: os.close(directory_fd)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            if not re.fullmatch(r'\.paseo-bot-evidence-[0-9a-f-]{36}\.patch', result['remoteFile']):
+                raise ValueError('Invalid remote evidence receipt.')
+            info.update(phase='archive', patchPath=str(dest), patchSha256=digest, patchBytes=len(patch), remoteFile=result['remoteFile'])
+        elif info['phase'] == 'archive':
+            archived = self.rpc(h, 'archive-workspace', **args, remoteFile=info['remoteFile'], sha256=info['patchSha256'], base=r['evidence']['preflight']['head'])
+            info.update(phase='finish', archivedAt=archived['archivedAt'])
+        elif info['phase'] == 'finish':
+            result = self.rpc(h, 'finish-workspace', repo=r['target']['repo'], worktree=r['worktree'],
+                              branch=r['branch'], preflightWorkspaceId=r['preflightWorkspaceId'])
+            if not isinstance(result.get('worktreeRemoved'), bool) or result.get('branch') not in ('deleted', 'retained-open-pr', 'unconfirmed', 'not-checked'):
+                raise ValueError('Cleanup receipt invalid.')
+            info.update(phase='done', worktreeRemoved=result['worktreeRemoved'], branch=result['branch'])
+            info['status'] = 'complete' if result['worktreeRemoved'] and result['branch'] in ('deleted', 'retained-open-pr') else 'failed'
+            r['state'] = info['resultState']
+        return self.save(r)
 
     def route(self, body):
         project = next(p for p in self.config()['projects'] if p['id'] == body['project'])
@@ -488,6 +538,13 @@ class Bot:
         if h['serverId'] != r['serverId']:
             raise ValueError('Registered server identity changed; task blocked.')
         stage = r['stage']
+        if r['state'] == 'cleaning':
+            try:
+                return self.cleanup(h, r)
+            except (ValueError, KeyError, TypeError, OSError):
+                r['cleanup'].update(phase='done', status='failed', reason='Cleanup could not be confirmed; preserve remaining data and inspect privately.')
+                r['state'] = r['cleanup']['resultState']
+                return self.save(r)
         if r['state'] == 'repairing':
             r.update(state='unknown', reason='Receipt repair acknowledgement missing; inspect existing agent. No automatic replay.')
             return self.save(r)
@@ -500,6 +557,11 @@ class Bot:
             receipt = matches[0]
             if not receipt.get('workspaceId') or not receipt.get('cwd'):
                 raise ValueError('Recovery receipt incomplete.')
+            expected_id = r.get('preflightWorkspaceId') if stage == 'preflight' else r.get('workspaceId')
+            expected_cwd = r['target']['repo'] if stage == 'preflight' else r.get('worktree')
+            if expected_id and (receipt['workspaceId'] != expected_id or not same_remote_path(receipt['cwd'], expected_cwd)):
+                r.update(state='unknown', reason='Recovered agent workspace mismatch; inspect before proceeding.')
+                return self.save(r)
             if r.get('retryWorkspace') and (receipt['workspaceId'] != r['retryWorkspace'] or not same_remote_path(receipt['cwd'], r['retryCwd'])):
                 raise ValueError('Recovered retry workspace changed.')
             r.pop('retryWorkspace', None); r.pop('retryCwd', None)
@@ -508,7 +570,26 @@ class Bot:
             if stage == 'work':
                 r.update(workspaceId=receipt['workspaceId'], worktree=receipt['cwd'])
             return self.save(r)
-        if r['state'] == 'ready':
+        if r['state'] in ('ready', 'provisioning'):
+            if stage == 'preflight' and not r.get('projectId'):
+                opened = self.rpc(h, 'open-project', repo=r['target']['repo'])
+                if not opened.get('projectId') or not opened.get('workspaceId') or not same_remote_path(opened.get('cwd'), r['target']['repo']):
+                    raise ValueError('Project workspace receipt mismatch.')
+                r.update(projectId=opened['projectId'], preflightWorkspaceId=opened['workspaceId'])
+                self.save(r)
+            if stage == 'work' and not r.get('workspaceId'):
+                if not r.get('workspaceKey'):
+                    r['workspaceKey'] = 'paseo-bot:' + uuid.uuid4().hex
+                r['state'] = 'provisioning'
+                self.save(r)
+                workspace = self.rpc(h, 'create-workspace', repo=r['target']['repo'], projectId=r['projectId'],
+                                     branch=r['branch'], base=r['evidence']['preflight']['head'],
+                                     title='Paseo bot ' + r['id'], key=r['workspaceKey'])
+                if not workspace.get('workspaceId') or not workspace.get('cwd'):
+                    raise ValueError('Worktree workspace receipt incomplete.')
+                r.update(workspaceId=workspace['workspaceId'], worktree=workspace['cwd'])
+                r['state'] = 'ready'
+                self.save(r)
             model = r.pop('retryModel', None) or route_model(body, stage)
             profile = MODELS[model][0]
             effort = body.get('effort', 'auto')
@@ -517,8 +598,10 @@ class Bot:
             args = dict(profile=profile, modelAlias=model, effort=effort, repo=r['target']['repo'], title='Paseo bot ' + r['id'] + ' ' + stage, attempt=r['attempt'], prompt=self.prompt(body, r, stage))
             if r.get('retryWorkspace'):
                 args['workspaceId'] = r['retryWorkspace']
+            elif stage == 'preflight':
+                args['workspaceId'] = r['preflightWorkspaceId']
             elif stage == 'work':
-                args.update(branch=r['branch'], base=r['evidence']['preflight']['head'])
+                args['workspaceId'] = r['workspaceId']
             elif stage in ['review', 'postflight']:
                 args['workspaceId'] = r['workspaceId']
             try:
@@ -532,6 +615,11 @@ class Bot:
                 return r
             if r.get('retryWorkspace') and (receipt.get('workspaceId') != r['retryWorkspace'] or not same_remote_path(receipt.get('cwd'), r['retryCwd'])):
                 r.update(state='unknown', reason='Retry workspace receipt mismatch; inspect before proceeding.')
+                return self.save(r)
+            expected_id = r['preflightWorkspaceId'] if stage == 'preflight' else r['workspaceId']
+            expected_cwd = r['target']['repo'] if stage == 'preflight' else r['worktree']
+            if receipt.get('workspaceId') != expected_id or not same_remote_path(receipt.get('cwd'), expected_cwd):
+                r.update(state='unknown', reason='Workspace receipt mismatch; inspect before proceeding.')
                 return self.save(r)
             r.pop('retryWorkspace', None); r.pop('retryCwd', None)
             r['runs'].append(dict(receipt, stage=stage, attempt=r['attempt'], modelAlias=model))
@@ -626,7 +714,14 @@ class Bot:
                 except (ValueError, KeyError, TypeError, StopIteration):
                     # Preserve in-flight state after an observation/network failure.
                     record = self.result(record['id'])
-                    if record['state'] == 'repairing':
+                    if record['state'] == 'provisioning':
+                        record['reason'] = 'Workspace creation acknowledgement unavailable; retrying the same durable request.'
+                        self.save(record)
+                    elif record['state'] == 'cleaning':
+                        record['cleanup'].update(phase='done', status='failed', reason='Cleanup identity or connection check failed; inspect privately.')
+                        record['state'] = record['cleanup']['resultState']
+                        self.save(record)
+                    elif record['state'] == 'repairing':
                         record.update(state='unknown', reason='Receipt repair outcome unknown; inspect the recorded agent before follow-up.')
                         self.save(record)
                     elif record['state'] not in ['running', 'dispatching']:

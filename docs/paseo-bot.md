@@ -26,12 +26,16 @@ machine reboot. See deployment below for a dedicated workspace.
 
 Each task advances through four phases:
 
-1. `git-sync`: read-only source inspection, query the configured remote with `git ls-remote`,
+1. The daemon opens the configured project directory with `openProject`, reusing
+   its existing project and directory workspace or registering them on first use.
+   `git-sync` performs read-only source inspection there, queries the configured remote with `git ls-remote`,
    and verify that exact default-branch commit object exists in the local clone.
    A missing object reports `blocked` with a needs-host-fetch reason. No source
    `.git` writes or stale tracking-ref fallback. Existing files stay intact.
-2. Chosen profile: `paseo run --new-workspace worktree --worktree-mode branch-off`
-   from that SHA, on branch `paseo-bot/<task-id>`. No shared checkout code edits.
+2. The daemon creates a worktree workspace explicitly in that project from that
+   SHA, on branch `paseo-bot/<task-id>`. Its durable creation key permits retrying
+   a lost acknowledgement. The chosen profile runs in that workspace. No shared
+   checkout code edits.
 3. `gpt-task`: a fresh independent agent in the returned workspace reviews actual
    files/diff and reruns every configured gate. Missing gate evidence fails.
 4. `git-sync`: a fresh agent verifies branch, HEAD and SHA256 of tracked diff plus
@@ -41,8 +45,8 @@ Each task advances through four phases:
 agent-reviewed evidence, not proof of provider sandboxing or deployed behavior.
 Reviewers have their configured provider tools: the no-edit/no-deploy rules are
 instructions, not an OS security boundary. Use restricted provider modes and
-separate OS accounts for stronger isolation. No automatic commit, push, merge,
-deployment, permission approval, credential change or worktree cleanup exists.
+separate OS accounts for stronger isolation. The bot does not automatically
+commit, push, merge, deploy, approve permissions or change credentials.
 Deployment commands are registry metadata for later authorized work; the bot
 never executes them as a deployment phase. Gates themselves must be trusted
 commands appropriate for that machine and safe without production secrets.
@@ -66,6 +70,9 @@ commands appropriate for that machine and safe without production secrets.
   controllers need private user ACLs; POSIX permission checks do not set ACLs.
   Windows controller support is covered offline in CI; remote Windows targets
   use their own paths and profiles. Live code-task E2E is documented separately.
+- Each destination needs Python 3 and Git for evidence capture and cleanup, and
+  an authenticated GitHub CLI for determining whether the branch has an open PR
+  against a github.com `origin`; other forges leave branch cleanup unconfirmed.
 
 `paseo-multi` runtime discovery and private registry parsing are reused directly;
 there are no new npm/pip runtime dependencies. Packaged Electron and npm CLI
@@ -158,7 +165,22 @@ outbox Grok can consume; terminal results are regenerated if publication was
 interrupted. No network delivery is claimed. Grok should poll until `state` is
 `passed`, `failed`, `blocked` or `unknown`, then acknowledge consumption in its
 own system. Repeated reads are harmless; there is no exactly-once messaging
-claim. Active states are `queued`, `ready`, `dispatching`, `running`, `repairing`.
+claim. Active states are `queued`, `ready`, `provisioning`, `dispatching`,
+`running`, `repairing` and `cleaning`.
+The additional `cleaning` state precedes final publication whenever the task
+created a worktree. On `passed`, `failed` or `blocked`, the bot captures a Git
+binary patch relative to preflight HEAD, including untracked and ignored files,
+and writes it under the private state `evidence/` directory. The result records
+the path, size and SHA-256. Evidence may contain sensitive repository content;
+the operator must protect the state directory and Windows ACLs accordingly.
+Submodules, nested repositories, evidence over 64 MiB, unowned agents or terminals,
+and changed contents during capture fail closed and leave the workspace intact.
+The bot then archives the owned workspace and checks disk removal. If archive
+leaves the tree, `git worktree remove` is attempted without force. It checks
+for an open PR using `gh`; only an open PR retains the local branch. An unknown
+PR state retains the branch and marks cleanup failed. Cleanup errors are recorded
+in the terminal result and do not imply that removal succeeded. Unknown dispatch
+outcomes remain unreconciled rather than automatically destroying work.
 
 The version-1 result contains task/project ID, state, machine/server ID, branch,
 worktree/workspace ID, per-phase profile/provider/model/agent receipts, verification
