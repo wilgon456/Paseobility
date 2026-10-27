@@ -15,7 +15,7 @@ const sample=snapshotSchema.parse({host:'VAXPORT',healthy:true,lastTickAt:now-8,
   messages:[{id:'m-user',role:'user',text:'로그인할 때 입력 내용이 사라지는 문제를 고쳐 줘.',time:now-280,payload:{}},{id:'m-bot',role:'assistant',text:'어느 프로젝트에서 발생하나요? 재현 조건도 알려주시면 수정 범위를 정리하겠습니다.',time:now-270,payload:{}},{id:'m-user2',role:'user',text:'paseobility야. 모바일에서 확인했어. 재현하고 입력 흐름을 개선해 줘.',time:now-240,payload:{}},{id:'m-bot2',role:'assistant',text:'문제 재현과 입력 흐름 개선으로 나누겠습니다. 기존 입력 동작을 확인하고 회귀 테스트를 함께 추가하겠습니다.',time:now-220,payload:{}}],
   plans:[{id:'plan-fixture',digest:'a'.repeat(64),state:'pending',messageId:'m-user2',tasks:[{project:'paseobility',title:'모바일 입력 상태 보존',prompt:'모바일 로그인 화면에서 입력 상태가 사라지는 문제를 재현하고 수정한다. 회귀 테스트를 추가한다. 커밋·배포는 하지 않는다.',kind:'gpt',model:'auto',effort:'auto',resolvedModel:'sol',modelReason:'일반 작업 기본 모델'}]}]});
 function App(){
-  const [source,setSource]=useState<Snapshot>(['empty','first'].includes(mode??'')?{...sample,tasks:[],total:0,filtered:0,queue:{},messages:[],plans:[]}:mode==='long-board'?{...sample,tasks:Array.from({length:30},(_,i)=>({...rows[2],id:'long-'+i,title:'검토 작업 '+i})),filtered:30,total:30}:sample);
+  const [source,setSource]=useState<Snapshot>(['empty','first'].includes(mode??'')?{...sample,tasks:[],total:0,filtered:0,queue:{},messages:[],plans:[]}:mode==='stuck'?{...sample,stuck:'job-unknown',deliveryState:'unknown'}:mode==='stuck-manager'?{...sample,stuck:'manager-missing'}:mode==='long-board'?{...sample,tasks:Array.from({length:30},(_,i)=>({...rows[2],id:'long-'+i,title:'검토 작업 '+i})),filtered:30,total:30}:sample);
   const [filters,setFilters]=useState(()=>syncInput.parse({})),[selected,select]=useState<TaskRow|null>(null),[conversation,setConversation]=useState(mode==='first'?'':'session-fixture');
   const [width,setWidth]=useState(innerWidth);
   React.useEffect(()=>{const r=()=>setWidth(innerWidth);addEventListener('resize',r);return()=>removeEventListener('resize',r);},[]);
@@ -30,6 +30,7 @@ function App(){
     if(a.action==='start'){setConversation(a.requestId);setSource(s=>({...s,messages:[{id:a.messageId,role:'user',text:a.text,time:now,payload:{}}]}));return {conversationId:a.requestId};}
     if(a.action==='send'){setSource(s=>({...s,messages:[...s.messages,{id:a.messageId,role:'user',text:a.text,time:now,payload:{}}]}));return {accepted:true};}
     if(a.action==='approve'){setSource(s=>({...s,plans:s.plans.map(p=>({...p,state:'approved'})),tasks:[{...rows[0],id:'admitted-fixture',title:'모바일 입력 상태 보존'},...s.tasks],total:s.total+1}));return {taskIds:['admitted-fixture']};}
+    if(a.action==='resolve'){setSource(s=>({...s,stuck:'',deliveryState:''}));return {accepted:true};}
     if(a.action==='reject')setSource(s=>({...s,plans:[]}));return {accepted:true};
   }
   const detail=selected?{id:selected.id,state:selected.state,project:selected.project,stage:selected.stage,summary:'입력 상태를 보존하도록 수정하고 회귀 테스트를 통과했습니다.',deployment:'not-run',evidence:{preflight:{summary:'기준 브랜치와 변경 상태 확인'},work:{summary:'입력 상태 보존 처리'},review:{summary:'독립 검토와 회귀 테스트 통과',gates:[{command:'npm test',exitCode:0}]},postflight:{summary:'변경 파일 지문 일치'}},runs:[{stage:'work',profile:'coding-hard',model:'fixture-model'}]}:undefined;

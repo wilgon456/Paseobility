@@ -96,7 +96,8 @@ export function Console(p: Props) {
   const queue = p.data?.queue ?? {},
     running =
       (queue.running ?? 0) + (queue.dispatching ?? 0) + (queue.repairing ?? 0),
-    waiting = (queue.queued ?? 0) + (queue.ready ?? 0);
+    waiting = (queue.queued ?? 0) + (queue.ready ?? 0),
+    attention = (queue.blocked ?? 0) + (queue.unknown ?? 0);
   const memoryProject =
     p.data?.plans[0]?.tasks[0]?.project ||
     p.data?.tasks.find((t) => t.conversationId === p.conversation)?.project ||
@@ -107,6 +108,8 @@ export function Console(p: Props) {
       ? "연결 중"
       : p.data?.configured && !p.data.managerHealthy
         ? "봇 응답 확인 중"
+        : p.data?.stuck
+          ? "확인이 필요해요"
         : p.data?.deliveryState
           ? "답변하는 중"
           : running
@@ -262,6 +265,8 @@ export function Console(p: Props) {
               {([
                 ["waiting", "대기", waiting, "CircleDashed"],
                 ["running", "진행", running, "LoaderCircle"],
+                // Five tiles must share one row on a phone, so the label is shortened there.
+                ["attention", p.compact ? "검토" : "검토 필요", attention, "CircleAlert"],
                 ["success", "완료", queue.passed ?? 0, "CircleCheck"],
                 ["failed", "실패", queue.failed ?? 0, "CircleX"],
               ] as const).map(([group, label, n, icon]) => {
@@ -275,9 +280,9 @@ export function Console(p: Props) {
                   onPress={() => p.setFilters({ group: on ? "" : group, offset: 0 })}
                   style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
                     flex: 1,
-                    minWidth: 72,
+                    minWidth: p.compact ? 0 : 72,
                     minHeight: 44,
-                    paddingHorizontal: 12,
+                    paddingHorizontal: p.compact ? 8 : 12,
                     paddingVertical: 8,
                     gap: 2,
                     borderRadius: 14,
@@ -288,9 +293,9 @@ export function Console(p: Props) {
                     ...t.shadow(!!hovered),
                   })}
                 >
-                  <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                  <View style={{ flexDirection: "row", gap: p.compact ? 4 : 6, alignItems: "center" }}>
                     <Glyph name={icon} size={13} color={colors.foreground} />
-                    <Text style={{ ...t.small, color: colors.foreground }}>{label}</Text>
+                    <Text numberOfLines={1} style={{ ...t.small, color: colors.foreground }}>{label}</Text>
                   </View>
                   <Text style={{ ...t.heading, fontSize: 20, lineHeight: 26, color: colors.foreground }}>{n}</Text>
                 </Pressable>

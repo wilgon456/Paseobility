@@ -311,19 +311,27 @@ export function Chat(
             </MotionIn>
           );
         })()}
-        {!!p.data?.deliveryState && (
+        {p.data?.stuck ? (
+          // The service never resolves these by itself: the operator decides here.
           <Notice
-            tone={p.data.deliveryState === "unknown" ? "yellow" : "purple"}
-            icon={p.data.deliveryState === "unknown" ? "ShieldCheck" : "Sparkles"}
-            title={
-              p.data.deliveryState === "unknown"
-                ? "전달을 확인하고 있어요"
-                : "생각하고 있어요"
-            }
+            tone="yellow"
+            icon="ShieldCheck"
+            title={p.data.stuck === "manager-missing" ? "매니저 봇을 찾지 못했어요" : "이전 요청을 확인하지 못했어요"}
           >
-            {p.data.deliveryState === "unknown"
-              ? "중복 요청을 막기 위해 기록을 확인할게요."
-              : "곧 여기서 답해드릴게요."}
+            <Text style={t.muted}>
+              {p.data.stuck === "manager-missing"
+                ? "대화 내용은 그대로 두고 새 매니저로 이어갈 수 있어요."
+                : "중복 실행을 막으려고 멈춰 뒀어요. 다음 요청은 이 요청을 정리한 뒤 보낼게요."}
+            </Text>
+            <Button
+              label={p.data.stuck === "manager-missing" ? "매니저 다시 시작" : "이 요청 버리고 계속하기"}
+              disabled={p.pending}
+              onPress={() => void p.perform({ action: "resolve", conversationId: p.conversation }).catch(() => {})}
+            />
+          </Notice>
+        ) : !!p.data?.deliveryState && (
+          <Notice tone="purple" icon="Sparkles" title="생각하고 있어요">
+            곧 여기서 답해드릴게요.
           </Notice>
         )}
       </ScrollView>

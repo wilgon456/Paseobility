@@ -118,7 +118,8 @@ class ConversationTests(unittest.TestCase):
     def test_lost_send_receipt_is_adopted_not_resent(self):
         self.c.send('session-1', 'one', 'A request')
         self.fake.lose_ack = True
-        with self.assertRaises(ValueError): self.c.tick()
+        self.c.tick()  # The lost acknowledgement is contained to this conversation.
+        self.assertEqual(self.c.db.execute('SELECT state FROM gui_jobs').fetchone()[0], 'prepared')
         self.fake.lose_ack = False
         self.c.tick()
         self.assertEqual(len(self.fake.sent), 1)
@@ -131,6 +132,63 @@ class ConversationTests(unittest.TestCase):
         self.c.tick(); self.c.tick()
         self.assertEqual(len(self.fake.sent), 0)
         self.assertEqual(self.c.db.execute('SELECT state FROM gui_jobs').fetchone()[0], 'unknown')
+
+    def test_unknown_delivery_is_visible_and_only_operator_resolves_it(self):
+        self.c.send('session-1', 'one', 'A request')
+        self.c.db.execute("UPDATE gui_jobs SET state='prepared'"); self.c.db.commit()
+        self.fake.found = False
+        self.c.tick()
+        self.c.send('session-1', 'two', 'Next request')
+        self.c.tick(); self.c.tick()
+        self.assertEqual(len(self.fake.sent), 0)  # Never resent or skipped automatically.
+        self.assertEqual(handle(self.home, dict(action='sync'), True)['stuck'], 'job-unknown')
+        handle(self.home, dict(action='resolve', conversationId='session-1'), True)
+        self.assertEqual(handle(self.home, dict(action='sync'), True)['stuck'], '')
+        self.c.tick()
+        self.assertEqual([s['prompt'].split('\n')[0] for s in self.fake.sent], ['GUI_REQUEST_ID=two'])
+        with self.assertRaises(ValueError):
+            handle(self.home, dict(action='resolve', conversationId='session-1'))  # Read-only bridge.
+
+    def test_missing_manager_waits_for_explicit_restart(self):
+        self.c.create('session-2')
+        self.c.db.execute("UPDATE gui_conversations SET status='creating' WHERE id='session-2'"); self.c.db.commit()
+        calls = []
+        original = self.fake.__call__
+        def rpc(config, action, **kw):
+            calls.append(action)
+            if action == 'recover':
+                return {'agents': []}
+            return original(config, action, **kw)
+        self.c.rpc = rpc
+        self.c.tick(); self.c.tick()
+        self.assertNotIn('create', calls)
+        self.assertEqual(handle(self.home, dict(action='sync', conversationId='session-2'), True)['stuck'], 'manager-missing')
+        self.c.resolve('session-2')
+        self.c.tick()
+        self.assertIn('create', calls)
+        self.assertEqual(self.c.conversation('session-2')['status'], 'idle')
+
+    def test_idle_conversations_skip_remote_calls_and_failures_are_isolated(self):
+        calls = []
+        original = self.fake.__call__
+        def rpc(config, action, **kw):
+            calls.append((kw.get('session'), action))
+            if kw.get('session') == 'session-1':
+                raise ValueError('foreign or unreachable manager')
+            return original(config, action, **kw)
+        self.c.rpc = rpc
+        self.c.tick()
+        self.assertEqual(calls, [])  # Idle without pending work: no remote round trip.
+        self.c.create('session-2'); self.c.tick()
+        self.c.send('session-1', 'a', 'First'); self.c.send('session-2', 'b', 'Second')
+        self.c.tick()
+        self.assertIn(('session-2', 'send'), calls)
+
+    def test_runtime_mode_is_optional_and_validated(self):
+        write_json(self.home / 'gui-runtime.json', dict(serverId='s', cwd='/f', provider='codex', model='m', thinking='high', mode='auto'))
+        self.assertEqual(self.c.runtime_config()['mode'], 'auto')
+        write_json(self.home / 'gui-runtime.json', dict(serverId='s', cwd='/f', provider='codex', model='m', thinking='high', shell='x'))
+        with self.assertRaises(ValueError): self.c.runtime_config()
 
     def test_wrong_request_response_cannot_create_plan(self):
         self.c.send('session-1', 'one', 'A request')

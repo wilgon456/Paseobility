@@ -22,3 +22,19 @@ The console keeps the same chat-first command/inspect structure and the host the
 Rows in the board snapshot now include the active model alias (the fallback model once dispatched, otherwise the planned work model).
 
 Design-check on the offline fixture (conversation and kanban, 375/768/1440, light and dark) reports no overflow or contrast findings. Remaining align-x/align-r errors are near-miss pairs between unrelated groups (for example the plan card edge and the bot avatar above it). The single conversation text-overlap comes from a message scrolled under the header inside the clipped chat scroller. The hangul-font and 13px findings come from the web test stand-in, not the host app.
+
+## Repeated-use recovery (v4)
+
+The service never resolves an ambiguous state by itself, but it no longer hides
+one. `sync` returns `stuck`: `job-unknown` when a sent request could not be
+proven delivered, `manager-missing` when recovery by label finds no manager.
+The GUI shows the reason with one explicit action (`resolve`): skip the
+unproven request, or start a fresh manager for the conversation. Nothing is
+resent automatically. A failing or foreign manager is isolated to its own
+conversation, and idle conversations without pending work make no remote call.
+
+`gui-runtime.json` accepts an optional `mode` (default `full-access` for
+existing installs). The manager only plans and explains, so pin the narrowest
+mode its provider advertises that still answers without permission prompts.
+Task rows include the model alias, and passed tasks on `publish: draft-pr`
+targets carry their draft PR link.

@@ -74,7 +74,7 @@ def snapshot(db, home, request, writable, read_json):
                lastTickAt=health.get('lastTickAt', 0), acceptsTasks=active and writable,
                queue=counts, tasks=tasks, total=sum(counts.values()), filtered=filtered, offset=offset,
                projects=project_list(config), conversations=[], messages=[], plans=[], configured=False,
-               managerHealthy=False, deliveryState='', lastSyncAt=time.time())
+               managerHealthy=False, deliveryState='', stuck='', lastSyncAt=time.time())
     if 'gui_conversations' in tables:
         out['configured'] = True
         out['conversations'] = [dict(zip(['id', 'title', 'agentId', 'status', 'createdAt'], r)) for r in db.execute('SELECT * FROM gui_conversations ORDER BY created DESC LIMIT 50')]
@@ -89,6 +89,8 @@ def snapshot(db, home, request, writable, read_json):
         out['plans'] = [dict(id=i, digest=d, state=s, **json.loads(b)) for i, b, d, s in db.execute('SELECT id,body,digest,state FROM gui_plans WHERE conversation=? ORDER BY created DESC LIMIT 10', (selected,))]
         job = db.execute("SELECT state FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid') ORDER BY created LIMIT 1", (selected,)).fetchone()
         out['deliveryState'] = job[0] if job else ''
+        status = next((c['status'] for c in out['conversations'] if c['id'] == selected), '')
+        out['stuck'] = 'job-unknown' if out['deliveryState'] == 'unknown' else 'manager-missing' if status == 'missing' else ''
         meta = db.execute("SELECT value FROM gui_meta WHERE key='heartbeat'").fetchone()
         out['managerHealthy'] = bool(meta and time.time() - json.loads(meta[0]).get('lastTickAt', 0) < 120)
     return scrub(out)

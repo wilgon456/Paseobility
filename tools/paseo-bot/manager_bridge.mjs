@@ -50,10 +50,12 @@ async function main() {
       if (p?.enabled && p.status === "ready") break;
       if (i < 4) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
     }
+    // The manager only plans and explains; operators can pin a narrower mode.
+    const mode = req.mode || "full-access";
     if (
       !p?.enabled ||
       p.status !== "ready" ||
-      !p.modes?.some((m) => m.id === "full-access")
+      !p.modes?.some((m) => m.id === mode)
     )
       throw Error("provider");
     const cli = path.join(path.dirname(path.dirname(module)), "index.js");
@@ -69,7 +71,7 @@ async function main() {
       "--model",
       req.model,
       "--mode",
-      "full-access",
+      mode,
       "--thinking",
       req.thinking || "high",
       "--cwd",
