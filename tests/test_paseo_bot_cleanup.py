@@ -24,14 +24,17 @@ class PatchTests(unittest.TestCase):
             git('init')
             git('config', 'user.email', 'fixture@example.invalid')
             git('config', 'user.name', 'Fixture')
-            (repo / '.gitignore').write_text('ignored.bin\n', encoding='utf-8')
+            (repo / '.gitignore').write_text('ignored.bin\n__pycache__/\n', encoding='utf-8')
             (repo / 'tracked.bin').write_bytes(b'old\x00value')
             git('add', '.')
             git('commit', '-m', 'fixture')
             (repo / 'tracked.bin').write_bytes(b'new\x00value\xff')
             (repo / 'ignored.bin').write_bytes(b'ignored\x00\xff')
             (repo / '한글.txt').write_text('result', encoding='utf-8')
+            (repo / 'pkg' / '__pycache__').mkdir(parents=True)
+            (repo / 'pkg' / '__pycache__' / 'mod.cpython-39.pyc').write_bytes(b'\x00' * 4096)  # Gate byproduct.
             receipt = cleanup.make_patch(repo, '.paseo-bot-evidence-test.patch')
+            self.assertNotIn(b'__pycache__', (repo / receipt['file']).read_bytes())
             restored = Path(directory) / 'restored'
             git('clone', str(repo), str(restored))
             patch = repo / receipt['file']
@@ -61,6 +64,7 @@ class PatchTests(unittest.TestCase):
                 def execute(args, **kwargs):
                     if args[0] == 'gh':
                         self.assertEqual(args[args.index('--repo') + 1], 'fixture/repo')
+                        self.assertEqual(args[args.index('--head') + 1], branch)  # Bare name; owner: matches nothing.
                         payload = ('[{"headRefName":"' + branch + '","state":"OPEN"}]').encode() if open_pr else b'[]'
                         return subprocess.CompletedProcess(args, 0, payload, b'')
                     return original(args, **kwargs)
