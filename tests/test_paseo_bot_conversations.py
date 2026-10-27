@@ -66,6 +66,19 @@ class ConversationTests(unittest.TestCase):
         origin = json.loads(self.c.db.execute('SELECT context FROM task_origins').fetchone()[0])
         self.assertEqual(origin['requester'], 'gui'); self.assertEqual(origin['conversationId'], 'session-1')
 
+    def test_selected_model_is_validated_and_attached_to_approved_plan(self):
+        for selection in [dict(project='/tmp', model='auto', effort='auto'), dict(project='auto', model='commandcode', effort='auto'), dict(project='auto', model='terra', effort='shell')]:
+            with self.assertRaises(ValueError): self.c.send('session-1', 'bad', 'task', selection=selection)
+        self.c.send('session-1', 'selected', 'task', selection=dict(project='fixture', model='sol', effort='high'))
+        job = self.c.db.execute("SELECT * FROM gui_jobs WHERE id='selected'").fetchone()
+        self.c.collect_reply(job, 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId='selected', reply='Ready', tasks=[self.step])))
+        plan, digest = self.c.db.execute('SELECT id,digest FROM gui_plans').fetchone()
+        body = json.loads(self.c.db.execute('SELECT body FROM gui_plans').fetchone()[0])['tasks'][0]
+        self.assertEqual((body['resolvedModel'], body['modelReason']), ('sol', '직접 선택'))
+        task = self.c.approve('session-1', plan, digest)['taskIds'][0]
+        admitted = json.loads(self.c.db.execute('SELECT body FROM tasks WHERE id=?', (task,)).fetchone()[0])
+        self.assertEqual((admitted['model'], admitted['effort']), ('sol', 'high'))
+
     def test_stale_digest_cross_session_and_cancel_rejected(self):
         plan, digest = self.plan()
         self.c.create('session-2')

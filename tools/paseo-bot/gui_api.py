@@ -26,8 +26,8 @@ def handle(home, request, allow_submit=False):
     action = request.get('action')
     allowed = {'status': {'action', 'offset'}, 'result': {'action', 'id'}, 'submit': {'action', 'task'},
                'sync': {'action', 'offset', 'conversationId', 'before', 'query', 'project', 'machine', 'requester', 'scope', 'group', 'sort'},
-               'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf'},
-               'start': {'action', 'requestId', 'messageId', 'text'},
+               'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf', 'selection'},
+               'start': {'action', 'requestId', 'messageId', 'text', 'selection'},
                'approve': {'action', 'conversationId', 'planId', 'digest'}, 'reject': {'action', 'conversationId', 'planId'},
                'remember': {'action', 'conversationId', 'messageId', 'project'}}
     if action not in allowed or set(request) - allowed[action]:
@@ -42,9 +42,9 @@ def handle(home, request, allow_submit=False):
                 return c.create(request['requestId'])
             if action == 'start':
                 out = c.create(request['requestId'])
-                return dict(c.send(out['conversationId'], request['messageId'], request['text']), **out)
+                return dict(c.send(out['conversationId'], request['messageId'], request['text'], selection=request.get('selection')), **out)
             if action == 'send':
-                return c.send(request['conversationId'], request['messageId'], request['text'], request.get('retryOf'))
+                return c.send(request['conversationId'], request['messageId'], request['text'], request.get('retryOf'), request.get('selection'))
             if action == 'approve':
                 return c.approve(request['conversationId'], request['planId'], request['digest'])
             if action == 'reject':

@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ExternalLink, Markdown, useToast } from "@getpaseo/plugin/client/ui";
 import { ScrollView, Text, TextInput, View } from "react-native";
-import type { Action, Plan } from "../shared/contracts";
+import type { Action, Plan, Selection } from "../shared/contracts";
 import { makeTaskId, profileLabel, safePr } from "../shared/model";
 import type { Props, ActionResult } from "./screen";
-import { Button, Empty, Glyph, Notice, useUi } from "./ui";
+import { Button, Empty, Glyph, Notice, Select, useUi } from "./ui";
 import { composerKeys } from "./web";
-type Request = { id: string; text: string; conversationId?: string };
+type Request = { id: string; text: string; selection: Selection; conversationId?: string };
 export type DraftState = {
   draft: string;
   request: Request | null;
   y: number;
   bottom: boolean;
   problem: string;
+  selection: Selection;
 };
 export function Chat(
   p: Props & {
@@ -27,6 +28,7 @@ export function Chat(
   const t = useUi(),
     toast = useToast();
   const cached = p.drafts.get(p.conversation);
+  const [selection, setSelection] = useState<Selection>(cached?.selection ?? {project:"auto",model:"auto",effort:"auto"});
   const [draft, setDraft] = useState(cached?.draft ?? ""),
     [problem, setProblem] = useState(cached?.problem ?? "");
   const request = useRef<Request | null>(cached?.request ?? null),
@@ -36,8 +38,8 @@ export function Chat(
     position = useRef(cached?.y ?? 0),
     restored = useRef(false);
   const [unread, setUnread] = useState(false);
-  const latest = useRef({ draft, problem });
-  latest.current = { draft, problem };
+  const latest = useRef({ draft, problem, selection });
+  latest.current = { draft, problem, selection };
   useEffect(
     () => () => {
       p.drafts.set(p.conversation, {
@@ -67,6 +69,7 @@ export function Chat(
     request.current ??= {
       id: makeTaskId(),
       text: draft.trim(),
+      selection,
       ...(!p.conversation ? { conversationId: makeTaskId() } : {}),
     };
     busy.current = true;
@@ -80,12 +83,14 @@ export function Chat(
               requestId: r.conversationId,
               messageId: r.id,
               text: r.text,
+              selection: r.selection,
             }
           : {
               action: "send",
               conversationId: p.conversation,
               messageId: r.id,
               text: r.text,
+              selection: r.selection,
             },
       );
       request.current = null;
@@ -239,8 +244,10 @@ export function Chat(
                 </Text>
                 <Text style={t.small}>
                   {task.project} · {task.machine || "프로젝트 기본 머신"} ·{" "}
-                  {profileLabel(task.kind)}
+                  {task.resolvedModel ? ({terra:"GPT-6.1 Terra",sol:"GPT-6.1 Sol",claude:"Claude Fable",go:"OpenCode Go"}[task.resolvedModel]) : profileLabel(task.kind)} · {task.effort === "auto" || !task.effort ? (task.resolvedModel === "terra" || task.resolvedModel === "sol" ? "high (자동)" : "자동 effort") : task.effort}
                 </Text>
+                {!!task.modelReason && <Text style={t.small}>{task.modelReason}</Text>}
+
               </View>
             ))}
             <Button
@@ -289,6 +296,7 @@ export function Chat(
             {problem}
           </Text>
         )}
+        <View style={{...t.panel, backgroundColor:t.c.surface0, padding:8, gap:8}}>
         <TextInput
           ref={p.composerRef}
           testID="bot-composer"
@@ -304,14 +312,16 @@ export function Chat(
             ...t.body,
             minHeight: 96,
             maxHeight: 180,
-            borderWidth: 1,
-            borderColor: t.c.border,
-            borderRadius: 12,
             padding: 12,
             textAlignVertical: "top",
-            backgroundColor: t.c.surface0,
           }}
         />
+        <View style={{flexDirection:"row", flexWrap:"wrap", gap:8}}>
+          <Select label="프로젝트" value={selection.project} disabled={!!request.current} options={[{value:"auto",label:"자동"}, ...(p.data?.projects ?? []).filter(x=>x.enabled).map(x=>({value:x.id,label:x.id}))]} onChange={(project)=>setSelection({...selection,project})} />
+          <Select label="모델" value={selection.model} disabled={!!request.current} options={[{value:"auto",label:"자동"},{value:"terra",label:"GPT-6.1 Terra"},{value:"sol",label:"GPT-6.1 Sol"},{value:"claude",label:"Claude Fable"},{value:"go",label:"OpenCode Go"}]} onChange={(model)=>setSelection({...selection,model:model as Selection["model"]})} />
+          <Select label="effort" value={selection.effort} disabled={!!request.current} options={[{value:"auto",label:"자동"},{value:"low",label:"Low"},{value:"medium",label:"Medium"},{value:"high",label:"High"}]} onChange={(effort)=>setSelection({...selection,effort:effort as Selection["effort"]})} />
+        </View>
+        </View>
         <View
           style={{
             flexDirection: "row",

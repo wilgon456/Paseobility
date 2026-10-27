@@ -335,7 +335,7 @@ export function Board(p: Props) {
               <View
                 key={lane.id}
                 testID={`lane-${lane.id}`}
-                style={{ width: 248, gap: 12, height: boardHeight }}
+                style={{ width: 248, gap: 12, height: boardHeight, backgroundColor: t.c.surface1, borderRadius: 12, padding: 8, borderWidth: 1, borderColor: lane.id === "running" ? t.c.accent : lane.id === "success" ? t.c.statusSuccess : lane.id === "attention" ? t.c.statusWarning : lane.id === "failed" ? t.c.statusDanger : t.c.border }}
               >
                 <View
                   style={{

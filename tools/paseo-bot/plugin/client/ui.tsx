@@ -137,6 +137,8 @@ export function Badge({ state, label }: { state: string; label?: string }) {
         paddingVertical: 4,
         borderRadius: 8,
         backgroundColor: c.surface2,
+        borderWidth: 1,
+        borderColor: color,
       }}
     >
       <Glyph

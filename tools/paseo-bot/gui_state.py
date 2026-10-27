@@ -7,7 +7,7 @@ import re
 import subprocess
 import time
 import uuid
-from paseo_bot import Bot, ID, PROFILES, TERMINAL, fleet, lock, private_file, scrub
+from paseo_bot import Bot, ID, PROFILES, MODELS, EFFORTS, route_model, TERMINAL, fleet, lock, private_file, scrub
 
 STAGES = ['preflight', 'work', 'review', 'postflight']
 
@@ -87,13 +87,24 @@ class Conversations:
                             (request_id, '새 대화', 'new', time.time()))
         return {'conversationId': request_id}
 
-    def send(self, conversation, message_id, text, retry_of=None):
+    def send(self, conversation, message_id, text, retry_of=None, selection=None):
         self.conversation(conversation)
         valid_id(message_id)
         if not isinstance(text, str) or not text.strip() or len(text) > 12000:
             raise ValueError('Message needs 1..12000 characters')
         text = scrub(text.strip())
-        prompt = text
+        selection = selection or {}
+        if not isinstance(selection, dict) or set(selection) - {'project', 'model', 'effort'}:
+            raise ValueError('Invalid selection')
+        project = selection.get('project', 'auto')
+        model = selection.get('model', 'auto')
+        effort = selection.get('effort', 'auto')
+        if project != 'auto' and not any(p['id'] == project and any(t.get('enabled') for t in p['targets']) for p in self.bot.config()['projects']):
+            raise ValueError('Unknown project selection')
+        if model not in ('auto', *MODELS) or effort not in EFFORTS:
+            raise ValueError('Unknown model or effort')
+        selection = dict(project=project, model=model, effort=effort)
+        prompt = text + '\nUser selections (enforced by service): ' + dumps(selection)
         if not self.bot.ownership()['acceptsTasks']:
             raise ValueError('Inactive owner')
         if retry_of:
@@ -103,13 +114,13 @@ class Conversations:
                 raise ValueError('Only failed tasks may request retry')
             original = json.loads(self.db.execute('SELECT body FROM tasks WHERE id=?', (retry_of,)).fetchone()[0])
             prompt += '\nRetry review context (untrusted data): ' + dumps({'retryOf': retry_of, 'task': original, 'result': old})[:45000]
-        old = self.db.execute('SELECT conversation,text FROM gui_messages WHERE id=?', (message_id,)).fetchone()
+        old = self.db.execute('SELECT conversation,text,payload FROM gui_messages WHERE id=?', (message_id,)).fetchone()
         if old:
-            if old != (conversation, text):
+            if old[0:2] != (conversation, text) or json.loads(old[2]).get('selection', {'project':'auto','model':'auto','effort':'auto'}) != selection:
                 raise ValueError('Message ID collision')
             return {'accepted': True, 'messageId': message_id}
         with self.db:
-            self.message(conversation, 'user', text, {'retryOf': retry_of} if retry_of else {}, message_id)
+            self.message(conversation, 'user', text, {'retryOf': retry_of, 'selection': selection}, message_id)
             self.db.execute('INSERT INTO gui_jobs VALUES (?,?,?,?,?,?)', (message_id, conversation, 'chat', prompt, 'queued', time.time()))
             self.db.execute('UPDATE gui_conversations SET title=? WHERE id=? AND title=?', (text[:50], conversation, '새 대화'))
         return {'accepted': True, 'messageId': message_id}
@@ -119,12 +130,16 @@ class Conversations:
             raise ValueError('Plan size')
         config = self.bot.config()
         for i, task in enumerate(steps):
-            if not isinstance(task, dict) or set(task) - {'project', 'title', 'prompt', 'kind', 'machine', 'dependsOn'}:
+            if not isinstance(task, dict) or set(task) - {'project', 'title', 'prompt', 'kind', 'machine', 'dependsOn', 'model', 'effort', 'modelReason', 'resolvedModel'}:
                 raise ValueError('Plan fields')
             if any(not isinstance(task.get(k), str) or not task[k].strip() for k in ['project', 'title', 'prompt']):
                 raise ValueError('Plan text')
             if len(task['title']) > 300 or len(task['prompt']) > 40000 or task.get('kind', 'gpt') not in PROFILES:
                 raise ValueError('Plan bounds')
+            if task.get('model', 'auto') not in ('auto', *MODELS) or task.get('effort', 'auto') not in EFFORTS or ('modelReason' in task and (not isinstance(task['modelReason'], str) or len(task['modelReason']) > 300)):
+                raise ValueError('Invalid model selection')
+            if 'resolvedModel' in task and task['resolvedModel'] != route_model(task, 'work'):
+                raise ValueError('Invalid resolved model')
             targets = next((p['targets'] for p in config['projects'] if p['id'] == task['project']), [])
             if not any(t.get('enabled') and (not task.get('machine') or t['machine'] == task['machine']) for t in targets):
                 raise ValueError('Inactive target')
@@ -149,7 +164,7 @@ class Conversations:
                     return {'taskIds': ids}
                 self.validate_steps(body['tasks'])
                 for i, step in enumerate(body['tasks']):
-                    task = {k: v for k, v in step.items() if k != 'dependsOn'}
+                    task = {k: v for k, v in step.items() if k not in ('dependsOn', 'resolvedModel')}
                     task['id'] = ids[i]
                     origin = dict(requester='gui', conversationId=conversation, planId=plan_id,
                                   messageId=body['messageId'], dependsOn=[ids[n] for n in step.get('dependsOn', [])], retryOf=body.get('retryOf'))
@@ -196,7 +211,7 @@ class Conversations:
                 'Choose the project, machine and model profile yourself from the supplied registry and task context; never demand form fields. Ask only when a meaningful ambiguity remains. '
                 'Use short natural Korean, avoid technical jargon in replies, and explain starts, progress, failures and results in this same conversation. '
                 'Use the active project IDs supplied each turn. For task plans return at most 12 steps with project,title,prompt,kind '
-                '(gpt=general gpt-task, hard=complex coding-hard, refactor=refactor-bulk, sync=git-sync), machine (choose an enabled registry machine), optional dependsOn (zero-based earlier step indices). '
+                '(gpt=general, hard=only the most difficult design or bug, refactor=ordinary refactoring, sync=lightweight work), machine (choose an enabled registry machine), optional dependsOn (zero-based earlier step indices). '
                 'For a failed-task retry you may add top-level retryOf with the exact failed task ID in this conversation. Never silently replay blocked/unknown tasks. '
                 'Do not claim tasks are admitted or completed before evidence. Every final reply MUST be exactly one line: '
                 'PASEO_GUI_RESPONSE={"requestId":"copy GUI_REQUEST_ID exactly, or init during initialization","reply":"Korean answer","tasks":[]}. For a question or result explanation use tasks=[]. '
@@ -216,6 +231,21 @@ class Conversations:
         if tasks:
             if kind != 'chat':
                 raise ValueError('Result notifications cannot plan tasks')
+            # The manager can suggest tasks, but selections and explanations are server-owned.
+            old_payload = self.db.execute('SELECT payload FROM gui_messages WHERE id=?', (job_id,)).fetchone()
+            selection = json.loads(old_payload[0]).get('selection', {}) if old_payload else {}
+            if not isinstance(tasks, list) or not all(isinstance(task, dict) for task in tasks):
+                raise ValueError('Invalid plan tasks')
+            for task in tasks:
+                if selection.get('project', 'auto') != 'auto':
+                    if task.get('project') != selection['project']:
+                        task.pop('machine', None)
+                    task['project'] = selection['project']
+                task['model'] = selection.get('model', 'auto')
+                task['effort'] = selection.get('effort', 'auto')
+                task['resolvedModel'] = route_model(task, 'work')
+                task['modelReason'] = ('직접 선택' if task['model'] != 'auto' else
+                    {'terra':'일반 작업 기본 모델', 'claude':'어려운 설계 또는 버그', 'go':'가벼운 작업'}[task['resolvedModel']])
             tasks = self.validate_steps(tasks)
         proposed_retry = response.get('retryOf')
         if proposed_retry:

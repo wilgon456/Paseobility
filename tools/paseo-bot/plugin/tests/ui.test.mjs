@@ -11,7 +11,12 @@ test('conversation, confirmed admission, read-only kanban, filters, result and r
     await page.goto(p.url);
     await page.getByRole('heading',{name:'Paseo 봇',exact:true}).waitFor();
     assert.equal(await page.getByTestId('secondary-board').count(),0);
-    assert.equal(await page.getByRole('button',{name:/프로젝트:|템플릿:/}).count(),0);
+    await page.getByRole('button',{name:'프로젝트: 자동',exact:true}).click();
+    await page.getByRole('radio',{name:'paseobility',exact:true}).click();
+    await page.getByRole('button',{name:'모델: 자동',exact:true}).click();
+    await page.getByRole('radio',{name:'GPT-6.1 Sol',exact:true}).click();
+    await page.getByRole('button',{name:'effort: 자동',exact:true}).click();
+    await page.getByRole('radio',{name:'High',exact:true}).click();
     await page.getByRole('button',{name:'접수',exact:true}).click();
     await page.getByRole('status').filter({hasText:'접수했어요.'}).waitFor();
     assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='approve').length),1);
@@ -49,6 +54,7 @@ test('conversation, confirmed admission, read-only kanban, filters, result and r
     await page.keyboard.press('Enter');
     await page.getByRole('status').filter({hasText:'전달했어요.'}).waitFor();
     assert.equal(await input.inputValue(),'');
+    assert.deepEqual(await page.evaluate(()=>window.__actions.findLast(a=>a.action==='send').selection), {project:'paseobility',model:'sol',effort:'high'});
     await page.getByRole('button',{name:'작업 닫기',exact:true}).focus();await page.keyboard.press('/');
     await page.waitForFunction(()=>document.querySelector('[aria-label="작업 검색"]')===document.activeElement);
     assert.deepEqual(errors,[]);

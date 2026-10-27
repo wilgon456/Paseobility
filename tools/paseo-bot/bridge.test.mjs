@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const bridge=fileURLToPath(new URL('./bridge.mjs',import.meta.url));
-function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false}={}) {
+function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle'}={}) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bot-bridge-test-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  fs.mkdirSync(path.join(dir,'utils'));
@@ -18,9 +18,9 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:${warming?"(++probes>2?'ready':'loading')":"'ready'"},defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}]}]}),
  listProjects:async()=>({projects:[{projectRootPath:'/repo',projectDisplayName:'fixture'}]}),
  fetchAgents:async()=>({entries:[{agent:{id:'owned',labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree',status:'idle'}}],pageInfo:{hasMore:false}}),
- fetchAgent:async()=>({agent:{id:'owned',status:'idle',labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree'}}),
+ fetchAgent:async()=>({agent:{id:'owned',status:${JSON.stringify(agentStatus)},lastError:${JSON.stringify(errorText)},labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree'}}),
  sendMessage:async()=>({accepted:true}),
- waitForFinish:async()=>({status:'idle',lastMessage:'PASEO_BOT_RESULT={"verdict":"pass"}'}),close:async()=>{}
+ waitForFinish:async()=>({status:${JSON.stringify(agentStatus)},lastMessage:'PASEO_BOT_RESULT={"verdict":"pass"}'}),close:async()=>{}
  }};`);
  fs.writeFileSync(path.join(dir,'index.js'),`import fs from 'node:fs';fs.writeFileSync(process.env.ARGV_FILE,JSON.stringify({argv:process.argv.slice(2),host:process.env.PASEO_HOST,home:process.env.PASEO_HOME,caller:process.env.PASEO_AGENT_ID,workspace:process.env.PASEO_WORKSPACE_ID}));console.log(JSON.stringify({agentId:'owned',cwd:'/worktree'}));`);
  return {dir,call(req){
@@ -58,4 +58,22 @@ test('format correction targets only an owned idle agent',t=>{
 
 test('fresh provider snapshots warm before any launch side effect',t=>{
  const f=fixture(t,{warming:true});const r=f.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'warming',attempt:'attempt',prompt:'read fixture',workspaceId:'w1'});assert.equal(r.ok,true);assert.equal(r.result.provider,'codex');
+});
+
+test('only terminal provider error yields a redacted limit classification',t=>{
+ for(const [error,expected] of [['HTTP 429 rate limit exceeded','quota'],['model gpt-6.1-terra not available','model-unavailable'],['network timeout','other']]){
+  const f=fixture(t,{errorText:error,agentStatus:'error'}); const r=f.call({action:'observe',agentId:'owned',attempt:'attempt'});
+  assert.equal(r.result.errorKind,expected); assert.ok(!JSON.stringify(r).includes(error));
+ }
+ const f=fixture(t,{errorText:'rate limit exceeded',agentStatus:'idle'});
+ assert.equal(f.call({action:'observe',agentId:'owned',attempt:'attempt'}).result.errorKind,'');
+});
+test('model aliases are fixed and unknown providers cannot reach the CLI',t=>{
+ const f=fixture(t);const req={action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'fixture',workspaceId:'w1'};
+ assert.equal(f.call({...req,modelAlias:'terra',effort:'auto'}).ok,true);
+ const a=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json'))).argv;
+ assert.equal(a[a.indexOf('--model')+1],'gpt-6.1-terra');
+ assert.equal(a[a.indexOf('--thinking')+1],'high');
+ assert.equal(f.call({...req,modelAlias:'commandcode',effort:'high'}).ok,false);
+ assert.equal(f.call({...req,modelAlias:'go',effort:'high'}).ok,false);
 });
