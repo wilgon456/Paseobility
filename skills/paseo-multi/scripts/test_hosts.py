@@ -42,7 +42,8 @@ export const connectToDaemon = mode==='missing-connect' ? undefined : async (opt
    }
    return {terminal};
   },
-  listTerminals:async()=>({terminals:fs.existsSync(state)?[JSON.parse(fs.readFileSync(state))]:[]}),
+  listTerminals:async()=>mode==='run-list-error'?{error:'unavailable'}:
+   ({terminals:fs.existsSync(state)?[JSON.parse(fs.readFileSync(state))]:[]}),
   captureTerminal:async()=>{
    const t=JSON.parse(fs.readFileSync(state));
    const id=t.name.slice('paseo-multi-'.length);
@@ -59,13 +60,13 @@ export const connectToDaemon = mode==='missing-connect' ? undefined : async (opt
   killTerminal:async()=>{
    mark('kill');
    // Closing is forbidden until the receipt is already durable and readable.
-   if(!['run-manual','run-cleanup'].includes(mode)) {
+   if(!['run-manual','run-manual-kill-error','run-cleanup'].includes(mode)) {
     const t=JSON.parse(fs.readFileSync(state));
     const base=path.dirname(process.env.MULTI_HOST_TEST_CALLS);
     const receipt=JSON.parse(fs.readFileSync(base+'/runs/results/'+t.name.slice(12)+'.json'));
     if(receipt.result.exitCode!==0||!receipt.result.output) throw Error('missing receipt');
    }
-   if(mode==='run-kill-error') return {error:'refused'};
+   if(['run-kill-error','run-manual-kill-error'].includes(mode)) return {error:'refused'};
    fs.unlinkSync(state);
    if(mode==='run-kill-lost') throw Error('lost response');
    return {};
@@ -244,6 +245,21 @@ class AdapterTests(unittest.TestCase):
         p, d = self.invoke('run-success', 'capture', d['result']['runId'])
         self.assertEqual(d['result']['terminalState'], 'close-unconfirmed')
         self.assertEqual(self.calls.read_text(encoding='utf-8').count('kill'), 1)
+
+    def test_manual_close_does_not_claim_success_when_refused(self):
+        p, d = self.run_command('run-manual', '--keep-terminal')
+        run_id = d['result']['runId']
+        p, d = self.invoke('run-manual-kill-error', 'close', run_id)
+        self.assertNotEqual(p.returncode, 0, d)
+        self.assertFalse(d['ok'])
+        self.assertTrue(Path(str(self.calls) + '.terminal').exists())
+
+    def test_manual_close_does_not_treat_failed_list_as_absence(self):
+        p, d = self.run_command('run-manual', '--keep-terminal')
+        p, d = self.invoke('run-list-error', 'close', d['result']['runId'])
+        self.assertNotEqual(p.returncode, 0, d)
+        self.assertFalse(d['ok'])
+        self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
 
     def test_sequential_runs_have_separate_receipts(self):
         ids = []
@@ -462,6 +478,17 @@ class AdapterTests(unittest.TestCase):
         p, d = self.invoke('idle', 'status', '테스트 컴퓨터')
         self.assertEqual(p.returncode, 0)
         self.assertEqual(d['result']['host'], '테스트 컴퓨터')
+
+    def test_windows_utf8_bom_registry_and_saved_export(self):
+        self.config.write_text(json.dumps({'hosts': [self.host]}), encoding='utf-8-sig')
+        p, d = self.invoke('idle', 'hosts')
+        self.assertEqual(p.returncode, 0, d)
+        self.assertEqual(d['result'][0]['label'], 'PC')
+        source = self.root / 'export.json'
+        source.write_text(json.dumps([dict(self.host, label='PC-NEW')]), encoding='utf-8-sig')
+        p, d = self.invoke('idle', 'import-saved', str(source))
+        self.assertEqual(p.returncode, 0, d)
+        self.assertEqual(d['result']['registered'], ['PC-NEW'])
 
     def test_changed_client_interface_is_named(self):
         p, d = self.invoke('missing-connect', 'status', 'PC')

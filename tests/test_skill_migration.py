@@ -1,12 +1,15 @@
 """Exercise installation/migration in isolated homes; never contact Paseo.
 
-Bash-only: this suite drives ``scripts/paseobility-init.sh`` through a POSIX
-shell, so it skips on Windows rather than faking POSIX symlink semantics.
+Bash cases drive ``scripts/paseobility-init.sh`` through a POSIX shell and skip
+on Windows rather than faking POSIX symlink semantics. Native installer cases
+run separately when PowerShell is available.
 """
 import errno
+import base64
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -109,6 +112,30 @@ class SkillMigrationTests(unittest.TestCase):
         for name in RETIRED:
             self.assertEqual(len(list((self.home / ".agents/skills-backups").glob(f"*/{name}/local-note.txt"))), 1)
 
+    def test_invalid_selection_aborts_before_replacing_existing_skills(self):
+        skill = self.home / ".agents/skills/paseo-project/SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("local original")
+        result = self.install("--skill", "paseo-project", "--skill", "missing")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(skill.read_text(), "local original")
+        self.assertFalse((self.home / ".agents/skills-backups").exists())
+
+    def test_skill_selection_requires_names_not_paths(self):
+        result = self.install("--skill", "./paseo-project")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.home / ".agents").exists())
+
+    def test_duplicate_selection_preserves_original_backup_once(self):
+        skill = self.home / ".agents/skills/paseo-project/SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("local original")
+        self.assert_success(self.install("--skill", "paseo-project",
+                                         "--skill", "paseo-project"))
+        backups = list((self.home / ".agents/skills-backups").glob(
+            "*/paseo-project/SKILL.md"))
+        self.assertEqual([backup.read_text() for backup in backups], ["local original"])
+
     def test_unknown_ownership_aborts_before_installation(self):
         self.seed()
         old = self.home / ".agents/skills/paseo-session-brief/SKILL.md"
@@ -138,6 +165,48 @@ class SkillMigrationTests(unittest.TestCase):
         self.assertNotEqual(self.install("--migrate-skills").returncode, 0)
         self.assertTrue(skill.is_symlink())
         self.assertEqual((outside / "marker").read_text(), "keep")
+
+
+POWERSHELL = shutil.which("powershell.exe") if os.name == "nt" else shutil.which("pwsh")
+
+
+@unittest.skipUnless(POWERSHELL, "PowerShell required for native installer tests")
+class PowerShellSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="paseobility-powershell-")
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name) / "home [fixture] \ud55c\uae00"
+
+    def install(self, *skills):
+        def quote(value):
+            return "'" + str(value).replace("'", "''") + "'"
+        script = (
+            "$ErrorActionPreference='Stop'; & "
+            + quote(ROOT / "scripts/paseobility-install.ps1")
+            + " -TargetHome " + quote(self.home)
+            + " -Skill @(" + ",".join(quote(skill) for skill in skills) + ")"
+            + " -NoPaseoCheck -SkipCuaDriver"
+        )
+        encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        return subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive",
+                               "-EncodedCommand", encoded],
+                              capture_output=True, text=True, timeout=60)
+
+    def test_duplicate_selection_preserves_backup_under_literal_home_path(self):
+        skill = self.home / ".agents/skills/paseo-project/SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("local original")
+        result = self.install("paseo-project", "paseo-project")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        backups = list((self.home / ".agents/skills-backups").glob(
+            "*/paseo-project/SKILL.md"))
+        self.assertEqual([backup.read_text() for backup in backups], ["local original"])
+        self.assertEqual(skill.read_bytes(), (ROOT / "skills/paseo-project/SKILL.md").read_bytes())
+
+    def test_path_selection_is_rejected_before_any_writes(self):
+        result = self.install("./paseo-project")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.home.exists())
 
 
 if __name__ == "__main__":

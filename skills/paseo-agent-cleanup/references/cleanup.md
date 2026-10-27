@@ -2,7 +2,9 @@
 
 The helper reads complete snapshots through the installed
 [Paseo client](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/utils/client.ts)
-(adapter contract: Paseo 0.11.2). The
+(initial adapter contract: Paseo 0.11.2; snapshot and workspace archive were
+also exercised from macOS against 0.13.0, as recorded in the repository's
+`docs/compatibility-0.13.0.md`). The
 [CLI agent list](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/commands/agent/ls.ts)
 omits workspace and permission fields and its page cursor, and
 [inspect](https://github.com/getpaseo/paseo/blob/v0.11.2/packages/cli/src/commands/agent/inspect.ts)

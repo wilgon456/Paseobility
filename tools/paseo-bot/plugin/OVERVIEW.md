@@ -16,5 +16,6 @@ npm run preview
 ```
 
 Preview is explicitly offline fixture data rendered by the production view;
-it never connects to SSH or the real queue. Browser tests need Chrome/Edge
-or a Playwright Chromium install. `CHROME_PATH` selects an existing binary.
+it never connects to SSH or the real queue. Browser tests use `CHROME_PATH`
+when set, then an installed Ego Lite, then Google Chrome, and otherwise fall
+back to Playwright's bundled Chromium; Microsoft Edge is never used.

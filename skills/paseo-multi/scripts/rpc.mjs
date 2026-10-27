@@ -358,15 +358,12 @@ async function main() {
   }
   if (req.action === 'capture') return capture(req.run);
   if (req.action === 'close') {
-    const terminals = await client.listTerminals();
-    const byName = terminals.terminals?.filter(t => t.name === req.run.name) ?? [];
-    const terminal = req.run.terminalId ? terminals.terminals?.find(t => t.id === req.run.terminalId) :
-      (byName.length === 1 ? byName[0] : null);
+    const terminal = findTerminal(req.run, await client.listTerminals());
     if (!terminal) return {runId: req.run.runId, status: 'already absent'};
-    if (terminal.name !== req.run.name) throw Error('Terminal ownership/name changed; refusing close.');
     const result = await capture(req.run, false);
     if (result.status !== 'completed' && !req.interrupt) throw Error('Command still running; close requires explicit interruption.');
-    await client.killTerminal(terminal.id);
+    const reply = await client.killTerminal(terminal.id);
+    if (reply?.error) throw Error('Terminal close refused; inspect state before retrying.');
     return {runId: req.run.runId, status: 'closed', exitCode: result.exitCode};
   }
   throw Error('Unsupported operation.');

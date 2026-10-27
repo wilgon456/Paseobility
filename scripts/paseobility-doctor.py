@@ -419,13 +419,23 @@ def check_paseo(cli, timeout):
         }
     code, output = run_command([cli, "--version"], timeout)
     version = extract_semver(output) if code == 0 else None
-    daemon_code, _ = run_command([cli, "daemon", "status", "--json"], timeout)
+    daemon_code, daemon_output = run_command([cli, "daemon", "status", "--json"], timeout)
     if daemon_code is None:
         reachability = "unknown"
         hint = "could not run `paseo daemon status --json`"
     elif daemon_code == 0:
-        reachability = "reachable"
-        hint = None
+        # The status command also exits zero for a stopped daemon.
+        data = _load_json(daemon_output)
+        connected = data.get("connectedDaemon") if isinstance(data, dict) else None
+        if connected == "reachable":
+            reachability = "reachable"
+            hint = None
+        elif connected in ("unreachable", "not_probed"):
+            reachability = "unreachable"
+            hint = "Paseo daemon is not reachable; start Paseo if you need live tools"
+        else:
+            reachability = "unknown"
+            hint = "Paseo daemon status schema not recognized"
     else:
         reachability = "unreachable"
         hint = "Paseo daemon is not reachable; start Paseo if you need live tools"

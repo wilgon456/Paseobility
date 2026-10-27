@@ -8,13 +8,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:http';
 import { run, findBrowser } from './design-check.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIX = path.join(HERE, 'fixtures');
 const browser = findBrowser();
 if (!browser) {
-  const msg = 'design-check selftest: no Chromium-family browser found (Chrome, Edge, Chromium or a Playwright download)';
+  const msg = 'design-check selftest: no Chromium-family browser found (Ego Lite, Chrome, Chromium or a Playwright download)';
   if (process.env.DESIGN_CHECK_REQUIRE_BROWSER) { console.error(msg); process.exit(1); }
   console.log('SKIP ' + msg + ' — set DESIGN_CHECK_REQUIRE_BROWSER=1 to make this fatal');
   process.exit(0);
@@ -119,6 +120,37 @@ try {
     assert.equal(dead.toolErrors.length, 1);
     assert.equal(dead.results[0].pages.length, 0);
     assert.equal(dead.failing, false);
+  });
+
+  const slow = createServer((req, res) => {
+    if (req.url === '/pending.png') return; // Intentionally never reaches the load event.
+    res.end('<!doctype html><title>Pending load</title><img src="/pending.png">');
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      slow.once('error', reject);
+      slow.listen(0, '127.0.0.1', resolve);
+    });
+    const pending = await run([`http://127.0.0.1:${slow.address().port}/`, '--out', out, '--widths', '375', '--timeout', '1', '--no-sheet']);
+    check('a page that never finishes loading is a tool error, not a measured pass', () => {
+      assert.equal(pending.results[0].pages.length, 0);
+      assert.equal(pending.toolErrors.length, 1);
+      assert.match(pending.toolErrors[0].error, /timeout/);
+    });
+  } finally {
+    slow.closeAllConnections();
+    await new Promise(resolve => slow.close(resolve));
+  }
+
+  const disabled = await run([path.join(FIX, 'bad.html'), '--out', out, '--widths', '375', '--no-sheet', '--disable', 'focus-invisible']);
+  check('--disable applies to keyboard-focus findings too', () => {
+    assert.ok(!rules(disabled.results[0].pages[0]).has('focus-invisible'));
+    assert.ok(rules(disabled.results[0].pages[0]).has('contrast'));
+  });
+
+  const ignored = await run([path.join(FIX, 'bad.html'), '--out', out, '--widths', '375', '--no-sheet', '--ignore', 'body']);
+  check('--ignore excludes keyboard-focus targets inside ignored containers', () => {
+    assert.ok(!rules(ignored.results[0].pages[0]).has('focus-invisible'));
   });
 
   const base = path.join(out, 'baseline.json');

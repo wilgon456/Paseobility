@@ -112,8 +112,12 @@ test('list finds the project runs newest first with status and skips foreign or 
   assert.deepEqual((await listRuns(root)).runs, []);
   assert.deepEqual(await readdir(root), []);
   const first = await initRun(root, 'First task');
-  await new Promise(resolve => setTimeout(resolve, 5));
   const second = await initRun(root, 'Second task');
+  for (const [run, createdAt] of [[first, '2026-01-01T00:00:00.000Z'], [second, '2026-01-02T00:00:00.000Z']]) {
+    const metadataPath = path.join(path.dirname(run.record), 'run.json');
+    const metadata = JSON.parse(await readFile(metadataPath, 'utf8'));
+    await writeFile(metadataPath, JSON.stringify({ ...metadata, createdAt }));
+  }
   await writeFile(second.record, (await readFile(second.record, 'utf8')).replace('- Status: active', '- Status: blocked'));
   const foreign = await initRun(other, 'Foreign');
   await cp(path.dirname(foreign.record), path.join(root, '.paseobility/god/runs', foreign.id), { recursive: true });

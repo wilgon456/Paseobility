@@ -20,6 +20,10 @@ backend once per task and keep it across rounds and recoverable failures:
   its `ego-browser` CLI is installed**. Read the installed `ego-browser` skill
   and run `ego-browser skill`; read through its end-of-guide marker before
   acting. Use its current documented APIs, not guessed Playwright methods.
+- Standard Ego Lite app locations are `/Applications/ego lite.app` on macOS
+  and `C:\Program Files\Citro Labs\ego lite\Application\ego.exe` on Windows.
+  If the app exists but its CLI is unavailable, report that setup gap rather
+  than treating Ego as absent. Never auto-select Microsoft Edge.
 - If Ego is not installed and the task has not selected it, use an already
   running Chrome window. Do not install or start a browser implicitly. If the
   selected backend fails, report and recover there; do not silently switch.

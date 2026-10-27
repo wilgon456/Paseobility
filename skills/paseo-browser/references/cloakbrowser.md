@@ -83,10 +83,11 @@ Load from the runtime path with dynamic `import()` (respects a custom
 
 ```js
 import path from 'node:path';
+import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 const R = process.env.RUNTIME
   || process.env.PASEOBILITY_CLOAK_RUNTIME
-  || path.join(process.env.HOME, '.local/share/paseobility/browser/cloakbrowser');
+  || path.join(os.homedir(), '.local/share/paseobility/browser/cloakbrowser');
 const cloak = await import(pathToFileURL(path.join(R, 'node_modules/cloakbrowser/dist/index.js')).href);
 // cloak.launch, cloak.buildLaunchOptions, cloak.ensureBinary, cloak.binaryInfo
 ```
@@ -236,8 +237,9 @@ For a DOM update, use a bounded predicate on the expected visible result, like
 the adder recipe above. `evaluate` may change page state when that is the
 quickest way to do the task; never print credential values. If the project already uses Playwright Test, its auto-retrying
 `expect(locator).toHaveText(...)` is appropriate; these standalone recipes do
-not add that dependency just for assertions. Prefer a real signal over fixed
-waits or `networkidle`; a short sleep is fine when the page gives none. See [Playwright best practices](https://playwright.dev/docs/best-practices)
+not add that dependency just for assertions. Prefer a bounded expected-state
+signal over fixed waits or `networkidle`; if no observable postcondition is
+available, report the result as unverified. See [Playwright best practices](https://playwright.dev/docs/best-practices)
 and [the Page API](https://playwright.dev/docs/api/class-page#page-wait-for-function).
 
 ### Console / network diagnostics (scoped)

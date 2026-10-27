@@ -61,7 +61,8 @@ created from a background workspace inherits that flag.
 
 - `create_agent` places a child in the caller's workspace unless `workspaceId`
   selects another. Read-only workers may share a workspace; writers whose
-  changes overlap need isolated worktrees. Never two writers in one checkout.
+  changes overlap need isolated worktrees. Writers sharing a checkout must own
+  disjoint paths and coordinate read/write dependencies.
 - Use completion notifications, not polling. Add a heartbeat only for requested
   monitoring or a condition with no notification; bound it with `maxRuns`
   and/or `expiresIn` and delete it when done.

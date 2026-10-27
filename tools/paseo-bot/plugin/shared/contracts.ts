@@ -98,6 +98,7 @@ export const snapshotSchema = z.object({
     )
     .default([]),
   plans: z.array(planSchema).default([]),
+  stuck: z.string().default(""),
 });
 export const syncInput = z
   .object({
@@ -164,6 +165,7 @@ export const actionInput = z.discriminatedUnion("action", [
       project: z.string().min(1).max(200),
     })
     .strict(),
+  z.object({ action: z.literal("resolve"), conversationId: taskId }).strict(),
 ]);
 export const actionRpc = defineRpc({
   name: "bot.action",

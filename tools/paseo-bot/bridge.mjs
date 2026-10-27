@@ -90,7 +90,7 @@ async function ownedWorkspace() {
     }
   }
 }
-async function remoteHelper(workspaceId,cwd,request) {
+async function remoteHelper(workspaceId,cwd,request,polls=160) {
   stage='cleanup-helper';
   const source=fs.readFileSync(new URL('./cleanup_remote.py',import.meta.url),'utf8');
   const windows=/^[A-Za-z]:[\\/]|^\\\\/.test(cwd);
@@ -100,7 +100,7 @@ async function remoteHelper(workspaceId,cwd,request) {
   if(created?.error || !id)throw Error('cleanup terminal create');
   let result;
   try {
-    for(let i=0;i<160;i++) {
+    for(let i=0;i<polls;i++) {
       await new Promise(resolve=>setTimeout(resolve,200));
       const capture=await client.captureTerminal(id,{stripAnsi:true,start:0});
       if(capture?.error || !Array.isArray(capture?.lines))throw Error('cleanup terminal capture');
@@ -167,12 +167,21 @@ async function main() {
   }
   if(req.action==='archive-workspace') {
     await ownedWorkspace();
-    const verified=await remoteHelper(req.workspaceId,req.worktree,{action:'verify',worktree:req.worktree,file:req.remoteFile,base:req.base,sha256:req.sha256});
+    const verified=await remoteHelper(req.workspaceId,req.worktree,{action:'verify',worktree:req.worktree,file:req.remoteFile,base:req.base,sha256:req.sha256,stateSha:req.stateSha ?? req.sha256});
     if(verified?.verified!==true)throw Error('cleanup receipt');
     await ownedWorkspace();
     const archived=await client.archiveWorkspace(req.workspaceId);
     if(archived?.error || !archived?.archivedAt)throw Error('cleanup receipt');
     return {archivedAt:archived.archivedAt};
+  }
+  if(req.action==='publish-workspace') {
+    // Commits exactly the evidenced, reviewed tree, pushes the bot branch and
+    // opens a draft PR. Never merges, force-pushes or deploys.
+    await ownedWorkspace();
+    const receipt=await remoteHelper(req.workspaceId,req.worktree,{action:'publish',worktree:req.worktree,file:req.remoteFile,base:req.base,sha256:req.sha256,
+      branch:req.branch,defaultBranch:req.defaultBranch,title:req.title,body:req.body},1200);
+    if(!(receipt?.prUrl==='' || /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9][0-9]*$/.test(receipt?.prUrl)) || !/^[0-9a-f]{40}$/.test(receipt.commit) || !/^[0-9a-f]{64}$/.test(receipt.stateSha))throw Error('cleanup receipt');
+    return {prUrl:receipt.prUrl,commit:receipt.commit,stateSha:receipt.stateSha};
   }
   if(req.action==='finish-workspace') {
     if(await anyWorkspaceReferences(req.worktree))return {worktreeRemoved:false,branch:'not-checked'};
@@ -265,7 +274,7 @@ async function main() {
 }
 try {process.stdout.write(JSON.stringify({ok:true,result:await main()}));}
 catch(e) {
-  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt','ownership','cleanup terminal create','cleanup terminal capture','cleanup helper error','cleanup terminal timeout','cleanup terminal close','cleanup receipt']);
+  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt','project receipt','pagination','action','ownership','cleanup terminal create','cleanup terminal capture','cleanup helper error','cleanup terminal timeout','cleanup terminal close','cleanup receipt']);
   // Fixed diagnostic vocabulary only. Never return raw transport/CLI messages.
   const reason=known.has(e?.message)?e.message.replaceAll(' ','-'):'operation';
   process.stdout.write(JSON.stringify({ok:false,stage,reason,error:'Paseo operation failed; inspect private configuration.'}));process.exitCode=1;

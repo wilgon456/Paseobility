@@ -141,6 +141,18 @@ test("unfiltered --auto archives only clearly marked disposable agents", () => {
   assertNoDangerousCommands(runner.calls);
 });
 
+test("Windows disposable path components match without selecting lookalike names", () => {
+  const agents = [
+    {...idleAgent, id: "windows-test", cwd: "C:\\work\\tests\\product"},
+    {...idleAgent, id: "windows-ordinary", cwd: "C:\\work\\contest\\product"},
+  ];
+  const runner = createRunner({agents});
+  const result = execute(parseArgs(["--auto"]), runner.run);
+  assert.deepEqual(result.summary.agentsSelected, ["windows-test"]);
+  assert.deepEqual(runner.calls, [["archive", "windows-test", "--json"]]);
+  assert.equal(result.exitCode, 0);
+});
+
 test("an explicit inactive agent ID is archived and then rechecked", () => {
   const runner = createRunner({
     agents: [idleAgent, testAgent],

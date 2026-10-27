@@ -64,8 +64,10 @@ releases:
    stales old tokens; re-read with `since:"latest"` for a diff.
 4. Verify the final result at checkpoints with a fresh read (`verify_state` or
    the tree). A tool reply alone is not proof.
-5. Background delivery is the default. If an action does not land, switch to
-   `delivery_mode: "foreground"` and mention it — it takes the user's focus.
+5. Background delivery is the default. If it is refused or unverifiable,
+   inspect the current result before switching to `delivery_mode: "foreground"`
+   and mention the focus change. Never replay an uncertain save/send/submit
+   automatically.
 
 One action is `cua-driver <tool> '<json>'`. Cursor overlays, recording, browser
 sessions, and named sessions need one persistent `cua-driver mcp` connection;

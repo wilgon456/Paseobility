@@ -1,7 +1,8 @@
 # Browser screenshot recovery
 
 Backend label: **Paseo `browser_*`** (this recovery reference is specific to the
-Paseo browser host; the default CloakBrowser backend uses Playwright's own
+Paseo browser host; default Ego Lite screenshots follow the installed Ego guide
+and [ego.md](ego.md). The explicit CloakBrowser alternative uses Playwright's
 `page.screenshot()` and is documented in [cloakbrowser.md](cloakbrowser.md)).
 
 Read this when `browser_screenshot` fails, times out, or returns a visually

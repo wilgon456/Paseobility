@@ -9,6 +9,7 @@ import bisect
 import json
 from pathlib import Path
 import re
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,7 @@ ELLIPSIS = {"...", "…"}
 JS_IDENTIFIER = re.compile(r"[A-Za-z_$][\w$]*(?:\.[\w$]+)*|\d+")
 PY_IDENTIFIER = re.compile(r"[A-Za-z_]\w*(?:\.[\w]+)*|\d+")
 CLI_EVIDENCE = re.compile(
-    r"""["']paseo(?:\.cmd)?["']|/paseo\b|\b(?:resolve)?PaseoCli\b|\bBUNDLED_PASEO_CLI\b""")
+    r"""["']paseo(?:\.cmd)?["']|/paseo\b|\b(?:resolve)?PaseoCli\b|\bBUNDLED_PASEO_CLI\b|\bexecute\s*\(\s*cli\s*,""")
 
 # References that are deliberately version-gated and cannot be recorded from
 # the snapshot version. Each entry needs a reason; keep this list small.
@@ -288,7 +289,8 @@ def document_paths(root=ROOT):
 def script_paths(root=ROOT):
     found = [path for path in (root / "skills").glob("*/scripts/*")
              if path.is_file() and path.suffix in SCRIPT_SUFFIXES]
-    found.extend(path for path in (root / "plugin").glob("server/*.ts") if path.is_file())
+    found.extend(path for path in (root / "plugin").glob("server/*")
+                 if path.is_file() and path.suffix in SCRIPT_SUFFIXES)
     return sorted(set(found))
 
 
@@ -395,6 +397,18 @@ class ExtractorTests(unittest.TestCase):
         arrays = argument_lists(text, python=True)
         self.assertEqual(arrays[0][1], [(True, "daemon"), (True, "status"), (True, "--json")])
         self.assertEqual(script_array_problems(arrays[0][1], self.surface), [])
+
+    def test_plugin_worker_cli_flags_are_checked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worker = root / "plugin/server/update-worker.mjs"
+            worker.parent.mkdir(parents=True)
+            worker.write_text(
+                'await execute(cli, ["plugin", "add", source, "--bogus"]);',
+                encoding="utf-8")
+            problems = collect_problems(root, self.surface)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("--bogus", problems[0])
 
 
 class RepositoryTests(unittest.TestCase):

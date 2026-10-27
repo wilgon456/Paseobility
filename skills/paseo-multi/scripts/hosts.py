@@ -25,7 +25,7 @@ def private_write(path, data):
 def load_hosts(path):
     if os.name != 'nt' and stat.S_IMODE(path.stat().st_mode) & 0o077:
         raise ValueError('Registry must be private (chmod 600).')
-    data = json.loads(path.read_text(encoding='utf-8'))
+    data = json.loads(path.read_text(encoding='utf-8-sig'))
     hosts = data.get('hosts') if isinstance(data, dict) else data
     if not isinstance(hosts, list) or not hosts:
         raise ValueError('Registry must contain a nonempty hosts array.')
@@ -143,7 +143,7 @@ def main():
     args = parser.parse_args()
     config = args.config.expanduser().resolve()
     if args.action == 'import-saved':
-        data = json.loads(args.file.read_text(encoding='utf-8'))
+        data = json.loads(args.file.read_text(encoding='utf-8-sig'))
         if isinstance(data, list) and len(data) == 1 and isinstance(data[0], list):
             data = data[0]
         if isinstance(data, dict):

@@ -48,7 +48,9 @@ EOF
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root)
-      ROOT="${2:-}"
+      [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != --* ]] ||
+        { echo "--root requires a path" >&2; exit 2; }
+      ROOT="$2"
       shift 2
       ;;
     --with-claude)
@@ -64,7 +66,9 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --skill)
-      SKILLS+=("${2:-}")
+      [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != --* ]] ||
+        { echo "--skill requires a skill name" >&2; exit 2; }
+      SKILLS+=("$2")
       shift 2
       ;;
     --no-backup)
@@ -76,7 +80,9 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --target-home)
-      TARGET_HOME="${2:?--target-home requires a path}"
+      [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != --* ]] ||
+        { echo "--target-home requires a path" >&2; exit 2; }
+      TARGET_HOME="$2"
       shift 2
       ;;
     --no-paseo-check)
@@ -127,6 +133,21 @@ selected_skill() {
   return 1
 }
 
+# Validate the entire selection before replacing any installed skill. Names
+# are directory identifiers, not paths relative to either source or target.
+if [ "${#SKILLS[@]}" -gt 0 ]; then
+  for skill in "${SKILLS[@]}"; do
+    if ! [[ "$skill" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || [ "${#skill}" -gt 64 ]; then
+      printf '[error] invalid skill name: %s\n' "$skill" >&2
+      exit 2
+    fi
+    if [ ! -f "$REPO_ROOT/skills/$skill/SKILL.md" ]; then
+      printf '[error] skill not found or missing SKILL.md: %s\n' "$skill" >&2
+      exit 2
+    fi
+  done
+fi
+
 # Preflight every retired entry before copying anything. Moving a directory
 # preserves local edits; symlink roots and unknown ownership fail closed.
 retired_entries() {
@@ -162,7 +183,7 @@ if [ "$INSTALL_CLAUDE" -eq 1 ]; then check_retired "$TARGET_HOME/.claude/skills"
 copy_skills() {
   local target="$1"
   local backup_parent="$2"
-  local backup_root backup_count skill source dest
+  local backup_root backup_count skill source dest copied=""
 
   mkdir -p "$target"
   backup_root="$backup_parent/Paseobility-${VERSION}-$(date -u +"%Y%m%dT%H%M%SZ")-$$"
@@ -183,15 +204,10 @@ copy_skills() {
     done < <(find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d | sort)
   else
     for skill in "${SKILLS[@]}"; do
-      if [ -z "$skill" ]; then
-        continue
-      fi
+      case " $copied " in *" $skill "*) continue ;; esac
+      copied="$copied $skill"
       source="$REPO_ROOT/skills/$skill"
       dest="$target/$skill"
-      if [ ! -f "$source/SKILL.md" ]; then
-        printf '[error] skill not found or missing SKILL.md: %s\n' "$skill" >&2
-        exit 2
-      fi
       if [ -e "$dest" ] && [ "$BACKUP_EXISTING" -eq 1 ]; then
         mkdir -p "$backup_root"
         cp -R "$dest" "$backup_root/"

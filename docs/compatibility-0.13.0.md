@@ -86,3 +86,11 @@ runtime and once without the 0.13-only exports (as a 0.12 app provides them):
 - `paseo-multi` from a Windows controller, and Linux.
 - Browser tools, schedules and heartbeats on 0.13.
 - The updater replacing a real installed release (v2.12.1 is not published).
+
+Offline regression audit (2026-10-27): multi preserves its bot-facing API and
+accepts Windows UTF-8 BOM registries/exports; explicit terminal close rejects
+failed listing and refused closure. Cleanup recognizes Windows path separators.
+Share handles Unicode Git paths and rejects metadata filename collisions. Scanner
+regressions cover path/name exemption bypasses, quoted-secret redaction and
+partial installer failures. These checks add no new live Windows or daemon
+compatibility evidence.

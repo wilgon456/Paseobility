@@ -29,11 +29,11 @@ def handle(home, request, allow_submit=False):
                'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf', 'selection'},
                'start': {'action', 'requestId', 'messageId', 'text', 'selection'},
                'approve': {'action', 'conversationId', 'planId', 'digest'}, 'reject': {'action', 'conversationId', 'planId'},
-               'remember': {'action', 'conversationId', 'messageId', 'project'}}
+               'remember': {'action', 'conversationId', 'messageId', 'project'}, 'resolve': {'action', 'conversationId'}}
     if action not in allowed or set(request) - allowed[action]:
         raise ValueError('Unsupported request')
     home = Path(home)
-    if action in ['create', 'start', 'send', 'approve', 'reject', 'remember']:
+    if action in ['create', 'start', 'send', 'approve', 'reject', 'remember', 'resolve']:
         if not allow_submit:
             raise ValueError('Read-only bridge')
         c = Conversations(home)
@@ -49,6 +49,8 @@ def handle(home, request, allow_submit=False):
                 return c.approve(request['conversationId'], request['planId'], request['digest'])
             if action == 'reject':
                 return c.reject(request['conversationId'], request['planId'])
+            if action == 'resolve':
+                return c.resolve(request['conversationId'])
             return c.remember(request['conversationId'], request['messageId'], request['project'])
         finally:
             c.db.close()

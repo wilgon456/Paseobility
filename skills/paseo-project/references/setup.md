@@ -7,9 +7,9 @@ started. Skill installation alone does not require generating context.
 
 ## Helpers in a Paseobility checkout
 
-The helpers below are repository-root files. An installed skill copy contains
-only `SKILL.md` and `references/`, so a relative path from the skill directory
-is not the package root. Before using a helper, confirm the checkout contains
+The helpers below are repository-root files, not bundled scripts in the
+installed skill copy, so a relative path from the skill directory is not the
+package root. Before using a helper, confirm the checkout contains
 `paseobility.json`, `VERSION` and `skills/`, and that the helper file itself
 exists. If no verified checkout is present, do not run, guess, download or
 reconstruct these commands.

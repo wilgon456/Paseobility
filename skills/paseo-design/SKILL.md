@@ -20,7 +20,7 @@ expression matters when the brief calls for it; quiet, familiar precision can
 be the right result for a working tool. A list of avoided styles or a clean
 checker report is not evidence of good design.
 
-Paths are relative to this skill's directory. When your working directory is the project, prefix them with the skill's absolute location (Claude Code: `~/.claude/skills/paseo-design/`; Codex and OpenCode: `~/.agents/skills/paseo-design/`). Scripts need Node 20+ and, for step 4, a Chromium-family browser on the machine (Chrome, Edge, Chromium, or a Playwright download). Nothing is installed by this skill.
+Paths are relative to this skill's directory. When your working directory is the project, prefix them with the skill's absolute location (Claude Code: `~/.claude/skills/paseo-design/`; Codex and OpenCode: `~/.agents/skills/paseo-design/`). Scripts need Node 20+ and, for step 4, an installed Chromium-family browser. `design-check` prefers Ego Lite, then Chrome, then other supported Chromium builds or an existing Playwright download; Microsoft Edge is never auto-selected. Ego Lite's standard paths are `/Applications/ego lite.app` on macOS and `C:\Program Files\Citro Labs\ego lite\Application\ego.exe` on Windows. `DESIGN_CHECK_BROWSER` (or `CHROME_PATH`) selects an explicit executable. Nothing is installed by this skill.
 
 ## 0. The project's own rules win
 
@@ -95,6 +95,10 @@ Write production code in the repo's framework. A standalone HTML artifact only w
 Render and measure every changed screen at phone, tablet and desktop widths:
 
     node scripts/design-check.mjs <url-or-file> [more ...] --out <dir>
+
+This explicit headless check launches the selected browser with a temporary
+profile, preferring Ego Lite then Chrome; it does not attach to the user's
+interactive Ego TaskSpace or Chrome profile.
 
 Per page and width it writes a clean screenshot, a marked screenshot with numbered boxes, `-report.md` with a fix hint per finding, `-report.json`, and `-sheet.png` with all widths side by side. Exit 1 means errors remain; exit 2 means the tool could not run (no browser, page did not load).
 

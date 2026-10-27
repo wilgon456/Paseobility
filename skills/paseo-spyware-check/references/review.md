@@ -97,7 +97,9 @@ bash <skill-dir>/scripts/install-scanners.sh --yes
 ```
 
 The installer prefers Homebrew when present and never uses `sudo`, remote shell
-pipes, or target-repo code.
+pipes, or target-repo code. Failed package-manager commands are reported, the
+remaining independent installs are attempted, and any failure makes the installer
+exit nonzero. Inspect its status output before retrying.
 
 ## Windows PowerShell workflow
 
@@ -119,7 +121,8 @@ To add scanners on Windows (`-DryRun` shows the plan first):
 ```
 
 The installer does not use remote shell pipes. It only runs planned package
-manager commands and leaves uncertain tools as manual guidance.
+manager commands and leaves uncertain tools as manual guidance. A failed native
+package-manager command makes it exit nonzero after the remaining planned commands.
 
 Manual fallback:
 
@@ -228,7 +231,10 @@ Scanner docs and scanner source may contain strings like `GITHUB_TOKEN`,
 `child_process`, `curl | sh`, or `EncodedCommand` because they describe what to
 find. Do not hide those matches. Classify them as `Info` when the path is this
 skill's README/SKILL/script documentation, and explain that they are
-self-references rather than target-repo behavior.
+self-references rather than target-repo behavior. A target-controlled skill name
+or script path is not proof of a self-reference. The Python helper downgrades
+scanner implementation matches only for exact bundled file bytes; the extended
+shell/PowerShell heuristics retain normal script severities for manual review.
 
 ## Verdict format
 

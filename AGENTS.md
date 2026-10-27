@@ -93,7 +93,7 @@ verification and resumption; install it alone with
 `./scripts/paseobility-init.sh --skill paseo-god --no-context` (Windows:
 `.\scripts\paseobility-install.ps1 -Skill paseo-god`). Its Node helper creates
 local run records only; it does not execute tasks or save native memory.
-`paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Chrome and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
+`paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Ego Lite (preferred before Chrome; Microsoft Edge is never auto-selected) and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver when a task needs a
@@ -167,7 +167,9 @@ permissions, and MCP separately; `--json` is a deterministic, redacted, shareabl
 report. `--check-mcp` is explicit-only and probes MCP protocol/tools discovery
 over one stdio connection; it is not a GUI end-to-end test. An absent,
 not-checked, or unknown Cua state is never success, and no GUI probe runs
-implicitly.
+implicitly. A successful `paseo daemon status --json` exit code does not prove
+the daemon is reachable: doctor inspects `connectedDaemon`, and `not_probed` or
+`unreachable` is never a readiness pass.
 
 ## Supported install target
 

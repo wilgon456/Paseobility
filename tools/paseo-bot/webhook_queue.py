@@ -22,7 +22,8 @@ def enqueue(db, record, body):
         'task_id': record['id'], 'project': record['project'],
         'machine': record.get('machine') or body.get('machine') or socket.gethostname(),
         'state': record['state'], 'summary': record.get('summary') or record.get('reason', ''),
-        'pr_url': record.get('pr_url', body.get('pr_url', '')),
+        # A bot-published draft PR wins over producer-supplied metadata.
+        'pr_url': record.get('prUrl') or record.get('pr_url') or body.get('pr_url', ''),
         'requester': body.get('requester', '')}
     payload = {k: str(v)[:8000] for k, v in payload.items()}
     identity = hashlib.sha256(('paseo-completion-v1:' + record['id']).encode()).hexdigest()

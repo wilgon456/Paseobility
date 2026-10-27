@@ -5,6 +5,8 @@ Load when a `paseo-cua` flow fails or the host looks unready.
 ## Retrying
 
 Re-read the current state before retrying instead of repeating a call blindly.
+An uncertain save/send/submit may already have landed; verify its result and
+possible late effects before choosing another route, not just another input mode.
 Then try the next route (token -> pixel -> keyboard shortcut -> foreground; see
 [workflow.md](workflow.md)). Stop and report once the sensible routes are used
 up.

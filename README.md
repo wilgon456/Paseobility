@@ -245,8 +245,8 @@ it around proof instead of prose:
   token file, or UI checks is followed as-is; the skill never writes a second
   `DESIGN.md` or palette next to them.
 - **`scripts/design-check.mjs`** renders a URL or HTML file at 375, 768 and
-  1440 px in headless Chrome (Chrome, Edge, Chromium, or a Playwright download;
-  no npm dependencies) and measures the page: overflow, clipped or overlapping
+  1440 px in a headless Chromium browser (Ego Lite first, then Chrome, Chromium
+  or a Playwright download; Edge is never auto-selected; no npm dependencies) and measures the page: overflow, clipped or overlapping
   text, left-edge and row misalignment down to 1 px, uneven gaps, card heights,
   WCAG contrast, tap targets, Hangul words split at line ends, Korean typography
   (font order, tracking, line length), spacing and type-scale sprawl, and the

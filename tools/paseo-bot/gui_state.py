@@ -194,11 +194,26 @@ class Conversations:
             self.db.execute('INSERT OR IGNORE INTO gui_memory VALUES (?,?,?,?,?)', (message_id, project, row[0][:2000], message_id, time.time()))
         return {'accepted': True}
 
+    def resolve(self, conversation):
+        """Operator-confirmed exit from a state the service never resolves by itself."""
+        current = self.conversation(conversation)
+        with self.db:
+            if current['status'] == 'missing' and not current['agentId']:
+                # Recovery by label found no manager; the operator asked for a fresh one.
+                self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('new', conversation))
+                self.message(conversation, 'system', '매니저를 다시 시작할게요. 이전 대화 내용은 이 화면에 그대로 남아 있어요.')
+                return {'accepted': True}
+            changed = self.db.execute("UPDATE gui_jobs SET state='invalid' WHERE conversation=? AND state='unknown'", (conversation,)).rowcount
+            if changed:
+                self.message(conversation, 'system', '확인하지 못한 요청은 건너뛰었어요. 필요하면 다시 보내 주세요.')
+        return {'accepted': True}
+
     def runtime_config(self):
         path = self.bot.home / 'gui-runtime.json'
         private_file(path)
         config = json.loads(path.read_text(encoding='utf-8-sig'))
-        if set(config) != {'serverId', 'cwd', 'provider', 'model', 'thinking'}:
+        required = {'serverId', 'cwd', 'provider', 'model', 'thinking'}
+        if not required <= set(config) <= required | {'mode'} or not isinstance(config.get('mode', 'full-access'), str):
             raise ValueError('Runtime config')
         return config
 
@@ -268,38 +283,55 @@ class Conversations:
     def tick(self):
         config = self.runtime_config()
         for row in self.db.execute('SELECT id,title,agent_id,status,created FROM gui_conversations ORDER BY created').fetchall():
+            try:
+                self.tick_conversation(config, row)
+            except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError):
+                # One unreachable or foreign manager never stalls other conversations.
+                continue
+        self.tick_notices()
+
+    def tick_conversation(self, config, row):
             conversation, _, agent, status, _ = row
             if not agent:
+                # 'missing' keeps probing by label: a slow creation can still appear,
+                # while the GUI offers the operator an explicit restart.
                 if status == 'new':
                     with self.db:
                         self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('creating', conversation))
                     try:
                         agent = self.rpc(config, 'create', session=conversation, prompt=self.role_prompt())['id']
                     except (ValueError, OSError, subprocess.SubprocessError):
-                        continue  # Unknown creation is recovered by label, never repeated.
+                        return  # Unknown creation is recovered by label, never repeated.
                 else:
                     matches = self.rpc(config, 'recover', session=conversation)['agents']
+                    if not matches:
+                        with self.db:
+                            self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('missing', conversation))
+                        return
                     if len(matches) != 1:
-                        continue
+                        return
                     agent = matches[0]['id']
                 with self.db:
                     self.db.execute('UPDATE gui_conversations SET agent_id=?,status=? WHERE id=?', (agent, 'idle', conversation))
-                continue
+                return
+            pending = self.db.execute("SELECT 1 FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid','unknown') LIMIT 1", (conversation,)).fetchone()
+            if not pending and status == 'idle':
+                return  # Nothing to send or collect: skip the remote round trip.
             current = self.rpc(config, 'observe', session=conversation, agentId=agent)
             with self.db:
                 self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('running' if current['status'] == 'timeout' else current['status'], conversation))
             jobs = self.db.execute("SELECT * FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid') ORDER BY created LIMIT 1", (conversation,)).fetchone()
             if not jobs:
-                continue
+                return
             job_id, _, kind, prompt, state, _ = jobs
             marker = 'GUI_REQUEST_ID=' + job_id
             if state == 'prepared':
                 found = self.rpc(config, 'find', session=conversation, agentId=agent, marker=marker)['found']
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('waiting' if found else 'unknown', job_id))
-                continue
+                return
             if state == 'unknown':
-                continue
+                return  # Shown as stuck in the GUI until the operator resolves it.
             if state == 'queued' and current['status'] == 'idle':
                 projects = [p for p in project_list(self.bot.config()) if p['enabled']]
                 related = [p['id'] for p in projects if re.search(r'(?<![\w-])' + re.escape(p['id']) + r'(?![\w-])', prompt)]
@@ -321,6 +353,8 @@ class Conversations:
                     with self.db:
                         self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('invalid', job_id))
                         self.message(conversation, 'system', '봇의 응답을 안전하게 확인하지 못했습니다. 작업은 접수하지 않았습니다. 내용을 다시 알려주세요.')
+
+    def tick_notices(self):
         # Semantic state changes, not every repeated runner journal write.
         for task_id, encoded, context in self.db.execute('SELECT t.id,t.record,o.context FROM tasks t JOIN task_origins o ON o.task_id=t.id').fetchall():
             record, origin = json.loads(encoded), json.loads(context)

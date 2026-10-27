@@ -7,7 +7,7 @@ const out=path.resolve(process.argv[2]||'artifacts/screenshots');await mkdir(out
 const fixture=await preview();let browser;const records=[];
 try{
   browser=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});
-  for(const scheme of ['light','dark'])for(const width of [375,768,1440])for(const state of ['conversation','kanban','confirm','detail','retry','empty','loading','error','filtered-empty']){
+  for(const scheme of ['light','dark'])for(const width of [375,768,1440])for(const state of ['conversation','kanban','confirm','detail','retry','empty','loading','error','filtered-empty','stuck']){
     const page=await browser.newPage({viewport:{width,height:1000},colorScheme:scheme});
     await page.goto(fixture.url+'?state='+(['retry','filtered-empty'].includes(state)?'kanban':state));
     await page.getByText('Paseo 봇',{exact:true}).first().waitFor();

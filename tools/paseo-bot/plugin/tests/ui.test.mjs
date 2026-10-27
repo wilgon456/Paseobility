@@ -143,3 +143,17 @@ test('semantic tags maintain AA contrast and reduced motion stops the running in
   }
  } finally {await b?.close();await new Promise(r=>p.server.close(r));}
 });
+
+test('stuck delivery or a missing manager waits for one explicit operator action',async()=>{
+  const p=await preview();let b;
+  try{b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});const page=await b.newPage({viewport:{width:375,height:900}});
+    for(const [state,label] of [['stuck','이 요청 버리고 계속하기'],['stuck-manager','매니저 다시 시작']]){
+      await page.goto(p.url+'?state='+state);
+      await page.getByRole('heading',{name:'Paseo 봇',exact:true}).waitFor();
+      assert.equal(await page.evaluate(()=>(window.__actions??[]).length),0);  // Nothing is resolved automatically.
+      await page.getByRole('button',{name:label,exact:true}).click();
+      assert.deepEqual(await page.evaluate(()=>window.__actions.at(-1)),{action:'resolve',conversationId:'session-fixture'});
+      await page.getByRole('button',{name:label,exact:true}).waitFor({state:'detached'});
+    }
+  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
+});

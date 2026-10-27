@@ -1,6 +1,7 @@
 {
   "version": 1,
   "phaseTimeoutSeconds": 7200,
+  "transientGraceSeconds": 900,
   "projects": [
     {
       "id": "paseo_slash",
@@ -10,6 +11,7 @@
           "repo": "/absolute/macbook/path/paseo_slash",
           "defaultBranch": "main",
           "enabled": false,
+          "publish": "draft-pr",
           "gates": [
             "python3 -m unittest discover -s tests -p 'test_*.py'",
             "python3 scripts/validate-skills.py"

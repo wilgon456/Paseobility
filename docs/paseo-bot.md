@@ -53,6 +53,13 @@ never post to Slack, never delete protected runtimes, sessions or agents.
 Failed, blocked or unknown tasks close automatically once reported
 (`autoCloseTestSeconds`, default 600, for test/probe ids; `autoCloseSeconds`,
 default 86400, otherwise) or manually with `paseo-bot.ps1 close <id> -Reason ...`.
+A target with `publish: draft-pr` also gets a deterministic step after a
+`passed` verdict: the cleanup helper (not a model) commits any remaining
+evidenced changes on `paseo-bot/<task-id>`, pushes without force and opens one
+draft PR, or reuses the PR the work agent already opened or merged. Failed or
+blocked work is never published, a tree that changed after evidence capture is
+refused, and a publish failure keeps the worktree for inspection. The
+destination needs a Git identity, push access and an authenticated `gh`.
 Deployment commands are registry metadata for later authorized work; the bot
 never executes them as a deployment phase. Gates themselves must be trusted
 commands appropriate for that machine and safe without production secrets.
@@ -110,12 +117,18 @@ paths and confirming commands before setting `enabled: true`. Every target has:
 | `deployCommands` | Documented deploy commands, never run automatically |
 | `skills` | Relevant installed skills the task agent must read |
 | `enabled` | Admission policy for this target |
+| `publish` | `none` (default) or `draft-pr`: publish passed work as a draft PR |
+
+Top-level `transientGraceSeconds` (default 900) is how long a lost connection may
+last before an in-flight task is blocked; `phaseTimeoutSeconds` bounds each phase.
 
 `machineAliases` can map friendly names such as `MacBook` and `VAXPORT` to
 registered `MAC_HOME` and `VAX_COM` labels; matching still verifies server identity.
 A project may have multiple targets. Selection respects an explicit task machine;
 otherwise it picks the reachable eligible target with the fewest active agents,
-using registry order to break ties. Every required phase profile must exist on
+using registry order to break ties. Each machine runs at most one bot task; a
+task whose eligible machines are all busy stays `queued` (no RPC is spent on busy
+machines) while other machines progress in parallel. Every required phase profile must exist on
 that same target. Host identity is checked again for every RPC. Running tasks
 retain their admitted target/gates snapshot even if the registry later changes.
 The base is an explicit resolved SHA; no unconditional `origin/main` assumption.
@@ -161,8 +174,17 @@ Create a local workspace for that directory, launch a coordinator agent with the
 MANAGER.md brief, then `paseo script start paseo-bot --workspace <workspace-id>`.
 Keep the runtime checkout pinned while it is running. SIGTERM/SIGINT stops the
 loop after its current bounded RPC; already dispatched agents remain in Paseo.
-`health.json` carries last tick time and PID. The health CLI marks a tick older
-than 120 seconds unhealthy. A heartbeat proves the ticker, not provider health.
+`health.json` carries last tick time, PID, `activeTasks` and `webhook` (`ok` or
+`error`; the latter means completion notifications need inspection). It is
+refreshed after every task step. The health CLI marks a tick older than 120
+seconds unhealthy; `status` also counts webhook jobs by state. A heartbeat proves
+the ticker, not provider health.
+
+A lost connection, bridge timeout or unclassified transport error is not a
+verdict: the task keeps its state and the same step is retried without
+relaunching, recording `transientFailures`. Only after `transientGraceSeconds`
+without a successful step does it become `blocked`. Ownership, identity, schema
+and receipt failures still block immediately.
 
 ## Results, memory and recovery
 
@@ -212,7 +234,7 @@ Restart resumes recorded agents and phases. Unknown receipt, identity drift,
 permission wait, invalid JSON, incomplete gates or deadlines never becomes pass.
 Timeout leaves agents/worktrees intact; nothing automatically kills them.
 
-The v1 worker processes one task at a time. It does not move a partly completed
+The worker advances one task per machine. It does not move a partly completed
 task to another machine, retry failed code automatically, or synthesize missing
 profiles. After inspecting blocked/unknown agents, submit a separately scoped
 follow-up with a new ID. Do not delete journal rows to force a retry.

@@ -146,3 +146,18 @@ fi
 grep -q 'coverage is incomplete' "$TEST_ROOT/rg-error/report.md" || fail "scan failure not disclosed"
 if grep -q 'Verdict hint:.*Low' "$TEST_ROOT/rg-error/report.md"; then fail "scan error became clean verdict"; fi
 echo "ok 5 - fallback read errors remain failed coverage, never a clean scan"
+
+cat >"$MOCK_BIN/brew" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$INSTALL_CALLS"
+if [ "$*" = 'install gitleaks' ]; then exit 19; fi
+EOF
+chmod +x "$MOCK_BIN/brew"
+export INSTALL_CALLS="$TEST_ROOT/install-calls"
+if PATH="$MOCK_BIN:$BASE_BIN" bash "$SCRIPT_DIR/install-scanners.sh" --yes \
+    >"$TEST_ROOT/install.stdout" 2>"$TEST_ROOT/install.stderr"; then
+  fail "partial scanner install returned success"
+fi
+[ "$(grep -c '^install ' "$INSTALL_CALLS")" = 7 ] ||
+  fail "failed installation prevented the remaining independent installs"
+echo "ok 6 - partial scanner installation attempts remaining tools and returns failure"
