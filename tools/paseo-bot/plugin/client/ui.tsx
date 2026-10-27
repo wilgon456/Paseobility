@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon, Modal } from "@getpaseo/plugin/client/ui";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { AccessibilityInfo, Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { laneOf, stateLabel } from "../shared/model";
+import { statusTone, tagColors } from "../shared/colors";
 const Theme = createContext<PluginTheme | null>(null);
 export const UiProvider = Theme.Provider;
 export function useUi() {
@@ -27,6 +28,61 @@ export function useUi() {
     },
   };
 }
+export function useReducedMotion() {
+  const [reduced, setReduced] = useState(true);
+  useEffect(() => {
+    let live = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (live) setReduced(value); }).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduced);
+    return () => { live = false; subscription.remove(); };
+  }, []);
+  return reduced;
+}
+
+export function Tag({ label, tone, maxWidth }: { label: string; tone: string; maxWidth?: number }) {
+  const { c, small } = useUi();
+  const colors = tagColors(c.surface1, c.foreground, tone);
+  return <View testID="semantic-tag" style={{ backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, maxWidth }}>
+    <Text numberOfLines={1} accessibilityLabel={label} style={{ ...small, color: colors.foreground }}>{label}</Text>
+  </View>;
+}
+
+export function MotionIn({ children, motionKey, direction = 0 }: { children: ReactNode; motionKey: string; direction?: number }) {
+  const reduced = useReducedMotion();
+  const value = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    value.stopAnimation();
+    if (reduced) { value.setValue(1); return; }
+    value.setValue(0);
+    const animation = Animated.timing(value, { toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true });
+    animation.start(); return () => animation.stop();
+  }, [motionKey, reduced, value]);
+  return <Animated.View style={{ opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [5, 0] }) }, { translateX: value.interpolate({ inputRange: [0, 1], outputRange: [direction * -12, 0] }) }] }}>{children}</Animated.View>;
+}
+
+function StatusIcon({ group, color }: { group: string; color: string }) {
+  const reduced = useReducedMotion();
+  const pulse = useRef(new Animated.Value(1)).current;
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    pulse.stopAnimation(); pulse.setValue(1); spin.stopAnimation(); spin.setValue(0);
+    if (reduced) return;
+    if (group === "success") {
+      pulse.setValue(.6);
+      const done = Animated.timing(pulse, { toValue: 1, duration: 240, useNativeDriver: true });
+      done.start(); return () => { done.stop(); pulse.setValue(1); };
+    }
+    if (group !== "running") return;
+    const animation = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: .45, duration: 700, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+    ]));
+    const rotation = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1200, easing: Easing.linear, useNativeDriver: true }));
+    animation.start(); rotation.start(); return () => { animation.stop(); rotation.stop(); pulse.setValue(1); spin.setValue(0); };
+  }, [group, reduced, pulse, spin]);
+  return <Animated.View testID="status-icon" style={{ opacity: pulse, transform: [{ scale: group === "success" ? pulse : 1 }, { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }] }}><Glyph name={group === "success" ? "CircleCheck" : group === "failed" ? "CircleX" : group === "attention" ? "CircleAlert" : group === "running" ? "LoaderCircle" : "CircleDashed"} size={13} color={color} /></Animated.View>;
+}
+
 export function Glyph({
   name,
   size = 16,
@@ -47,6 +103,7 @@ export function Button({
   quiet = false,
   disabled = false,
   selected = false,
+  tone,
 }: {
   label: string;
   onPress: () => void;
@@ -55,9 +112,12 @@ export function Button({
   quiet?: boolean;
   disabled?: boolean;
   selected?: boolean;
+  tone?: string;
 }) {
   const { c, body } = useUi();
+  const tint = tone ? tagColors(c.surface1, c.foreground, tone) : null;
   const [hover, setHover] = useState(false),
+    [press, setPress] = useState(false),
     [focus, setFocus] = useState(false);
   return (
     <Pressable
@@ -66,6 +126,8 @@ export function Button({
       accessibilityState={{ disabled, selected }}
       disabled={disabled}
       onPress={onPress}
+      onPressIn={() => setPress(true)}
+      onPressOut={() => setPress(false)}
       onHoverIn={() => setHover(true)}
       onHoverOut={() => setHover(false)}
       onFocus={() => setFocus(true)}
@@ -84,15 +146,15 @@ export function Button({
           ? c.accent
           : quiet && !selected
             ? "transparent"
-            : c.border,
+            : tint?.border ?? c.border,
         backgroundColor: primary
           ? c.accent
           : hover || pressed || selected
             ? c.surface2
             : quiet
               ? "transparent"
-              : c.surface1,
-        opacity: disabled ? 0.45 : 1,
+              : tint?.background ?? c.surface1,
+        opacity: disabled ? 0.45 : primary && pressed ? 0.75 : primary && hover ? 0.88 : 1,
       })}
     >
       {icon && (
@@ -105,7 +167,7 @@ export function Button({
         style={{
           ...body,
           fontWeight: "500",
-          color: primary ? c.accentForeground : c.foreground,
+          color: primary ? c.accentForeground : (hover || press ? c.foreground : tint?.foreground ?? c.foreground),
         }}
       >
         {label}
@@ -115,50 +177,12 @@ export function Button({
 }
 export function Badge({ state, label }: { state: string; label?: string }) {
   const { c, small } = useUi();
-  const group = laneOf(state),
-    color =
-      group === "failed"
-        ? c.statusDanger
-        : group === "success"
-          ? c.statusSuccess
-          : group === "attention"
-            ? c.statusWarning
-            : group === "running"
-              ? c.accent
-              : c.foregroundMuted;
+  const group = laneOf(state);
+  const colors = tagColors(c.surface1, c.foreground, statusTone(group));
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        gap: 6,
-        alignItems: "center",
-        alignSelf: "flex-start",
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-        backgroundColor: c.surface2,
-        borderWidth: 1,
-        borderColor: color,
-      }}
-    >
-      <Glyph
-        name={
-          group === "success"
-            ? "CircleCheck"
-            : group === "failed"
-              ? "CircleX"
-              : group === "attention"
-                ? "CircleAlert"
-                : group === "running"
-                  ? "CircleDot"
-                  : "CircleDashed"
-        }
-        size={13}
-        color={color}
-      />
-      <Text style={{ ...small, color: c.foreground, fontWeight: "500" }}>
-        {label ?? stateLabel(state)}
-      </Text>
+    <View style={{ flexDirection: "row", gap: 6, alignItems: "center", alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+      <StatusIcon group={group} color={colors.foreground} />
+      <Text style={{ ...small, color: colors.foreground, fontWeight: "500" }}>{label ?? stateLabel(state)}</Text>
     </View>
   );
 }
@@ -168,12 +192,14 @@ export function Select({
   options,
   onChange,
   disabled = false,
+  tone,
 }: {
   label: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (s: string) => void;
   disabled?: boolean;
+  tone?: string;
 }) {
   const [open, setOpen] = useState(false),
     [search, setSearch] = useState("");
@@ -183,6 +209,7 @@ export function Select({
       <Button
         label={`${label}: ${options.find((o) => o.value === value)?.label ?? "선택"}`}
         icon="ChevronDown"
+        tone={tone}
         disabled={disabled}
         onPress={() => setOpen(true)}
       />

@@ -42,7 +42,7 @@ def route_model(body, stage):
 def fallback_model(model, reason):
     if reason == 'model-unavailable' and model == 'terra': return 'sol'
     if reason != 'quota': return None
-    return {'terra': 'claude', 'sol': 'claude', 'claude': 'go'}.get(model)
+    return {'terra': 'claude', 'sol': 'claude', 'claude': 'go', 'go': 'terra'}.get(model)
 
 STAGES = ['preflight', 'work', 'review', 'postflight']
 TERMINAL = {'passed', 'failed', 'blocked', 'unknown'}

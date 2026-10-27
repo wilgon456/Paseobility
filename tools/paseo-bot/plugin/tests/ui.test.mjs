@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {preview} from './preview.mjs';
 import {chrome} from './browser.mjs';
+import {contrast} from '../shared/colors.ts';
 test('conversation, confirmed admission, read-only kanban, filters, result and retry controls',async()=>{
   const p=await preview();let browser;
   try{
@@ -100,4 +101,45 @@ test('primary chat is centered and long kanban lanes remain independently reacha
  assert.ok(await lane.evaluate(e=>e.scrollHeight>e.clientHeight+100));await lane.evaluate(e=>e.scrollTop=e.scrollHeight);
  await page.getByRole('button',{name:'검토 작업 29, blocked',exact:true}).click();await page.getByRole('dialog',{name:'검토 작업 29',exact:true}).waitFor();
  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
+});
+
+test('plan is compact, details start closed and modification cancels without admission',async()=>{
+ const p=await preview(); let b;
+ try {
+  b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});
+  for(const colorScheme of ['light','dark'])for(const width of [375,768,1440]){
+   const page=await b.newPage({viewport:{width,height:1000},colorScheme}); await page.goto(p.url);
+   const card=page.getByTestId('plan-card'); await card.scrollIntoViewIfNeeded();
+   assert.equal(await page.getByTestId('plan-details').count(),0);
+   assert.ok((await card.boundingBox()).height <= 130, `plan height at ${width}`);
+   await page.getByRole('button',{name:'상세 펼치기',exact:true}).click();
+   await page.getByTestId('plan-details').waitFor();
+   await page.getByRole('button',{name:'상세 접기',exact:true}).click();
+   await page.getByTestId('plan-details').waitFor({state:'detached'});
+   await page.getByRole('button',{name:'수정',exact:true}).click();
+   assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='reject').length),1);
+   assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='approve').length),0);
+   await page.close();
+  }
+ } finally {await b?.close();await new Promise(r=>p.server.close(r));}
+});
+
+test('semantic tags maintain AA contrast and reduced motion stops the running indicator',async()=>{
+ const p=await preview(); let b;
+ try {
+  b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});
+  for(const colorScheme of ['light','dark']){
+   const page=await b.newPage({viewport:{width:1440,height:1000},colorScheme,reducedMotion:'reduce'});
+   await page.goto(p.url+'?state=kanban'); await page.getByTestId('task-card').first().waitFor();
+   const pairs=await page.getByTestId('semantic-tag').evaluateAll(nodes=>nodes.map(n=>[getComputedStyle(n).backgroundColor,getComputedStyle(n.querySelector('*')).color]));
+   assert.ok(pairs.length>4);
+   for(const [background,foreground] of pairs) assert.ok(contrast(background,foreground)>=4.5,`${background} ${foreground}`);
+   const indicator=page.getByRole('button',{name:'모바일 입력 흐름 개선, running'}).getByTestId('status-icon');
+   const first=await indicator.evaluate(n=>[getComputedStyle(n).opacity,getComputedStyle(n).transform]);
+   await page.waitForTimeout(1000);
+   const second=await indicator.evaluate(n=>[getComputedStyle(n).opacity,getComputedStyle(n).transform]);
+   assert.deepEqual(second,first);
+   await page.close();
+  }
+ } finally {await b?.close();await new Promise(r=>p.server.close(r));}
 });

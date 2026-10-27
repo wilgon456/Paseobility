@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ExternalLink, Markdown, useToast } from "@getpaseo/plugin/client/ui";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { Animated, ScrollView, Text, TextInput, View } from "react-native";
 import type { Action, Plan, Selection } from "../shared/contracts";
 import { makeTaskId, profileLabel, safePr } from "../shared/model";
 import type { Props, ActionResult } from "./screen";
-import { Button, Empty, Glyph, Notice, Select, useUi } from "./ui";
+import { Button, Empty, Glyph, Notice, Select, Tag, useReducedMotion, useUi } from "./ui";
 import { composerKeys } from "./web";
+import { projectTone, modelTone, effortTone } from "../shared/colors";
 type Request = { id: string; text: string; selection: Selection; conversationId?: string };
 export type DraftState = {
   draft: string;
@@ -19,7 +20,7 @@ export function Chat(
   p: Props & {
     composerRef: RefObject<TextInput | null>;
     perform: (i: Action) => Promise<ActionResult>;
-    admit: (p: Plan) => void;
+    admit: (p: Plan) => Promise<void>;
     memory: (id: string) => void;
     openTask: (id: string) => void;
     drafts: Map<string, DraftState>;
@@ -38,6 +39,12 @@ export function Chat(
     position = useRef(cached?.y ?? 0),
     restored = useRef(false);
   const [unread, setUnread] = useState(false);
+  const [planExpanded, setPlanExpanded] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const acceptGuard = useRef(false);
+  const planMotion = useRef(new Animated.Value(1)).current;
+  const detailMotion = useRef(new Animated.Value(0)).current;
+  const reducedMotion = useReducedMotion();
   const latest = useRef({ draft, problem, selection });
   latest.current = { draft, problem, selection };
   useEffect(
@@ -53,6 +60,22 @@ export function Chat(
   );
   const messages = p.data?.messages ?? [],
     plan = p.data?.plans.find((p) => p.state === "pending");
+  useEffect(() => { setPlanExpanded(false); detailMotion.setValue(0); }, [plan?.id, detailMotion]);
+  useEffect(() => () => { planMotion.stopAnimation(); detailMotion.stopAnimation(); }, [planMotion, detailMotion]);
+  function toggleDetails() {
+    const next = !planExpanded;
+    detailMotion.stopAnimation();
+    if (next) setPlanExpanded(true);
+    if (reducedMotion) { detailMotion.setValue(next ? 1 : 0); if (!next) setPlanExpanded(false); return; }
+    Animated.timing(detailMotion, { toValue: next ? 1 : 0, duration: 180, useNativeDriver: true }).start(({ finished }) => { if (finished && !next) setPlanExpanded(false); });
+  }
+  async function acceptPlan(value: Plan) {
+    if (acceptGuard.current) return;
+    acceptGuard.current = true; setAccepting(true);
+    const proceed = async () => { try { await p.admit(value); } finally { planMotion.setValue(1); acceptGuard.current = false; setAccepting(false); } };
+    if (reducedMotion) { await proceed(); return; }
+    Animated.timing(planMotion, { toValue: .35, duration: 160, useNativeDriver: true }).start(({ finished }) => { if (finished) void proceed(); else { acceptGuard.current = false; setAccepting(false); } });
+  }
   useEffect(() => {
     if (atBottom.current) scroll.current?.scrollToEnd({ animated: false });
     else setUnread(true);
@@ -228,36 +251,47 @@ export function Chat(
             </View>
           ))
         )}
-        {plan && (
-          <View testID="plan-card" style={{ ...t.panel, padding: 16, gap: 12 }}>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-            >
-              <Glyph name="ListChecks" />
-              <Text style={t.heading}>이렇게 진행할게요</Text>
-            </View>
-            {plan.tasks.map((task, i) => (
-              <View key={i} style={{ gap: 4 }}>
-                <Text style={t.body}>
-                  {plan.tasks.length > 1 ? `${i + 1}. ` : ""}
-                  {task.title}
-                </Text>
-                <Text style={t.small}>
-                  {task.project} · {task.machine || "프로젝트 기본 머신"} ·{" "}
-                  {task.resolvedModel ? ({terra:"GPT-6.1 Terra",sol:"GPT-6.1 Sol",claude:"Claude Fable",go:"OpenCode Go"}[task.resolvedModel]) : profileLabel(task.kind)} · {task.effort === "auto" || !task.effort ? (task.resolvedModel === "terra" || task.resolvedModel === "sol" ? "high (자동)" : "자동 effort") : task.effort}
-                </Text>
-                {!!task.modelReason && <Text style={t.small}>{task.modelReason}</Text>}
-
+        {plan && plan.tasks.length > 0 && (() => {
+          const first = plan.tasks[0];
+          const modelNames = { terra: "GPT-6.1 Terra", sol: "GPT-6.1 Sol", claude: "Claude Fable", go: "OpenCode Go" };
+          const model = (task: typeof first) => task.resolvedModel ? modelNames[task.resolvedModel] : profileLabel(task.kind);
+          const effort = (task: typeof first) => task.effort && task.effort !== "auto" ? task.effort : (task.resolvedModel === "terra" || task.resolvedModel === "sol" ? "high (자동)" : "자동");
+          return (
+            <Animated.View testID="plan-card" style={{ ...t.panel, padding: 8, gap: 4, minWidth: 0, opacity: planMotion }}>
+              <Text numberOfLines={1} style={{ ...t.body, fontWeight: "600" }}>
+                {first.title}{plan.tasks.length > 1 ? ` 외 ${plan.tasks.length - 1}개` : ""}
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ flexDirection: "row", gap: 4 }}>
+                <Tag label={first.project} maxWidth={p.compact ? 76 : 200} tone={projectTone(first.project, (p.data?.projects ?? []).map(x => x.id))} />
+                <Tag label={p.compact && first.resolvedModel === "terra" ? "Terra" : p.compact && first.resolvedModel === "sol" ? "Sol" : model(first)} tone={modelTone(first.resolvedModel || first.kind)} />
+                <Tag label={`effort ${p.compact ? effort(first).replace(" (자동)", "") : effort(first)}`} tone={effortTone(effort(first))} />
+                <Tag label={first.modelReason === "일반 작업 기본 모델" && p.compact ? "기본 작업" : first.modelReason || "자동 배정"} tone="gray" />
+              </ScrollView>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                <Button label="접수" primary onPress={() => void acceptPlan(plan)} disabled={accepting || p.pending || p.error || !p.data?.acceptsTasks} />
+                <Button label="수정" onPress={() => void (async () => {
+                  try {
+                    await p.perform({ action: "reject", conversationId: p.conversation, planId: plan.id });
+                    p.composerRef.current?.focus();
+                    toast.show("바꿀 내용을 알려주세요.");
+                  } catch {}
+                })()} disabled={accepting || p.pending || p.error} />
+                <Button label={planExpanded ? "상세 접기" : "상세 펼치기"} quiet icon={planExpanded ? "ChevronUp" : "ChevronDown"} onPress={toggleDetails} />
               </View>
-            ))}
-            <Button
-              label="접수"
-              primary
-              onPress={() => p.admit(plan)}
-              disabled={p.pending || p.error || !p.data?.acceptsTasks}
-            />
-          </View>
-        )}
+              {planExpanded && (
+                <Animated.View testID="plan-details" style={{ borderTopWidth: 1, borderColor: t.c.border, paddingTop: 8, gap: 8, opacity: detailMotion, transform: [{ translateY: detailMotion.interpolate({ inputRange: [0, 1], outputRange: [-4, 0] }) }] }}>
+                  {plan.tasks.map((task, i) => (
+                    <View key={i} style={{ gap: 2 }}>
+                      <Text style={t.body}>{i + 1}. {task.title}</Text>
+                      <Text style={t.small}>{task.project} · {task.machine || "프로젝트 기본 머신"} · {model(task)} · {effort(task)}</Text>
+                      {!!task.modelReason && <Text style={t.small}>{task.modelReason}</Text>}
+                    </View>
+                  ))}
+                </Animated.View>
+              )}
+            </Animated.View>
+          );
+        })()}
         {!!p.data?.deliveryState && (
           <Notice
             title={
@@ -317,9 +351,9 @@ export function Chat(
           }}
         />
         <View style={{flexDirection:"row", flexWrap:"wrap", gap:8}}>
-          <Select label="프로젝트" value={selection.project} disabled={!!request.current} options={[{value:"auto",label:"자동"}, ...(p.data?.projects ?? []).filter(x=>x.enabled).map(x=>({value:x.id,label:x.id}))]} onChange={(project)=>setSelection({...selection,project})} />
-          <Select label="모델" value={selection.model} disabled={!!request.current} options={[{value:"auto",label:"자동"},{value:"terra",label:"GPT-6.1 Terra"},{value:"sol",label:"GPT-6.1 Sol"},{value:"claude",label:"Claude Fable"},{value:"go",label:"OpenCode Go"}]} onChange={(model)=>setSelection({...selection,model:model as Selection["model"]})} />
-          <Select label="effort" value={selection.effort} disabled={!!request.current} options={[{value:"auto",label:"자동"},{value:"low",label:"Low"},{value:"medium",label:"Medium"},{value:"high",label:"High"}]} onChange={(effort)=>setSelection({...selection,effort:effort as Selection["effort"]})} />
+          <Select tone={selection.project === "auto" ? "gray" : projectTone(selection.project, (p.data?.projects ?? []).map(x => x.id))} label="프로젝트" value={selection.project} disabled={!!request.current} options={[{value:"auto",label:"자동"}, ...(p.data?.projects ?? []).filter(x=>x.enabled).map(x=>({value:x.id,label:x.id}))]} onChange={(project)=>setSelection({...selection,project})} />
+          <Select tone={modelTone(selection.model)} label="모델" value={selection.model} disabled={!!request.current} options={[{value:"auto",label:"자동"},{value:"terra",label:"GPT-6.1 Terra"},{value:"sol",label:"GPT-6.1 Sol"},{value:"claude",label:"Claude Fable"},{value:"go",label:"OpenCode Go"}]} onChange={(model)=>setSelection({...selection,model:model as Selection["model"]})} />
+          <Select tone={effortTone(selection.effort)} label="effort" value={selection.effort} disabled={!!request.current} options={[{value:"auto",label:"자동"},{value:"low",label:"Low"},{value:"medium",label:"Medium"},{value:"high",label:"High"}]} onChange={(effort)=>setSelection({...selection,effort:effort as Selection["effort"]})} />
         </View>
         </View>
         <View

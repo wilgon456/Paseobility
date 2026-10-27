@@ -132,6 +132,7 @@ class BotTests(unittest.TestCase):
         self.assertEqual(m.route_model(dict(kind='hard'), 'work'), 'claude')
         self.assertEqual(m.route_model(dict(kind='sync'), 'work'), 'go')
         self.assertEqual(m.fallback_model('terra', 'model-unavailable'), 'sol')
+        self.assertEqual(m.fallback_model('go', 'quota'), 'terra')
         self.assertIsNone(m.fallback_model('terra', 'other'))
 
     def test_preparation_cannot_accept_an_implementation_receipt(self):
