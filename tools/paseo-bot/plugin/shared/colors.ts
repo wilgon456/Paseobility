@@ -41,7 +41,7 @@ export function projectTone(project: string, projects: string[] = [project]): st
   return hueColor(chosen);
 }
 export function modelTone(model: string): string {
-  return /claude|fable/i.test(model) ? 'orange' : /opencode|^go$/i.test(model) ? 'purple' : /terra|sol|gpt|codex/i.test(model) ? 'green' : 'gray';
+  return /claude|opus|fable/i.test(model) ? 'orange' : /opencode|deepseek|flash|^go$/i.test(model) ? 'purple' : /terra|sol|gpt|codex/i.test(model) ? 'green' : 'gray';
 }
 export function effortTone(effort: string): string {
   return /high|ultra|max/i.test(effort) ? 'red' : /medium/i.test(effort) ? 'yellow' : /low/i.test(effort) ? 'blue' : 'gray';
@@ -52,10 +52,14 @@ export function statusTone(group: string): string {
 export function requesterTone(requester: string): string {
   return requester === 'grok' ? 'purple' : requester === 'gui' ? 'blue' : 'gray';
 }
-export function tagColors(surface: string, foreground: string, tone: string) {
-  const base = rgb(surface), ink = rgb(tones[tone] || (tone.startsWith('#') ? tone : tones.gray));
+export function toneInk(tone: string): string {
+  return tones[tone] || (/^(#|rgb)/.test(tone) ? tone : tones.gray);
+}
+/** Tinted fill/border for a tone over a surface; `mix` is the tone share of the fill. */
+export function tagColors(surface: string, foreground: string, tone: string, mix = .16) {
+  const base = rgb(surface), ink = rgb(toneInk(tone));
   if (!base || !ink) return { background: surface, foreground, border: surface };
-  const background = hex(base.map((n, i) => n * .84 + ink[i] * .16) as RGB);
+  const background = hex(base.map((n, i) => n * (1 - mix) + ink[i] * mix) as RGB);
   const text = contrast(background, foreground) >= 4.5 ? foreground : contrast(background, '#000000') >= contrast(background, '#ffffff') ? '#000000' : '#ffffff';
   const border = hex(base.map((n, i) => n * .48 + ink[i] * .52) as RGB);
   return { background, foreground: text, border };

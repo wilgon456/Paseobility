@@ -4,7 +4,7 @@ import re
 import socket
 import time
 from gui_state import project_list
-from paseo_bot import scrub
+from paseo_bot import MODELS, model_alias, route_model, scrub
 
 GROUPS = {'waiting': ['queued', 'ready'], 'running': ['dispatching', 'running', 'repairing'],
           'attention': ['blocked', 'unknown'], 'success': ['passed'], 'failed': ['failed']}
@@ -52,8 +52,13 @@ def snapshot(db, home, request, writable, read_json):
     tasks = []
     for task_id, state, body, record, context in rows:
         body, record, context = json.loads(body), json.loads(record), json.loads(context or '{}')
+        # Active alias once dispatched (fallbacks included), otherwise the planned work model.
+        model = model_alias(record.get('model'))
+        if model not in MODELS:
+            try: model = route_model(body, 'work')
+            except (TypeError, AttributeError): model = ''
         tasks.append(dict(id=task_id, state=state, title=body.get('title', task_id), project=body['project'],
-                          machine=record.get('machine', body.get('machine', '')), profile=record.get('profile', ''),
+                          machine=record.get('machine', body.get('machine', '')), profile=record.get('profile', ''), model=model if model in MODELS else '',
                           stage=record.get('stage', ''), createdAt=record.get('createdAt', 0),
                           updatedAt=record.get('updatedAt', record.get('createdAt', 0)),
                           requester=context.get('requester', 'legacy'), conversationId=context.get('conversationId', ''),

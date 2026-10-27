@@ -2,9 +2,11 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const taskId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/);
+// "terra" is retired: older stored plans may still carry it and display as Sol.
+const storedModel = z.enum(["auto", "terra", "sol", "claude", "go"]);
 export const selectionSchema = z.object({
   project: z.string().min(1).max(200),
-  model: z.enum(["auto", "terra", "sol", "claude", "go"]),
+  model: z.enum(["auto", "sol", "claude", "go"]),
   effort: z.enum(["auto", "low", "medium", "high"]),
 }).strict();
 export type Selection = z.infer<typeof selectionSchema>;
@@ -16,10 +18,10 @@ export const taskSchema = z
     prompt: z.string().trim().min(1).max(40000),
     kind: z.enum(["gpt", "hard", "refactor", "sync"]),
     machine: z.string().trim().min(1).max(200).optional(),
-    model: selectionSchema.shape.model.optional(),
+    model: storedModel.optional(),
     effort: selectionSchema.shape.effort.optional(),
     modelReason: z.string().max(300).optional(),
-    resolvedModel: z.enum(["terra", "sol", "claude", "go"]).optional(),
+    resolvedModel: storedModel.exclude(["auto"]).optional(),
   })
   .strict();
 export const rowSchema = z.object({
@@ -31,6 +33,7 @@ export const rowSchema = z.object({
   createdAt: z.number().default(0),
   machine: z.string().default(""),
   profile: z.string().default(""),
+  model: z.string().default(""),
   stage: z.string().default(""),
   requester: z.string().default("legacy"),
   conversationId: z.string().default(""),

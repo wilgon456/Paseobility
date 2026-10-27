@@ -51,6 +51,13 @@ class GuiTests(unittest.TestCase):
         self.assertNotIn('repo', json.dumps(out)); self.assertNotIn('prompt', json.dumps(out))
         self.assertFalse(gui.handle(self.home, dict(action='status'))['acceptsTasks'])
 
+    def test_row_model_tracks_routing_and_active_fallback(self):
+        self.bot.submit(dict(self.task, id='hard-1', kind='hard'))
+        self.bot.submit(dict(self.task, id='legacy-1', model='terra'))
+        self.bot.save(dict(self.bot.submit(dict(self.task, id='fallback-1')), model='go'))
+        rows = {row['id']: row['model'] for row in gui.handle(self.home, dict(action='sync'))['tasks']}
+        self.assertEqual(rows, {'hard-1': 'claude', 'legacy-1': 'sol', 'fallback-1': 'go'})
+
     def test_missing_db_is_not_created(self):
         absent = self.home / 'missing'
         with self.assertRaises((OSError, ValueError)): gui.handle(absent, dict(action='status'))

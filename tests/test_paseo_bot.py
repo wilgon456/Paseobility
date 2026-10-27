@@ -170,6 +170,7 @@ class BotTests(unittest.TestCase):
         self.bot.tick()
         self.assertEqual(self.bot.result('task-1')['state'], 'ready')
         self.bot.tick()
+        self.assertEqual(self.fake.launches[-2]['modelAlias'], 'sol')
         self.assertEqual(self.fake.launches[-1]['modelAlias'], 'claude')
         self.assertEqual(self.fake.launches[-1]['workspaceId'], original['workspaceId'])
         self.bot.tick(); self.bot.tick()
@@ -182,12 +183,28 @@ class BotTests(unittest.TestCase):
     def test_invalid_model_selection_and_policy(self):
         for model in ('commandcode', '../x'):
             with self.assertRaises(ValueError): self.bot.submit(dict(self.body, model=model))
-        self.assertEqual(m.route_model(dict(kind='gpt'), 'work'), 'terra')
+        self.assertEqual(m.route_model(dict(kind='gpt'), 'work'), 'sol')
+        self.assertEqual(m.route_model(dict(kind='refactor'), 'work'), 'sol')
         self.assertEqual(m.route_model(dict(kind='hard'), 'work'), 'claude')
+        self.assertEqual(m.route_model(dict(kind='hard'), 'review'), 'sol')
         self.assertEqual(m.route_model(dict(kind='sync'), 'work'), 'go')
-        self.assertEqual(m.fallback_model('terra', 'model-unavailable'), 'sol')
-        self.assertEqual(m.fallback_model('go', 'quota'), 'terra')
-        self.assertIsNone(m.fallback_model('terra', 'other'))
+        self.assertEqual(m.route_model(dict(kind='hard', model='terra'), 'work'), 'sol')
+        self.assertEqual([m.MODELS[k][1:] for k in ('sol', 'claude', 'go')],
+                         [('codex', 'gpt-6.1-sol'), ('claude', 'claude-opus-5-5'), ('opencode', 'opencode-go/deepseek-v4.1-flash')])
+        self.assertNotIn('terra', m.MODELS)
+        self.assertEqual(m.fallback_model('sol', 'quota'), 'claude')
+        self.assertEqual(m.fallback_model('terra', 'quota'), 'claude')
+        self.assertEqual(m.fallback_model('claude', 'quota'), 'go')
+        self.assertEqual(m.fallback_model('go', 'quota'), 'sol')
+        self.assertEqual(m.fallback_model('sol', 'model-unavailable'), 'claude')
+        self.assertIsNone(m.fallback_model('sol', 'other'))
+        self.assertEqual(m.model_alias(['terra']), ['terra'])
+
+    def test_legacy_terra_task_dispatches_on_sol(self):
+        self.bot.submit(dict(self.body, model='terra'))
+        for _ in range(4): self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['stage'], 'work')
+        self.assertEqual({launch['modelAlias'] for launch in self.fake.launches}, {'sol'})
 
     def test_preparation_cannot_accept_an_implementation_receipt(self):
         record = dict(target=self.target('MAC_MINI'), branch='paseo-bot/task-1')

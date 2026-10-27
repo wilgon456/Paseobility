@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Modal, useToast } from "@getpaseo/plugin/client/ui";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { Action, Plan, TaskRow } from "../shared/contracts";
 import { makeTaskId, relativeTime } from "../shared/model";
 import type { Props } from "./screen";
 import { Chat, type DraftState } from "./chat";
 import { Board } from "./board";
 import { Detail } from "./detail";
-import { Button, Glyph, Notice, Skeleton, useUi } from "./ui";
+import { Button, Glyph, Notice, Skeleton, StatusIcon, useUi } from "./ui";
+import { statusTone, toneInk } from "../shared/colors";
 import { shortcuts } from "./web";
 
 export function Console(p: Props) {
@@ -111,6 +112,8 @@ export function Console(p: Props) {
           : running
             ? `${running}개 작업 중`
             : "연결됨";
+  const statusGroup = p.error ? "failed" : (p.loading && !p.data) || p.data?.deliveryState || (p.data?.configured && !p.data.managerHealthy) ? "attention" : running ? "running" : "success";
+  const statusColors = t.tint(statusTone(statusGroup), 0.14, t.c.surface0);
   return (
     <View
       testID="bot-console"
@@ -129,28 +132,35 @@ export function Console(p: Props) {
           flexWrap: "wrap",
         }}
       >
-        <View style={{ flex: 1, minWidth: 140, gap: 4 }}>
-          <Text
-            accessibilityRole="header"
-            style={{ ...t.heading, fontSize: 22, lineHeight: 28 }}
-          >
-            Paseo 봇
-          </Text>
-          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-            <Glyph name={p.error ? "WifiOff" : "CircleDot"} size={12} />
-            <Text style={t.small}>{status}</Text>
+        <View style={{ flex: 1, minWidth: 160, flexDirection: "row", gap: 12, alignItems: "center" }}>
+          <View style={{ width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.c.accent, ...t.shadow() }}>
+            <Glyph name="Bot" size={22} color={t.c.accentForeground} />
+          </View>
+          <View style={{ gap: 2, flexShrink: 1 }}>
+            <Text
+              accessibilityRole="header"
+              style={{ ...t.heading, fontSize: 20, lineHeight: 26 }}
+            >
+              Paseo 봇
+            </Text>
+            <View accessibilityLiveRegion="polite" style={{ flexDirection: "row", gap: 6, alignItems: "center", alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 1, borderRadius: 999, backgroundColor: statusColors.background, borderWidth: 1, borderColor: statusColors.border }}>
+              <StatusIcon group={statusGroup} color={statusColors.foreground} size={12} />
+              <Text style={{ ...t.small, color: statusColors.foreground, fontWeight: "500" }}>{status}</Text>
+            </View>
           </View>
         </View>
         <Button
           label="대화 기록"
           icon="History"
           quiet
+          iconOnly={p.compact}
           onPress={() => setHistory(true)}
         />
         <Button
           label="새 대화"
           icon="Plus"
           quiet
+          iconOnly={p.compact}
           disabled={p.pending || !p.data?.configured || p.error}
           onPress={() => void create()}
         />
@@ -158,6 +168,9 @@ export function Console(p: Props) {
           label={board ? "작업 닫기" : "작업 보기"}
           icon="Columns3"
           selected={board}
+          tone="blue"
+          iconOnly={p.compact}
+          badge={running || undefined}
           onPress={() => setBoard(!board)}
         />
       </View>
@@ -245,27 +258,43 @@ export function Console(p: Props) {
               paddingLeft: p.compact ? 0 : 20,
             }}
           >
-            <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
-              {[
-                ["대기", waiting],
-                ["진행", running],
-                ["완료", queue.passed ?? 0],
-                ["실패", queue.failed ?? 0],
-              ].map(([label, n]) => (
-                <View
-                  key={label}
-                  style={{
-                    ...t.panel,
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+              {([
+                ["waiting", "대기", waiting, "CircleDashed"],
+                ["running", "진행", running, "LoaderCircle"],
+                ["success", "완료", queue.passed ?? 0, "CircleCheck"],
+                ["failed", "실패", queue.failed ?? 0, "CircleX"],
+              ] as const).map(([group, label, n, icon]) => {
+                const on = p.filters.group === group, colors = t.tint(statusTone(group), on ? 0.26 : 0.12, t.c.surface0);
+                return (
+                <Pressable
+                  key={group}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label} ${n}개${on ? ", 필터 해제" : ", 필터"}`}
+                  accessibilityState={{ selected: on }}
+                  onPress={() => p.setFilters({ group: on ? "" : group, offset: 0 })}
+                  style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
                     flex: 1,
-                    minWidth: 64,
-                    padding: 10,
-                    gap: 4,
-                  }}
+                    minWidth: 72,
+                    minHeight: 44,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    gap: 2,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: on ? toneInk(statusTone(group)) : colors.border,
+                    backgroundColor: colors.background,
+                    transform: [{ translateY: hovered && !pressed ? -2 : 0 }, { scale: pressed ? 0.97 : 1 }],
+                    ...t.shadow(!!hovered),
+                  })}
                 >
-                  <Text style={t.small}>{label}</Text>
-                  <Text style={t.heading}>{n}</Text>
-                </View>
-              ))}
+                  <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                    <Glyph name={icon} size={13} color={colors.foreground} />
+                    <Text style={{ ...t.small, color: colors.foreground }}>{label}</Text>
+                  </View>
+                  <Text style={{ ...t.heading, fontSize: 20, lineHeight: 26, color: colors.foreground }}>{n}</Text>
+                </Pressable>
+              );})}
             </View>
             <Text style={t.small}>
               VAXPORT · {p.data?.healthy ? "정상" : "확인 필요"} · 마지막 응답{" "}

@@ -7,7 +7,7 @@ import re
 import subprocess
 import time
 import uuid
-from paseo_bot import Bot, ID, PROFILES, MODELS, EFFORTS, route_model, TERMINAL, fleet, lock, private_file, scrub
+from paseo_bot import Bot, ID, PROFILES, MODEL_CHOICES, EFFORTS, model_alias, route_model, TERMINAL, fleet, lock, private_file, scrub
 
 STAGES = ['preflight', 'work', 'review', 'postflight']
 
@@ -97,11 +97,11 @@ class Conversations:
         if not isinstance(selection, dict) or set(selection) - {'project', 'model', 'effort'}:
             raise ValueError('Invalid selection')
         project = selection.get('project', 'auto')
-        model = selection.get('model', 'auto')
+        model = model_alias(selection.get('model', 'auto'))
         effort = selection.get('effort', 'auto')
         if project != 'auto' and not any(p['id'] == project and any(t.get('enabled') for t in p['targets']) for p in self.bot.config()['projects']):
             raise ValueError('Unknown project selection')
-        if model not in ('auto', *MODELS) or effort not in EFFORTS:
+        if model not in MODEL_CHOICES or effort not in EFFORTS:
             raise ValueError('Unknown model or effort')
         selection = dict(project=project, model=model, effort=effort)
         prompt = text + '\nUser selections (enforced by service): ' + dumps(selection)
@@ -136,9 +136,9 @@ class Conversations:
                 raise ValueError('Plan text')
             if len(task['title']) > 300 or len(task['prompt']) > 40000 or task.get('kind', 'gpt') not in PROFILES:
                 raise ValueError('Plan bounds')
-            if task.get('model', 'auto') not in ('auto', *MODELS) or task.get('effort', 'auto') not in EFFORTS or ('modelReason' in task and (not isinstance(task['modelReason'], str) or len(task['modelReason']) > 300)):
+            if task.get('model', 'auto') not in MODEL_CHOICES or task.get('effort', 'auto') not in EFFORTS or ('modelReason' in task and (not isinstance(task['modelReason'], str) or len(task['modelReason']) > 300)):
                 raise ValueError('Invalid model selection')
-            if 'resolvedModel' in task and task['resolvedModel'] != route_model(task, 'work'):
+            if 'resolvedModel' in task and model_alias(task['resolvedModel']) != route_model(task, 'work'):
                 raise ValueError('Invalid resolved model')
             targets = next((p['targets'] for p in config['projects'] if p['id'] == task['project']), [])
             if not any(t.get('enabled') and (not task.get('machine') or t['machine'] == task['machine']) for t in targets):
@@ -241,11 +241,11 @@ class Conversations:
                     if task.get('project') != selection['project']:
                         task.pop('machine', None)
                     task['project'] = selection['project']
-                task['model'] = selection.get('model', 'auto')
+                task['model'] = model_alias(selection.get('model', 'auto'))
                 task['effort'] = selection.get('effort', 'auto')
                 task['resolvedModel'] = route_model(task, 'work')
                 task['modelReason'] = ('직접 선택' if task['model'] != 'auto' else
-                    {'terra':'일반 작업 기본 모델', 'claude':'어려운 설계 또는 버그', 'go':'가벼운 작업'}[task['resolvedModel']])
+                    {'sol':'일반 작업 기본 모델', 'claude':'어려운 설계 또는 버그', 'go':'가벼운 작업'}[task['resolvedModel']])
             tasks = self.validate_steps(tasks)
         proposed_retry = response.get('retryOf')
         if proposed_retry:

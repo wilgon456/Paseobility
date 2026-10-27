@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon, Modal } from "@getpaseo/plugin/client/ui";
-import { AccessibilityInfo, Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { laneOf, stateLabel } from "../shared/model";
-import { statusTone, tagColors } from "../shared/colors";
+import { AccessibilityInfo, Animated, Easing, Pressable, Text, TextInput, View } from "react-native";
+import { laneOf, stageLabel, stageProgress, stages, stateLabel } from "../shared/model";
+import { statusTone, tagColors, toneInk } from "../shared/colors";
 const Theme = createContext<PluginTheme | null>(null);
 export const UiProvider = Theme.Provider;
 export function useUi() {
@@ -24,8 +24,16 @@ export function useUi() {
       backgroundColor: c.surface1,
       borderWidth: 1,
       borderColor: c.border,
-      borderRadius: 12,
+      borderRadius: 14,
     },
+    // Two elevations: resting cards and hovered/raised surfaces.
+    shadow: (raised = false) => ({
+      shadowColor: "#000000",
+      shadowOpacity: raised ? 0.14 : 0.06,
+      shadowRadius: raised ? 16 : 6,
+      shadowOffset: { width: 0, height: raised ? 6 : 2 },
+    }),
+    tint: (tone: string, mix = 0.16, surface: string = c.surface1) => tagColors(surface, c.foreground, tone, mix),
   };
 }
 export function useReducedMotion() {
@@ -39,11 +47,15 @@ export function useReducedMotion() {
   return reduced;
 }
 
-export function Tag({ label, tone, maxWidth }: { label: string; tone: string; maxWidth?: number }) {
+/** Pill tag. The label Text is the first element so its color is the one checked for contrast. */
+export function Tag({ label, tone, maxWidth, dot = false, surface }: { label: string; tone: string; maxWidth?: number; dot?: boolean; surface?: string }) {
   const { c, small } = useUi();
-  const colors = tagColors(c.surface1, c.foreground, tone);
-  return <View testID="semantic-tag" style={{ backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, maxWidth }}>
-    <Text numberOfLines={1} accessibilityLabel={label} style={{ ...small, color: colors.foreground }}>{label}</Text>
+  const colors = tagColors(surface ?? c.surface1, c.foreground, tone);
+  return <View testID="semantic-tag" style={{ backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, maxWidth, flexShrink: 0 }}>
+    <Text numberOfLines={1} accessibilityLabel={label} style={{ ...small, color: colors.foreground, fontWeight: "500" }}>
+      {dot && <Text style={{ color: toneInk(tone) }}>{"● "}</Text>}
+      {label}
+    </Text>
   </View>;
 }
 
@@ -54,13 +66,17 @@ export function MotionIn({ children, motionKey, direction = 0 }: { children: Rea
     value.stopAnimation();
     if (reduced) { value.setValue(1); return; }
     value.setValue(0);
-    const animation = Animated.timing(value, { toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: true });
+    const animation = Animated.timing(value, { toValue: 1, duration: direction ? 320 : 240, easing: Easing.out(Easing.cubic), useNativeDriver: true });
     animation.start(); return () => animation.stop();
   }, [motionKey, reduced, value]);
-  return <Animated.View style={{ opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [5, 0] }) }, { translateX: value.interpolate({ inputRange: [0, 1], outputRange: [direction * -12, 0] }) }] }}>{children}</Animated.View>;
+  return <Animated.View style={{ opacity: value, transform: [
+    { translateY: value.interpolate({ inputRange: [0, 1], outputRange: [direction ? 0 : 8, 0] }) },
+    { translateX: value.interpolate({ inputRange: [0, 1], outputRange: [direction * -28, 0] }) },
+    { scale: value.interpolate({ inputRange: [0, 1], outputRange: [direction ? 0.96 : 0.99, 1] }) },
+  ] }}>{children}</Animated.View>;
 }
 
-function StatusIcon({ group, color }: { group: string; color: string }) {
+export function StatusIcon({ group, color, size = 13 }: { group: string; color: string; size?: number }) {
   const reduced = useReducedMotion();
   const pulse = useRef(new Animated.Value(1)).current;
   const spin = useRef(new Animated.Value(0)).current;
@@ -68,8 +84,8 @@ function StatusIcon({ group, color }: { group: string; color: string }) {
     pulse.stopAnimation(); pulse.setValue(1); spin.stopAnimation(); spin.setValue(0);
     if (reduced) return;
     if (group === "success") {
-      pulse.setValue(.6);
-      const done = Animated.timing(pulse, { toValue: 1, duration: 240, useNativeDriver: true });
+      pulse.setValue(.4);
+      const done = Animated.spring(pulse, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true });
       done.start(); return () => { done.stop(); pulse.setValue(1); };
     }
     if (group !== "running") return;
@@ -80,7 +96,39 @@ function StatusIcon({ group, color }: { group: string; color: string }) {
     const rotation = Animated.loop(Animated.timing(spin, { toValue: 1, duration: 1200, easing: Easing.linear, useNativeDriver: true }));
     animation.start(); rotation.start(); return () => { animation.stop(); rotation.stop(); pulse.setValue(1); spin.setValue(0); };
   }, [group, reduced, pulse, spin]);
-  return <Animated.View testID="status-icon" style={{ opacity: pulse, transform: [{ scale: group === "success" ? pulse : 1 }, { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }] }}><Glyph name={group === "success" ? "CircleCheck" : group === "failed" ? "CircleX" : group === "attention" ? "CircleAlert" : group === "running" ? "LoaderCircle" : "CircleDashed"} size={13} color={color} /></Animated.View>;
+  return <Animated.View testID="status-icon" style={{ opacity: group === "success" ? 1 : pulse, transform: [{ scale: group === "success" ? pulse : 1 }, { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }] }}><Glyph name={group === "success" ? "CircleCheck" : group === "failed" ? "CircleX" : group === "attention" ? "CircleAlert" : group === "running" ? "LoaderCircle" : "CircleDashed"} size={size} color={color} /></Animated.View>;
+}
+
+/** Four-stage track: completed stages fill, the active one breathes while running. */
+export function StageRail({ state, stage }: { state: string; stage: string }) {
+  const { c, small } = useUi();
+  const reduced = useReducedMotion();
+  const group = laneOf(state);
+  const done = stageProgress(state, stage);
+  const ink = toneInk(statusTone(group));
+  const glow = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    glow.stopAnimation(); glow.setValue(1);
+    if (reduced || group !== "running") return;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(glow, { toValue: .35, duration: 650, useNativeDriver: true }),
+      Animated.timing(glow, { toValue: 1, duration: 650, useNativeDriver: true }),
+    ]));
+    loop.start(); return () => { loop.stop(); glow.setValue(1); };
+  }, [group, reduced, glow]);
+  const caption = group === "success" ? "4/4" : group === "waiting" ? "시작 전" : `${Math.min(done + 1, 4)}/4`;
+  return <View testID="stage-rail" accessibilityLabel={`진행 ${caption} ${group === "waiting" ? "" : stageLabel(stages[Math.min(done, 3)])}`.trim()} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+    <View style={{ flex: 1, flexDirection: "row", gap: 4 }}>
+      {stages.map((s, i) => {
+        const filled = i < done || group === "success";
+        const current = i === done && group !== "success" && group !== "waiting";
+        return <View key={s} style={{ flex: 1, height: 6, borderRadius: 999, backgroundColor: c.surface2, overflow: "hidden" }}>
+          {(filled || current) && <Animated.View style={{ flex: 1, borderRadius: 999, backgroundColor: ink, opacity: current ? (group === "running" ? glow : 0.55) : 1 }} />}
+        </View>;
+      })}
+    </View>
+    <Text style={{ ...small, minWidth: 40, textAlign: "right" }}>{caption}</Text>
+  </View>;
 }
 
 export function Glyph({
@@ -104,6 +152,9 @@ export function Button({
   disabled = false,
   selected = false,
   tone,
+  badge,
+  iconOnly = false,
+  round = false,
 }: {
   label: string;
   onPress: () => void;
@@ -113,12 +164,16 @@ export function Button({
   disabled?: boolean;
   selected?: boolean;
   tone?: string;
+  badge?: number;
+  iconOnly?: boolean;
+  round?: boolean;
 }) {
-  const { c, body } = useUi();
-  const tint = tone ? tagColors(c.surface1, c.foreground, tone) : null;
+  const t = useUi(), { c, body } = t;
+  const tint = tone ? t.tint(tone) : null;
+  const strong = tone ? t.tint(tone, 0.26) : null;
   const [hover, setHover] = useState(false),
-    [press, setPress] = useState(false),
     [focus, setFocus] = useState(false);
+  const active = hover && !disabled;
   return (
     <Pressable
       accessibilityRole="button"
@@ -126,17 +181,16 @@ export function Button({
       accessibilityState={{ disabled, selected }}
       disabled={disabled}
       onPress={onPress}
-      onPressIn={() => setPress(true)}
-      onPressOut={() => setPress(false)}
       onHoverIn={() => setHover(true)}
       onHoverOut={() => setHover(false)}
       onFocus={() => setFocus(true)}
       onBlur={() => setFocus(false)}
       style={({ pressed }) => ({
         minHeight: 44,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        borderRadius: 8,
+        minWidth: iconOnly ? 44 : undefined,
+        paddingHorizontal: iconOnly ? (badge ? 8 : 0) : 16,
+        paddingVertical: 8,
+        borderRadius: round ? 999 : 10,
         flexDirection: "row",
         gap: 8,
         alignItems: "center",
@@ -144,34 +198,43 @@ export function Button({
         borderWidth: 1,
         borderColor: focus
           ? c.accent
-          : quiet && !selected
-            ? "transparent"
-            : tint?.border ?? c.border,
+          : primary
+            ? c.accent
+            : quiet && !selected && !active
+              ? "transparent"
+              : (active ? strong?.border : tint?.border) ?? c.border,
         backgroundColor: primary
           ? c.accent
-          : hover || pressed || selected
-            ? c.surface2
-            : quiet
-              ? "transparent"
-              : tint?.background ?? c.surface1,
-        opacity: disabled ? 0.45 : primary && pressed ? 0.75 : primary && hover ? 0.88 : 1,
+          : selected
+            ? strong?.background ?? c.surface2
+            : active || pressed
+              ? strong?.background ?? c.surface2
+              : quiet
+                ? "transparent"
+                : tint?.background ?? c.surface1,
+        opacity: disabled ? 0.45 : primary && pressed ? 0.8 : primary && active ? 0.9 : 1,
+        transform: [{ scale: pressed && !disabled ? 0.97 : 1 }],
+        ...(primary && active ? t.shadow(true) : {}),
       })}
     >
       {icon && (
         <Glyph
           name={icon}
-          color={primary ? c.accentForeground : c.foregroundMuted}
+          color={primary ? c.accentForeground : tint ? tint.foreground : active || selected ? c.foreground : c.foregroundMuted}
         />
       )}
-      <Text
+      {!iconOnly && <Text
         style={{
           ...body,
           fontWeight: "500",
-          color: primary ? c.accentForeground : (hover || press ? c.foreground : tint?.foreground ?? c.foreground),
+          color: primary ? c.accentForeground : tint?.foreground ?? c.foreground,
         }}
       >
         {label}
-      </Text>
+      </Text>}
+      {!!badge && <View style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: c.accent }}>
+        <Text style={{ fontSize: 12, lineHeight: 16, fontWeight: "600", color: c.accentForeground }}>{badge}</Text>
+      </View>}
     </Pressable>
   );
 }
@@ -180,12 +243,14 @@ export function Badge({ state, label }: { state: string; label?: string }) {
   const group = laneOf(state);
   const colors = tagColors(c.surface1, c.foreground, statusTone(group));
   return (
-    <View style={{ flexDirection: "row", gap: 6, alignItems: "center", alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+    <View style={{ flexDirection: "row", gap: 6, alignItems: "center", alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
       <StatusIcon group={group} color={colors.foreground} />
-      <Text style={{ ...small, color: colors.foreground, fontWeight: "500" }}>{label ?? stateLabel(state)}</Text>
+      <Text style={{ ...small, color: colors.foreground, fontWeight: "600" }}>{label ?? stateLabel(state)}</Text>
     </View>
   );
 }
+export type Option = { value: string; label: string; note?: string; tone?: string };
+/** Chip-shaped picker. The accessible name stays "label: value". */
 export function Select({
   label,
   value,
@@ -193,26 +258,54 @@ export function Select({
   onChange,
   disabled = false,
   tone,
+  icon,
 }: {
   label: string;
   value: string;
-  options: { value: string; label: string }[];
+  options: Option[];
   onChange: (s: string) => void;
   disabled?: boolean;
   tone?: string;
+  icon?: string;
 }) {
   const [open, setOpen] = useState(false),
-    [search, setSearch] = useState("");
-  const { c, body, small } = useUi();
+    [search, setSearch] = useState(""),
+    [hover, setHover] = useState(false),
+    [focus, setFocus] = useState(false);
+  const t = useUi(), { c, body, small } = t;
+  const current = options.find((o) => o.value === value);
+  const colors = t.tint(tone ?? "gray", hover && !disabled ? 0.24 : 0.12);
   return (
     <View style={{ minWidth: 0 }}>
-      <Button
-        label={`${label}: ${options.find((o) => o.value === value)?.label ?? "선택"}`}
-        icon="ChevronDown"
-        tone={tone}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${current?.label ?? "선택"}`}
+        accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={() => setOpen(true)}
-      />
+        onHoverIn={() => setHover(true)}
+        onHoverOut={() => setHover(false)}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
+        style={({ pressed }) => ({
+          minHeight: 44,
+          paddingHorizontal: 12,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: focus ? c.accent : colors.border,
+          backgroundColor: colors.background,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          opacity: disabled ? 0.45 : 1,
+          transform: [{ scale: pressed && !disabled ? 0.97 : 1 }],
+        })}
+      >
+        {icon && <Glyph name={icon} size={14} color={colors.foreground} />}
+        <Text numberOfLines={1} style={{ ...small, color: colors.foreground }}>{label}</Text>
+        <Text numberOfLines={1} style={{ ...body, fontWeight: "600", color: colors.foreground, flexShrink: 1 }}>{current?.label ?? "선택"}</Text>
+        <Glyph name="ChevronDown" size={14} color={colors.foreground} />
+      </Pressable>
       <Modal title={label} open={open} onOpenChange={setOpen}>
         <Modal.Content>
           {options.length > 8 && (
@@ -226,7 +319,7 @@ export function Select({
                 ...body,
                 borderWidth: 1,
                 borderColor: c.border,
-                borderRadius: 8,
+                borderRadius: 10,
                 minHeight: 44,
                 padding: 12,
               }}
@@ -248,19 +341,22 @@ export function Select({
                     setOpen(false);
                     setSearch("");
                   }}
-                  style={{
+                  style={(state) => ({
                     minHeight: 44,
-                    padding: 12,
-                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 10,
                     backgroundColor:
-                      value === o.value ? c.surface2 : c.surface0,
+                      value === o.value || (state as { hovered?: boolean }).hovered ? c.surface2 : c.surface0,
                     flexDirection: "row",
                     gap: 12,
                     alignItems: "center",
-                  }}
+                  })}
                 >
+                  <View style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: toneInk(o.tone ?? "gray") }} />
                   <View style={{ flex: 1 }}>
                     <Text style={body}>{o.label}</Text>
+                    {!!o.note && <Text style={small}>{o.note}</Text>}
                   </View>
                   {value === o.value && (
                     <Glyph name="Check" color={c.foreground} />
@@ -280,12 +376,17 @@ export function Notice({
   title,
   children,
   error = false,
+  tone,
+  icon,
 }: {
   title: string;
   children?: ReactNode;
   error?: boolean;
+  tone?: string;
+  icon?: string;
 }) {
-  const { c, body, muted } = useUi();
+  const t = useUi(), { body, muted } = t;
+  const colors = t.tint(tone ?? (error ? "red" : "blue"), 0.08);
   return (
     <View
       accessibilityRole={error ? "alert" : undefined}
@@ -293,13 +394,13 @@ export function Notice({
         padding: 16,
         gap: 8,
         borderWidth: 1,
-        borderColor: error ? c.statusWarning : c.border,
-        borderRadius: 12,
-        backgroundColor: c.surface1,
+        borderColor: colors.border,
+        borderRadius: 14,
+        backgroundColor: colors.background,
       }}
     >
       <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-        <Glyph name={error ? "WifiOff" : "Info"} />
+        <Glyph name={icon ?? (error ? "WifiOff" : "Info")} color={toneInk(tone ?? (error ? "red" : "blue"))} />
         <Text style={{ ...body, fontWeight: "600", flex: 1 }}>{title}</Text>
       </View>
       {children && (
@@ -316,11 +417,21 @@ export function Notice({
 }
 export function Skeleton({ label = "불러오는 중" }: { label?: string }) {
   const { c } = useUi();
+  const reduced = useReducedMotion();
+  const shimmer = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(shimmer, { toValue: .5, duration: 700, useNativeDriver: true }),
+      Animated.timing(shimmer, { toValue: 1, duration: 700, useNativeDriver: true }),
+    ]));
+    loop.start(); return () => loop.stop();
+  }, [reduced, shimmer]);
   return (
-    <View
+    <Animated.View
       accessibilityLabel={label}
       accessibilityLiveRegion="polite"
-      style={{ gap: 12, padding: 16 }}
+      style={{ gap: 12, padding: 16, opacity: shimmer }}
     >
       {[0.8, 1, 0.6].map((w, i) => (
         <View
@@ -328,24 +439,29 @@ export function Skeleton({ label = "불러오는 중" }: { label?: string }) {
           style={{
             height: i === 1 ? 72 : 20,
             width: `${w * 100}%`,
-            borderRadius: 8,
+            borderRadius: 10,
             backgroundColor: c.surface2,
           }}
         />
       ))}
-    </View>
+    </Animated.View>
   );
 }
 export function Empty({
   title,
   body,
   action,
+  icon = "MessageSquareDashed",
+  tone = "blue",
 }: {
   title: string;
   body: string;
   action?: ReactNode;
+  icon?: string;
+  tone?: string;
 }) {
   const t = useUi();
+  const colors = t.tint(tone, 0.16, t.c.surface0);
   return (
     <View
       style={{
@@ -355,7 +471,9 @@ export function Empty({
         alignItems: "flex-start",
       }}
     >
-      <Glyph name="MessageSquareDashed" size={24} />
+      <View style={{ width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }}>
+        <Glyph name={icon} size={24} color={toneInk(tone)} />
+      </View>
       <Text style={t.heading}>{title}</Text>
       <Text style={t.muted}>{body}</Text>
       {action}

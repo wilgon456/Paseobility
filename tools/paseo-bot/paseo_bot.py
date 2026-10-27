@@ -27,23 +27,31 @@ import hosts as fleet
 
 PROFILES = {'sync': 'git-sync', 'hard': 'coding-hard', 'refactor': 'refactor-bulk', 'gpt': 'gpt-task'}
 # Stable aliases are the only user-selectable providers/models. Profiles carry host-local permissions.
-MODELS = {'terra': ('gpt-task', 'codex', 'gpt-6.1-terra'),
-          'sol': ('gpt-task', 'codex', 'gpt-6.1-sol'),
-          'claude': ('coding-hard', 'claude', 'claude-fable-5-1'),
-          'go': ('refactor-bulk', 'opencode', 'opencode-go/glm-5.3-flash')}
+# sol is the default, claude is reserved for the hardest work and go for lightweight work.
+MODELS = {'sol': ('gpt-task', 'codex', 'gpt-6.1-sol'),
+          'claude': ('coding-hard', 'claude', 'claude-opus-5-5'),
+          'go': ('refactor-bulk', 'opencode', 'opencode-go/deepseek-v4.1-flash')}
+# Retired aliases still present in queued tasks or older GUI clients resolve to the current default.
+LEGACY_MODELS = {'terra': 'sol'}
+MODEL_CHOICES = ('auto', *MODELS, *LEGACY_MODELS)
 EFFORTS = {'auto', 'low', 'medium', 'high'}
+
+def model_alias(model):
+    return LEGACY_MODELS.get(model, model) if isinstance(model, str) else model
 
 def route_model(body, stage):
     selected = body.get('model', 'auto')
-    if selected != 'auto': return selected
+    if selected != 'auto': return model_alias(selected)
     if stage == 'work' and classify(body) == 'hard': return 'claude'
     if stage == 'work' and classify(body) == 'sync': return 'go'
-    return 'terra'
+    return 'sol'
+
+# Usage limits (or a model missing on the host) rotate sol -> claude -> go -> sol; callers skip models already tried.
+FALLBACK = {'sol': 'claude', 'claude': 'go', 'go': 'sol'}
 
 def fallback_model(model, reason):
-    if reason == 'model-unavailable' and model == 'terra': return 'sol'
-    if reason != 'quota': return None
-    return {'terra': 'claude', 'sol': 'claude', 'claude': 'go', 'go': 'terra'}.get(model)
+    if reason not in ('quota', 'model-unavailable'): return None
+    return FALLBACK.get(model_alias(model))
 
 STAGES = ['preflight', 'work', 'review', 'postflight']
 TERMINAL = {'passed', 'failed', 'blocked', 'unknown'}
@@ -333,7 +341,7 @@ class Bot:
         allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine', 'pr_url', 'requester', 'model', 'effort', 'modelReason'}
         if not isinstance(body, dict) or set(body) - allowed or not ID.fullmatch(body.get('id', '')):
             raise ValueError('Invalid task ID or fields.')
-        if body.get('model', 'auto') not in ('auto', *MODELS) or body.get('effort', 'auto') not in EFFORTS or not isinstance(body.get('modelReason', ''), str) or len(body.get('modelReason', '')) > 300:
+        if body.get('model', 'auto') not in MODEL_CHOICES or body.get('effort', 'auto') not in EFFORTS or not isinstance(body.get('modelReason', ''), str) or len(body.get('modelReason', '')) > 300:
             raise ValueError('Invalid model selection.')
         if body.get('kind', 'gpt') not in PROFILES:
             raise ValueError('kind must be sync, hard, refactor or gpt.')
@@ -638,7 +646,7 @@ class Bot:
                 return self.save(r)
             if observed['status'] == 'error' and observed.get('errorKind') in ('quota', 'model-unavailable'):
                 next_model = fallback_model(run.get('modelAlias', r.get('model')), observed['errorKind'])
-                used = [item.get('modelAlias') for item in r['runs'] if item.get('stage') == stage]
+                used = [model_alias(item.get('modelAlias')) for item in r['runs'] if item.get('stage') == stage]
                 if next_model and next_model not in used:
                     r.update(state='ready', retryModel=next_model, retryWorkspace=run['workspaceId'], retryCwd=run['cwd'],
                              reason='Provider limit or model availability; retrying in the same workspace.')
