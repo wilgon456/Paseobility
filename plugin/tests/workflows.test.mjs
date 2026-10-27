@@ -123,6 +123,32 @@ test("partial installation failure restores prior skills", () =>
       "old",
     );
   }));
+test("failed backup move removes only this invocation's staged skill", () =>
+  fixture(async (dir) => {
+    const source = join(dir, "source"),
+      home = join(dir, "home"),
+      backup = join(dir, "backup"),
+      root = join(home, ".agents/skills");
+    for (const [path, text] of [
+      [join(source, "skills/paseo-browser/SKILL.md"), "new"],
+      [join(root, "paseo-browser/SKILL.md"), "old"],
+      [join(backup, ".agents/paseo-browser/SKILL.md"), "previous backup"],
+      [join(root, "unrelated.paseobility-stage/marker"), "keep"],
+    ]) {
+      await mkdir(join(path, ".."), { recursive: true });
+      await writeFile(path, text);
+    }
+    await assert.rejects(installSkills(source, home, backup, ["paseo-browser"]));
+    assert.deepEqual((await readdir(root)).sort(), [
+      "paseo-browser",
+      "unrelated.paseobility-stage",
+    ]);
+    assert.equal(await readFile(join(root, "paseo-browser/SKILL.md"), "utf8"), "old");
+    assert.equal(
+      await readFile(join(backup, ".agents/paseo-browser/SKILL.md"), "utf8"),
+      "previous backup",
+    );
+  }));
 test("rollback refuses to delete concurrent user edits", () =>
   fixture(async (dir) => {
     const source = join(dir, "source"),

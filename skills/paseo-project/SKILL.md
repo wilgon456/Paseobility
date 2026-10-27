@@ -30,7 +30,9 @@ command manifests. Do not resurvey a repository just because a session began.
 Keep `.paseobility/` context current: when it is missing or stale and you have
 just learned the project, write or refresh it so the next session can reuse it
 instead of resurveying. It is local state; if the repository does not already
-ignore `.paseobility/`, add it to `.git/info/exclude` rather than `.gitignore`.
+ignore `.paseobility/`, add it to the local exclude file resolved by
+`git rev-parse --git-path info/exclude` rather than `.gitignore`; `.git` can be
+a file in a worktree.
 Generated context is a snapshot and never overrides current `AGENTS.md`
 instructions, including nested ones for selected modules.
 

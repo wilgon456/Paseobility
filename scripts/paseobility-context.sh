@@ -24,11 +24,15 @@ EOF
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root)
-      ROOT="${2:-}"
+      [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != --* ]] ||
+        { echo "--root requires a path" >&2; exit 2; }
+      ROOT="$2"
       shift 2
       ;;
     --out)
-      OUT_DIR="${2:-}"
+      [ "$#" -ge 2 ] && [ -n "$2" ] && [[ "$2" != --* ]] ||
+        { echo "--out requires a path" >&2; exit 2; }
+      OUT_DIR="$2"
       shift 2
       ;;
     --force)
@@ -64,7 +68,7 @@ if [ -z "$OUT_DIR" ]; then
   OUT_DIR="$ROOT/.paseobility"
 fi
 
-mkdir -p "$OUT_DIR"
+if [ "$STDOUT" -eq 0 ]; then mkdir -p "$OUT_DIR"; fi
 
 relpath() {
   local path="$1"
@@ -78,6 +82,9 @@ write_file() {
   local path="$1"
   if [ -e "$path" ] && [ "$FORCE" -ne 1 ]; then
     printf '[skip] %s exists. Use --force to overwrite.\n' "$(relpath "$path")" >&2
+    # Consume the producer even when skipping, or pipefail turns a large
+    # unchanged context into a SIGPIPE failure on repeated runs.
+    cat > /dev/null
     return 0
   fi
   cat > "$path"
@@ -86,7 +93,7 @@ write_file() {
 
 project_files() {
   find "$ROOT" \
-    \( -path "$ROOT/.git" -o -path "$ROOT/node_modules" -o -path "$ROOT/vendor" -o -path "$ROOT/dist" -o -path "$ROOT/build" -o -path "$ROOT/target" -o -path "$ROOT/.paseobility" \) -prune \
+    \( -type d \( -name .git -o -name node_modules -o -name vendor -o -name dist -o -name build -o -name target -o -name .paseobility \) -o -path "$OUT_DIR" \) -prune \
     -o -type f -print | sort
 }
 
@@ -354,7 +361,7 @@ EOF
 
 ```text
 EOF
-  project_files | sed "s#^$ROOT/##" | sed -n '1,250p'
+  project_files | while IFS= read -r file; do relpath "$file"; done | sed -n '1,250p'
   cat <<'EOF'
 ```
 EOF

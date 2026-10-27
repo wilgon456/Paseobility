@@ -16,13 +16,24 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $SkillsDir = Join-Path $RepoRoot "skills"
 $VersionFile = Join-Path $RepoRoot "VERSION"
 $Version = "dev"
-if (Test-Path $VersionFile) {
+if (Test-Path -LiteralPath $VersionFile) {
   $Version = (Get-Content -LiteralPath $VersionFile -TotalCount 1).Trim()
 }
 
 if ([string]::IsNullOrWhiteSpace($TargetHome)) {
   throw "TargetHome is empty. Pass -TargetHome or ensure USERPROFILE is set."
 }
+
+# Preflight all selections before creating targets or replacing any skills.
+foreach ($name in $Skill) {
+  if ($name -cnotmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$' -or $name.Length -gt 64) {
+    throw "invalid skill name: $name"
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $SkillsDir "$name/SKILL.md") -PathType Leaf)) {
+    throw "skill not found or missing SKILL.md: $name"
+  }
+}
+$Skill = @($Skill | Select-Object -Unique)
 
 function Write-Status {
   param(
@@ -38,7 +49,7 @@ function Copy-Skills {
     [string]$BackupParent
   )
 
-  if (-not (Test-Path $SkillsDir)) {
+  if (-not (Test-Path -LiteralPath $SkillsDir)) {
     throw "skills directory not found: $SkillsDir"
   }
 
@@ -49,31 +60,24 @@ function Copy-Skills {
   $skillDirs = @()
   if ($Skill.Count -gt 0) {
     foreach ($name in $Skill) {
-      if ([string]::IsNullOrWhiteSpace($name)) {
-        continue
-      }
       $source = Join-Path $SkillsDir $name
-      $skillFile = Join-Path $source "SKILL.md"
-      if (-not (Test-Path $skillFile)) {
-        throw "skill not found or missing SKILL.md: $name"
-      }
       $skillDirs += $source
     }
   } else {
     $skillDirs = Get-ChildItem -LiteralPath $SkillsDir -Directory | Where-Object {
-      Test-Path (Join-Path $_.FullName "SKILL.md")
+      Test-Path -LiteralPath (Join-Path $_.FullName "SKILL.md")
     } | ForEach-Object { $_.FullName }
   }
 
   foreach ($source in $skillDirs) {
     $name = Split-Path -Leaf $source
     $dest = Join-Path $Target $name
-    if ((Test-Path $dest) -and (-not $NoBackup)) {
+    if ((Test-Path -LiteralPath $dest) -and (-not $NoBackup)) {
       New-Item -ItemType Directory -Force $backupRoot | Out-Null
       Copy-Item -LiteralPath $dest -Destination $backupRoot -Recurse -Force
       $backupCount += 1
     }
-    if (Test-Path $dest) {
+    if (Test-Path -LiteralPath $dest) {
       Remove-Item -LiteralPath $dest -Recurse -Force
     }
     Copy-Item -LiteralPath $source -Destination $Target -Recurse -Force
@@ -163,7 +167,7 @@ function Find-PaseoCli {
   }
 
   foreach ($candidate in $candidates) {
-    if ($candidate -and (Test-Path $candidate)) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
       return $candidate
     }
   }
@@ -206,6 +210,7 @@ if (-not $wantsRuntime) {
     if ($LASTEXITCODE -ne 0) { $runtimeStatus = "failed" }
   } catch {
     $runtimeStatus = "failed"
+    Write-Status "error" $_.Exception.Message
   }
   if ($runtimeStatus -eq "failed") {
     Write-Host ""

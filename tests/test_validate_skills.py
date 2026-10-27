@@ -58,3 +58,9 @@ class CatalogTests(unittest.TestCase):
     def test_missing_body_is_rejected(self):
         self.skill_file.write_text('---\nname: paseo-test\ndescription: test\n---\n')
         self.assertIn('instructions missing', '\n'.join(validator.validate(self.root)))
+
+    def test_non_object_manifests_return_validation_errors(self):
+        for manifest in [None, [], "catalog", 42]:
+            with self.subTest(manifest=manifest):
+                (self.root / 'paseobility.json').write_text(json.dumps(manifest))
+                self.assertTrue(validator.validate(self.root))

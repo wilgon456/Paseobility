@@ -98,25 +98,30 @@ export async function installSkills(source, home, backup, ids) {
         if (exists?.isSymbolicLink())
           throw Error("A skill uses a symbolic link; update it manually.");
         await fs.mkdir(join(backup, owner), { recursive: true });
-        const stage = target + ".paseobility-stage-" + process.pid;
-        await fs.cp(from, stage, {
-          recursive: true,
-          errorOnExist: true,
-          force: false,
-        });
-        if ((await treeDigest(stage)) !== digest)
-          throw Error("Staged skill verification failed.");
-        if (exists) await fs.rename(target, saved);
-        const change = {
-          target,
-          saved,
-          existed: !!exists,
-          digest,
-          installed: false,
-        };
-        changes.push(change);
-        await fs.rename(stage, target);
-        change.installed = true;
+        const stageRoot = await fs.mkdtemp(join(root, `.${id}.paseobility-stage-`));
+        const stage = join(stageRoot, "skill");
+        try {
+          await fs.cp(from, stage, {
+            recursive: true,
+            errorOnExist: true,
+            force: false,
+          });
+          if ((await treeDigest(stage)) !== digest)
+            throw Error("Staged skill verification failed.");
+          if (exists) await fs.rename(target, saved);
+          const change = {
+            target,
+            saved,
+            existed: !!exists,
+            digest,
+            installed: false,
+          };
+          changes.push(change);
+          await fs.rename(stage, target);
+          change.installed = true;
+        } finally {
+          await fs.rm(stageRoot, { recursive: true, force: true });
+        }
       }
     }
     return changes;

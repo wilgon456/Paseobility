@@ -17,6 +17,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -164,6 +165,23 @@ class DoctorUnitTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.doctor = load_doctor_module()
+
+    def test_paseo_status_exit_zero_does_not_imply_reachability(self):
+        for connected, expected in [("reachable", "reachable"),
+                                    ("not_probed", "unreachable"),
+                                    ("unreachable", "unreachable")]:
+            with self.subTest(connected=connected):
+                output = json.dumps({"connectedDaemon": connected})
+                with patch.object(self.doctor, "run_command",
+                                  side_effect=[(0, "0.13.0"), (0, output)]):
+                    result = self.doctor.check_paseo("paseo", 1)
+                self.assertEqual(result["reachability"], expected)
+
+    def test_unrecognized_paseo_status_is_unknown(self):
+        with patch.object(self.doctor, "run_command",
+                          side_effect=[(0, "0.13.0"), (0, "{}")]):
+            result = self.doctor.check_paseo("paseo", 1)
+        self.assertEqual(result["reachability"], "unknown")
 
     def test_stopped_daemon_on_nonzero_exit_is_stopped_not_unsupported(self):
         # cua-driver 0.34.x: `status --json` exits 1 and says so on stderr.

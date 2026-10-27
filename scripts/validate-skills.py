@@ -13,6 +13,8 @@ def validate(root):
     errors = []
     try:
         manifest = json.loads((root / 'paseobility.json').read_text(encoding='utf-8'))
+        if not isinstance(manifest, dict):
+            return ['manifest must be a JSON object']
         names = manifest['skills']
         if not isinstance(names, list) or not names or any(not isinstance(name, str) for name in names):
             return ['manifest skills must be a nonempty string array']
