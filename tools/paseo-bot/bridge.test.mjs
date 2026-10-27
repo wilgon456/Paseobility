@@ -6,17 +6,25 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const bridge=fileURLToPath(new URL('./bridge.mjs',import.meta.url));
-function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle'}={}) {
+function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false}={}) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bot-bridge-test-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  fs.mkdirSync(path.join(dir,'utils'));
  const module=path.join(dir,'utils/client.js');
  fs.writeFileSync(path.join(dir,'package.json'),'{"type":"module"}');
- fs.writeFileSync(module,`let probes=0;export async function connectToDaemon(){return {
+ fs.writeFileSync(module,`import {createHash} from 'node:crypto';let probes=0,remote;export async function connectToDaemon(){return {
  getDaemonStatus:async()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1'}),
+ getLastServerInfoMessage:()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1',features:{workspaceRequestReceipts:true}}),
  getDaemonConfig:async()=>({config:{agentProfiles:[{name:'gpt-task',provider:'codex',model:'fixture-model',thinkingOptionId:'high',${noMode?'':"modeId:'read-only',"}featureValues:${features?'{fast_mode:true}':'{}'},notes:'Fixture profile'}]}}),
  getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:${warming?"(++probes>2?'ready':'loading')":"'ready'"},defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}]}]}),
  listProjects:async()=>({projects:[{projectRootPath:'/repo',projectDisplayName:'fixture'}]}),
+ openProject:async()=>({workspace:{id:'local1',projectId:'project1',workspaceDirectory:'/repo'}}),
+ createWorkspace:async(x)=>({workspace:{id:'w1',projectId:x.source.projectId,workspaceDirectory:'/worktree',workspaceKind:'worktree'}}),
+ fetchWorkspaces:async(o)=>({entries:o.filter?.query?[{id:'w1',projectId:'project1',workspaceDirectory:'/worktree',workspaceKind:'worktree'}]:${sibling?"[{id:'other',workspaceDirectory:'/worktree/subdir'}]":'[]'},pageInfo:{hasMore:false}}),
+ listTerminals:async()=>({terminals:[]}),
+ createTerminal:async(cwd,name,requestId,opts)=>{remote=JSON.parse(opts.args.at(-1));return {terminal:{id:'owned-terminal'}}},
+ captureTerminal:async()=>{const bytes=Buffer.from('fixture patch');const result=remote.action==='snapshot'?{file:remote.file,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')}:remote.action==='verify'?{verified:true}:{worktreeRemoved:true,branch:'deleted'};return {lines:['PASEO_BOT_CLEANUP='+JSON.stringify(result)]}},
+ killTerminal:async()=>({}),readFile:async()=>({bytes:Buffer.from('fixture patch')}),archiveWorkspace:async()=>({archivedAt:'2026-01-01T00:00:00Z'}),
  fetchAgents:async()=>({entries:[{agent:{id:'owned',labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree',status:'idle'}}],pageInfo:{hasMore:false}}),
  fetchAgent:async()=>({agent:{id:'owned',status:${JSON.stringify(agentStatus)},lastError:${JSON.stringify(errorText)},labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree'}}),
  sendMessage:async()=>({accepted:true}),
@@ -35,11 +43,31 @@ test('host identity mismatch fails closed without connection data',t=>{
 test('fresh daemon profiles and connected projects are selected',t=>{
  const f=fixture(t);const r=f.call({action:'discover'});assert.equal(r.ok,true);assert.equal(r.result.profiles[0].model,'fixture-model');assert.equal(r.result.projects.length,1);
 });
-test('CLI materializes profile, uses worktree, no caller or conflicting home',t=>{
- const f=fixture(t);const r=f.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'literal $(not-a-shell) prompt',branch:'paseo-bot/test',base:'a'.repeat(40)});
+test('CLI materializes profile, uses existing workspace, no caller or conflicting home',t=>{
+ const f=fixture(t);const r=f.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'literal $(not-a-shell) prompt',workspaceId:'w1'});
  assert.equal(r.ok,true);const a=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json')));
- for(const flag of ['--no-wait','--provider','--model','--thinking','--mode','--new-workspace','--new-branch','--base','--label'])assert.ok(a.argv.includes(flag));
+ for(const flag of ['--no-wait','--provider','--model','--thinking','--mode','--workspace','--label'])assert.ok(a.argv.includes(flag));
+ assert.ok(!a.argv.includes('--new-workspace'));
  assert.equal(a.home,undefined);assert.equal(a.caller,undefined);assert.equal(a.workspace,undefined);assert.equal(a.argv.at(-1),'literal $(not-a-shell) prompt');assert.equal(r.result.workspaceId,'w1');
+});
+test('opens a reusable project and explicitly creates a worktree in it',t=>{
+ const f=fixture(t);
+ assert.deepEqual(f.call({action:'open-project',repo:'/repo'}).result,{projectId:'project1',workspaceId:'local1',cwd:'/repo'});
+ const result=f.call({action:'create-workspace',repo:'/repo',projectId:'project1',branch:'paseo-bot/test',base:'a'.repeat(40),key:'paseo-bot:fixture',title:'fixture'});
+ assert.deepEqual(result.result,{workspaceId:'w1',cwd:'/worktree'});
+});
+test('snapshot, verification and archive require ownership and preserve exact patch bytes',t=>{
+ const f=fixture(t), common={repo:'/repo',projectId:'project1',workspaceId:'w1',worktree:'/worktree',runs:[{agentId:'owned',attempt:'attempt'}],base:'a'.repeat(40)};
+ const snap=f.call({action:'snapshot-workspace',...common});
+ assert.equal(snap.ok,true);assert.equal(Buffer.from(snap.result.patch,'base64').toString(),'fixture patch');
+ const archive=f.call({action:'archive-workspace',...common,sha256:snap.result.sha256,remoteFile:snap.result.remoteFile});
+ assert.equal(archive.ok,true);
+ assert.equal(f.call({action:'archive-workspace',...common,runs:[],sha256:snap.result.sha256,remoteFile:snap.result.remoteFile}).ok,false);
+ assert.equal(f.call({action:'finish-workspace',repo:'/repo',worktree:'/worktree',branch:'paseo-bot/test',preflightWorkspaceId:'local1'}).result.branch,'deleted');
+});
+test('cleanup refuses fallback removal while another workspace references the tree',t=>{
+ const f=fixture(t,{sibling:true});
+ assert.deepEqual(f.call({action:'finish-workspace',repo:'/repo',worktree:'/worktree',branch:'paseo-bot/test',preflightWorkspaceId:'local1'}).result,{worktreeRemoved:false,branch:'not-checked'});
 });
 test('unsupported profile features cannot be silently dropped',t=>{
  const f=fixture(t,{features:true});assert.equal(f.call({action:'launch',profile:'gpt-task'}).ok,false);assert.equal(fs.existsSync(path.join(f.dir,'argv.json')),false);

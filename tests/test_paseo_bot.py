@@ -31,11 +31,31 @@ class Fake:
         self.fail_repair = False
         self.postflight_suffix = ''
         self.postflight_override = None
+        self.work_verdict = 'pass'
         self.busy = {'MacBook': 3, 'MAC_MINI': 0, 'MAC_COM': 1, 'VAXPORT': 2}
+        self.workspaces = []
+        self.cleaned = []
+        self.cleanup_failure = None
+        self.branch_status = 'deleted'
 
     def __call__(self, host, action, **kw):
         if action == 'discover':
             return {'profiles': [{'name': n, 'provider': 'codex', 'model': 'fixture'} for n in m.PROFILES.values()], 'busy': self.busy[host['label']], 'version': '0.13.1', 'projects': []}
+        if action == 'open-project':
+            return {'projectId': 'project1', 'workspaceId': 'workspace1', 'cwd': kw['repo']}
+        if action == 'create-workspace':
+            self.workspaces.append(kw)
+            return {'workspaceId': 'workspace2', 'cwd': '/worktree'}
+        if action in ('snapshot-workspace', 'archive-workspace', 'finish-workspace'):
+            self.cleaned.append(action)
+            if self.cleanup_failure == action:
+                raise ValueError('cleanup failed')
+            if action == 'snapshot-workspace':
+                patch = b'fixture binary patch\x00'
+                return {'patch': m.base64.b64encode(patch).decode(), 'size': len(patch), 'sha256': m.hashlib.sha256(patch).hexdigest(), 'remoteFile': '.paseo-bot-evidence-12345678-1234-1234-1234-123456789abc.patch'}
+            if action == 'archive-workspace':
+                return {'archivedAt': '2026-01-01T00:00:00Z'}
+            return {'worktreeRemoved': True, 'branch': self.branch_status}
         if action == 'recover':
             return {'agents': self.recovered}
         if action == 'repair':
@@ -48,12 +68,14 @@ class Fake:
             if self.fail_launch:
                 raise ValueError('unknown receipt')
             i = len(self.launches)
-            return {'agentId': 'agent' + str(i), 'workspaceId': kw.get('workspaceId', 'workspace' + str(i)), 'cwd': '/repo' if i == 1 else '/worktree', 'profile': kw['profile']}
+            return {'agentId': 'agent' + str(i), 'workspaceId': kw['workspaceId'], 'cwd': '/repo' if kw['workspaceId'] == 'workspace1' else '/worktree', 'profile': kw['profile']}
         if action == 'observe':
             stage = self.launches[-1]['title'].split()[-1]
             e = {'verdict': 'pass', 'summary': 'Verified fixture', 'branch': 'main' if stage == 'preflight' else 'paseo-bot/task-1', 'head': 'a' * 40, 'cwd': '/repo' if stage == 'preflight' else '/worktree', 'gates': [{'command': 'python -m unittest', 'exitCode': 1 if self.bad_gate else 0}], 'files': ['file.py'], 'snapshot': 'b' * 64}
             if stage == 'preflight':
                 e['files'] = []; e['gates'] = []
+            if stage == 'work':
+                e['verdict'] = self.work_verdict
             if stage == 'postflight' and self.changed_snapshot:
                 e['snapshot'] = 'c' * 64
             if stage == 'work' and self.changed_head:
@@ -96,11 +118,42 @@ class BotTests(unittest.TestCase):
         self.assertEqual(r['state'], 'passed')
         self.assertEqual([x['profile'] for x in self.fake.launches], ['gpt-task', 'coding-hard', 'gpt-task', 'gpt-task'])
         self.assertEqual(r['machine'], 'MAC_MINI')
-        self.assertEqual(self.fake.launches[1]['base'], 'a' * 40)
-        self.assertNotIn('workspaceId', self.fake.launches[1])
+        self.assertEqual(self.fake.workspaces[0]['base'], 'a' * 40)
+        self.assertEqual(self.fake.workspaces[0]['projectId'], 'project1')
+        self.assertEqual(self.fake.launches[0]['workspaceId'], 'workspace1')
+        self.assertEqual(self.fake.launches[1]['workspaceId'], r['workspaceId'])
         self.assertEqual(self.fake.launches[2]['workspaceId'], r['workspaceId'])
         self.assertEqual(r['deployment'], 'not-run')
+        self.assertEqual(self.fake.cleaned, ['snapshot-workspace', 'archive-workspace', 'finish-workspace'])
+        self.assertEqual(Path(r['cleanup']['patchPath']).read_bytes(), b'fixture binary patch\x00')
+        self.assertEqual(r['cleanup']['status'], 'complete')
         self.assertEqual(json.loads((self.home/'results/task-1.json').read_text())['state'], 'passed')
+
+    def test_failed_and_blocked_work_preserves_evidence_before_cleanup(self):
+        self.fake.bad_gate = True
+        self.fake.branch_status = 'retained-open-pr'
+        self.bot.submit(self.body)
+        result = self.drive()
+        self.assertEqual(result['state'], 'blocked')
+        self.assertEqual(self.fake.cleaned, ['snapshot-workspace', 'archive-workspace', 'finish-workspace'])
+        self.assertEqual(result['cleanup']['branch'], 'retained-open-pr')
+        self.assertEqual(Path(result['cleanup']['patchPath']).read_bytes(), b'fixture binary patch\x00')
+
+    def test_snapshot_failure_never_archives(self):
+        self.fake.cleanup_failure = 'snapshot-workspace'
+        self.bot.submit(self.body)
+        result = self.drive()
+        self.assertEqual(result['state'], 'passed')
+        self.assertEqual(result['cleanup']['status'], 'failed')
+        self.assertEqual(self.fake.cleaned, ['snapshot-workspace'])
+
+    def test_failed_work_also_archives_after_snapshot(self):
+        self.fake.work_verdict = 'fail'
+        self.bot.submit(self.body)
+        result = self.drive()
+        self.assertEqual(result['state'], 'failed')
+        self.assertEqual(result['cleanup']['status'], 'complete')
+        self.assertEqual(self.fake.cleaned, ['snapshot-workspace', 'archive-workspace', 'finish-workspace'])
 
     def test_quota_retry_reuses_worktree_and_is_bounded(self):
         self.bot.submit(dict(self.body, kind='gpt'))
@@ -122,6 +175,7 @@ class BotTests(unittest.TestCase):
         self.bot.tick(); self.bot.tick()
         self.assertEqual(self.fake.launches[-1]['modelAlias'], 'go')
         self.bot.tick()
+        for _ in range(3): self.bot.tick()
         self.assertEqual(self.bot.result('task-1')['state'], 'blocked')
         self.assertEqual(len(self.fake.launches), 4)
 

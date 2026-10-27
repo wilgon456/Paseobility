@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
+import {createHash,randomUUID} from 'node:crypto';
 const req = JSON.parse(fs.readFileSync(0, 'utf8'));
 let client;
 let stage='connect';
@@ -35,18 +36,147 @@ function profileRows(config) {
   if (!Array.isArray(rows)) throw Error('profiles schema');
   return rows.map(p=>Object.fromEntries(['id','name','provider','model','modeId','thinkingOptionId','featureValues','notes'].filter(k=>p[k]!==undefined).map(k=>[k,p[k]])));
 }
+function samePath(a,b) {
+  if(typeof a!=='string'||typeof b!=='string')return false;
+  if(/^[A-Za-z]:[\\/]|^\\\\/.test(a))return path.win32.normalize(a).toLowerCase()===path.win32.normalize(b).toLowerCase();
+  return a===b;
+}
+function insidePath(child,parent) {
+  const windows=/^[A-Za-z]:[\\/]|^\\\\/.test(parent);
+  const impl=windows?path.win32:path.posix;
+  let a=impl.normalize(child),b=impl.normalize(parent);
+  if(windows){a=a.toLowerCase();b=b.toLowerCase();}
+  const relative=impl.relative(b,a);
+  return relative==='' || (relative!=='..' && !relative.startsWith('..'+impl.sep) && !impl.isAbsolute(relative));
+}
+async function anyWorkspaceReferences(worktree) {
+  let cursor;const seen=new Set();
+  for(let i=0;i<50;i++) {
+    const page=await client.fetchWorkspaces({filter:{includeBackground:true},page:{limit:200,...(cursor?{cursor}:{})}});
+    if(!Array.isArray(page.entries) || typeof page.pageInfo?.hasMore!=='boolean')throw Error('schema');
+    for(const w of page.entries) {
+      if(typeof w.workspaceDirectory!=='string')throw Error('schema');
+      if(insidePath(w.workspaceDirectory,worktree))return true;
+    }
+    if(!page.pageInfo.hasMore)return false;
+    cursor=page.pageInfo.nextCursor;
+    if(!cursor || seen.has(cursor))throw Error('schema');
+    seen.add(cursor);
+  }
+  throw Error('schema');
+}
+async function ownedWorkspace() {
+  stage='cleanup-workspace';
+  const listed=await client.fetchWorkspaces({filter:{query:req.workspaceId,includeBackground:true},page:{limit:200}});
+  const w=listed.entries?.find(x=>x.id===req.workspaceId);
+  if(!w || w.projectId!==req.projectId || w.workspaceKind!=='worktree' || !samePath(w.workspaceDirectory,req.worktree))throw Error('ownership');
+  const allowed=new Map((req.runs ?? []).map(r=>[r.agentId,r.attempt]));
+  stage='cleanup-agents';
+  const active=(await inventory()).filter(a=>!a.archivedAt && a.workspaceId===req.workspaceId);
+  if(active.some(a=>!allowed.has(a.id) || allowed.get(a.id)!==a.labels?.paseo_bot_attempt))throw Error('ownership');
+  stage='cleanup-terminals';
+  const terminals=await client.listTerminals(undefined,undefined,{workspaceId:req.workspaceId});
+  if(terminals?.error || !Array.isArray(terminals?.terminals) || terminals.terminals.length)throw Error('ownership');
+  for(const a of active) {
+    if(!['idle','error','closed'].includes(a.status)) {
+      await client.cancelAgent(a.id);
+      let current;
+      for(let i=0;i<25;i++) {
+        current=(await client.fetchAgent({agentId:a.id,timeout:10000}))?.agent;
+        if(current && ['idle','error','closed'].includes(current.status))break;
+        await new Promise(resolve=>setTimeout(resolve,200));
+      }
+      if(!current || !['idle','error','closed'].includes(current.status))throw Error('ownership');
+    }
+  }
+}
+async function remoteHelper(workspaceId,cwd,request) {
+  stage='cleanup-helper';
+  const source=fs.readFileSync(new URL('./cleanup_remote.py',import.meta.url),'utf8');
+  const windows=/^[A-Za-z]:[\\/]|^\\\\/.test(cwd);
+  const name='paseo-bot-cleanup-'+randomUUID();
+  const created=await client.createTerminal(cwd,name,undefined,{workspaceId,command:windows?'python':'python3',args:['-c',source,JSON.stringify(request)],size:{cols:400,rows:40}});
+  const id=created?.terminal?.id;
+  if(created?.error || !id)throw Error('cleanup terminal create');
+  let result;
+  try {
+    for(let i=0;i<160;i++) {
+      await new Promise(resolve=>setTimeout(resolve,200));
+      const capture=await client.captureTerminal(id,{stripAnsi:true,start:0});
+      if(capture?.error || !Array.isArray(capture?.lines))throw Error('cleanup terminal capture');
+      if(capture.lines.some(x=>x.includes('PASEO_BOT_CLEANUP_ERROR')))throw Error('cleanup helper error');
+      const lines=capture.lines.filter(x=>x.startsWith('PASEO_BOT_CLEANUP='));
+      if(lines.length===1) { result=JSON.parse(lines[0].slice('PASEO_BOT_CLEANUP='.length)); break; }
+    }
+    if(!result)throw Error('cleanup terminal timeout');
+  } finally {
+    const closed=await client.killTerminal(id);
+    if(closed?.error)throw Error('cleanup terminal close');
+  }
+  return result;
+}
 async function main() {
   const {connectToDaemon}=await import(pathToFileURL(process.env.PASEO_MULTI_HOST_CLIENT_MODULE).href);
   const target=endpoint(req.host);
   client=await connectToDaemon({target:{kind:'endpoint',host:target},timeout:10000});
   stage='identity';
-  const status=await client.getDaemonStatus({timeout:10000});
+  // Identity comes from the connected server-info handshake. The optional
+  // daemon status RPC also probes providers and can block unrelated operations.
+  const status=client.getLastServerInfoMessage();
   if(status.serverId!==req.host.serverId) throw Error('identity');
   if(req.action==='discover') {
     const config=await client.getDaemonConfig();
     const projects=await client.listProjects();
     const agents=await inventory();
     return {serverId:status.serverId,version:status.version,profiles:profileRows(config.config ?? config),projects:projects.projects,busy:agents.filter(a=>!a.archivedAt && !['idle','closed','error'].includes(a.status)).length};
+  }
+  if(req.action==='open-project') {
+    // openProject is the daemon's find-or-create operation. It reuses the
+    // directory workspace and its project; it does not create a workspace for
+    // every caller as workspace.create with a directory source does.
+    const opened=await client.openProject(req.repo);
+    const w=opened?.workspace;
+    if(opened?.error || !w?.id || !w?.projectId || !w?.workspaceDirectory)
+      throw Error('project receipt');
+    return {projectId:w.projectId,workspaceId:w.id,cwd:w.workspaceDirectory};
+  }
+  if(req.action==='create-workspace') {
+    // The durable task id is also the daemon idempotency key, so a lost
+    // acknowledgement can be retried without allocating another worktree.
+    if(status.features?.workspaceRequestReceipts!==true)throw Error('workspace receipt');
+    const created=await client.createWorkspace({
+      idempotencyKey:req.key,
+      source:{kind:'worktree',cwd:req.repo,projectId:req.projectId,action:'branch-off',branchName:req.branch,baseBranch:req.base},
+      title:req.title,
+    });
+    const w=created?.workspace;
+    if(created?.error || !w?.id || w.projectId!==req.projectId || !w.workspaceDirectory || w.workspaceKind!=='worktree')
+      throw Error('workspace receipt');
+    return {workspaceId:w.id,cwd:w.workspaceDirectory};
+  }
+  if(req.action==='snapshot-workspace') {
+    await ownedWorkspace();
+    const filename='.paseo-bot-evidence-'+randomUUID()+'.patch';
+    const receipt=await remoteHelper(req.workspaceId,req.worktree,{action:'snapshot',worktree:req.worktree,file:filename,base:req.base});
+    if(receipt.file!==filename || !Number.isSafeInteger(receipt.size) || receipt.size<0 || receipt.size>64*1024*1024 || !/^[a-f0-9]{64}$/.test(receipt.sha256))throw Error('cleanup receipt');
+    stage='cleanup-transfer';
+    const data=await client.readFile(req.worktree,filename,undefined,64*1024*1024+1,30000);
+    const bytes=Buffer.from(data.bytes);
+    if(bytes.length!==receipt.size || createHash('sha256').update(bytes).digest('hex')!==receipt.sha256)throw Error('cleanup receipt');
+    return {patch:bytes.toString('base64'),size:receipt.size,sha256:receipt.sha256,remoteFile:filename};
+  }
+  if(req.action==='archive-workspace') {
+    await ownedWorkspace();
+    const verified=await remoteHelper(req.workspaceId,req.worktree,{action:'verify',worktree:req.worktree,file:req.remoteFile,base:req.base,sha256:req.sha256});
+    if(verified?.verified!==true)throw Error('cleanup receipt');
+    await ownedWorkspace();
+    const archived=await client.archiveWorkspace(req.workspaceId);
+    if(archived?.error || !archived?.archivedAt)throw Error('cleanup receipt');
+    return {archivedAt:archived.archivedAt};
+  }
+  if(req.action==='finish-workspace') {
+    if(await anyWorkspaceReferences(req.worktree))return {worktreeRemoved:false,branch:'not-checked'};
+    return remoteHelper(req.preflightWorkspaceId,req.repo,{action:'finish',repo:req.repo,worktree:req.worktree,branch:req.branch});
   }
   if(req.action==='recover') {
     return {agents:(await inventory()).filter(a=>!a.archivedAt && a.labels?.paseo_bot_attempt===req.attempt).map(a=>({agentId:a.id,workspaceId:a.workspaceId,cwd:a.cwd}))};
@@ -104,9 +234,8 @@ async function main() {
     // CLI/server creation otherwise chose "auto" on 0.13.1 even when the
     // configured provider default was auto-review. Preserve the actual default.
     if(mode)argv.push('--mode',mode);
-    if(req.workspaceId)argv.push('--workspace',req.workspaceId);
-    else if(req.branch)argv.push('--new-workspace','worktree','--worktree-mode','branch-off','--new-branch',req.branch,'--base',req.base);
-    else argv.push('--new-workspace','local');
+    if(!req.workspaceId)throw Error('workspace receipt');
+    argv.push('--workspace',req.workspaceId);
     argv.push('--',req.prompt);
     const env={...process.env,PASEO_HOST:target};
     // Prevent inherited caller workspace/parent and conflicting home on a remote target.
@@ -133,7 +262,7 @@ async function main() {
 }
 try {process.stdout.write(JSON.stringify({ok:true,result:await main()}));}
 catch(e) {
-  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt']);
+  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt','ownership','cleanup terminal create','cleanup terminal capture','cleanup helper error','cleanup terminal timeout','cleanup terminal close','cleanup receipt']);
   // Fixed diagnostic vocabulary only. Never return raw transport/CLI messages.
   const reason=known.has(e?.message)?e.message.replaceAll(' ','-'):'operation';
   process.stdout.write(JSON.stringify({ok:false,stage,reason,error:'Paseo operation failed; inspect private configuration.'}));process.exitCode=1;
