@@ -46,7 +46,12 @@ agent-reviewed evidence, not proof of provider sandboxing or deployed behavior.
 Reviewers have their configured provider tools: the no-edit/no-deploy rules are
 instructions, not an OS security boundary. Use restricted provider modes and
 separate OS accounts for stronger isolation. The bot does not automatically
-commit, push, merge, deploy, approve permissions or change credentials.
+run deploy commands itself. Task agents may commit, push, open PRs, wait for CI,
+merge, deploy and verify when the task asks; profiles without a mode launch in
+the provider's permissive mode (`full-access`, `bypassPermissions`, `build`).
+Hard limits: no secret output, no `bws_run` via `sh -c`, no Slack posts, no
+production ERP write tests, no touching other checkouts' uncommitted changes and
+no deleting protected runtimes, sessions or agents.
 Deployment commands are registry metadata for later authorized work; the bot
 never executes them as a deployment phase. Gates themselves must be trusted
 commands appropriate for that machine and safe without production secrets.

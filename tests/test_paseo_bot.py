@@ -525,11 +525,17 @@ class BotTests(unittest.TestCase):
         self.assertEqual(self.drive()['state'], 'blocked')
         self.assertEqual(self.fake.repairs, 1)
 
-    def test_unauthorized_commit_blocks(self):
+    def test_review_head_mismatch_blocks(self):
         self.fake.changed_head = True
         self.bot.submit(self.body)
         self.assertEqual(self.drive()['state'], 'blocked')
-        self.assertEqual(len(self.fake.launches), 2)
+        self.assertEqual(len(self.fake.launches), 3)
+
+    def test_prompt_allows_shipping_with_hard_limits(self):
+        text = self.bot.prompt(self.body, {'target': self.target('VAXPORT'), 'branch': 'b', 'evidence': {}}, 'work')
+        for phrase in ['commit, push, open a PR, wait for CI, merge, deploy', 'bws_run with sh -c', 'never post to Slack', 'production ERP', 'protected runtimes']:
+            self.assertIn(phrase, text)
+        self.assertNotIn('Do not deploy, merge, push, commit', text)
 
     def test_classification_prefers_explicit_kind(self):
         for text, expected in [('bulk refactor files', 'refactor'), ('architecture design', 'gpt'), ('complex architecture', 'hard'), ('git-sync state', 'sync'), ('fix typo', 'gpt')]:

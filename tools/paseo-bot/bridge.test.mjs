@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const bridge=fileURLToPath(new URL('./bridge.mjs',import.meta.url));
-function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false}={}) {
+function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false,fullAccess=false}={}) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bot-bridge-test-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  fs.mkdirSync(path.join(dir,'utils'));
@@ -16,7 +16,7 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  getDaemonStatus:async()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1'}),
  getLastServerInfoMessage:()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1',features:{workspaceRequestReceipts:true}}),
  getDaemonConfig:async()=>({config:{agentProfiles:[{name:'gpt-task',provider:'codex',model:'fixture-model',thinkingOptionId:'high',${noMode?'':"modeId:'read-only',"}featureValues:${features?'{fast_mode:true}':'{}'},notes:'Fixture profile'},{name:'refactor-bulk',provider:'opencode',model:'fixture-go',featureValues:{}}]}}),
- getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:${warming?"(++probes>2?'ready':'loading')":"'ready'"},defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}]},{provider:'opencode',enabled:true,status:'ready',modes:[]}]}),
+ getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:${warming?"(++probes>2?'ready':'loading')":"'ready'"},defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}${fullAccess?",{id:'full-access'}":''}]},{provider:'opencode',enabled:true,status:'ready',modes:[]}]}),
  listProjects:async()=>({projects:[{projectRootPath:'/repo',projectDisplayName:'fixture'}]}),
  openProject:async()=>({workspace:{id:'local1',projectId:'project1',workspaceDirectory:'/repo'}}),
  createWorkspace:async(x)=>({workspace:{id:'w1',projectId:x.source.projectId,workspaceDirectory:'/worktree',workspaceKind:'worktree'}}),
@@ -74,6 +74,11 @@ test('unsupported profile features cannot be silently dropped',t=>{
 });
 test('recovery adopts only attempt label and observation verifies ownership',t=>{
  const f=fixture(t);assert.equal(f.call({action:'recover',attempt:'attempt'}).result.agents.length,1);assert.equal(f.call({action:'recover',attempt:'different'}).result.agents.length,0);assert.equal(f.call({action:'observe',agentId:'owned',attempt:'different'}).ok,false);assert.equal(f.call({action:'observe',agentId:'owned',attempt:'attempt'}).result.status,'idle');
+});
+
+test('absent profile mode prefers the provider permissive mode when offered',t=>{
+ const f=fixture(t,{noMode:true,fullAccess:true});const r=f.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'read fixture',workspaceId:'w1'});
+ assert.equal(r.ok,true);const a=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json')));assert.equal(a.argv[a.argv.indexOf('--mode')+1],'full-access');assert.equal(r.result.modeId,'full-access');
 });
 
 test('absent profile mode materializes live configured provider default',t=>{

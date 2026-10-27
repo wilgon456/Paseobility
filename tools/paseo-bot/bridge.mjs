@@ -228,7 +228,9 @@ async function main() {
       if(probe<4)await new Promise(resolve=>setTimeout(resolve,400*(probe+1)));
     }
     if(!entry?.enabled || entry.status!=='ready')throw Error('provider unavailable');
-    const mode=p.modeId ?? entry.defaultModeId;
+    // Bot agents run permissive by default; an explicit valid profile mode wins.
+    const permissive={codex:'full-access',claude:'bypassPermissions',opencode:'build'}[p.provider];
+    const mode=p.modeId ?? (entry.modes?.some(m=>m.id===permissive) ? permissive : entry.defaultModeId);
     if(mode && !entry.modes?.some(m=>m.id===mode))throw Error('unknown mode');
     const argv=['run','--no-wait','--json','--provider',p.provider,'--model',p.model,'--cwd',req.repo,'--title',req.title,'--label','paseo_bot_attempt='+req.attempt];
     if(p.thinkingOptionId)argv.push('--thinking',p.thinkingOptionId);
