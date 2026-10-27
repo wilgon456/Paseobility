@@ -2,6 +2,12 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const taskId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/);
+export const selectionSchema = z.object({
+  project: z.string().min(1).max(200),
+  model: z.enum(["auto", "terra", "sol", "claude", "go"]),
+  effort: z.enum(["auto", "low", "medium", "high"]),
+}).strict();
+export type Selection = z.infer<typeof selectionSchema>;
 export const taskSchema = z
   .object({
     id: taskId,
@@ -10,6 +16,10 @@ export const taskSchema = z
     prompt: z.string().trim().min(1).max(40000),
     kind: z.enum(["gpt", "hard", "refactor", "sync"]),
     machine: z.string().trim().min(1).max(200).optional(),
+    model: selectionSchema.shape.model.optional(),
+    effort: selectionSchema.shape.effort.optional(),
+    modelReason: z.string().max(300).optional(),
+    resolvedModel: z.enum(["terra", "sol", "claude", "go"]).optional(),
   })
   .strict();
 export const rowSchema = z.object({
@@ -115,6 +125,7 @@ export const actionInput = z.discriminatedUnion("action", [
       requestId: taskId,
       messageId: taskId,
       text: z.string().trim().min(1).max(12000),
+      selection: selectionSchema.optional(),
     })
     .strict(),
   z
@@ -124,6 +135,7 @@ export const actionInput = z.discriminatedUnion("action", [
       messageId: taskId,
       text: z.string().trim().min(1).max(12000),
       retryOf: taskId.optional(),
+      selection: selectionSchema.optional(),
     })
     .strict(),
   z

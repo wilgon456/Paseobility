@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/transport.test.mjs tests/model.test.mjs tests/ui.test.mjs",
+    "test": "node --experimental-strip-types --test tests/transport.test.mjs tests/model.test.mjs tests/colors.test.mjs tests/ui.test.mjs",
     "preview": "node tests/preview.mjs",
     "screenshots": "node tests/capture.mjs"
   },

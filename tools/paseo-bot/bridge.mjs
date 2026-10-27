@@ -55,7 +55,13 @@ async function main() {
     const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
     if(!current?.agent || current.agent.labels?.paseo_bot_attempt!==req.attempt) throw Error('ownership');
     const r=await client.waitForFinish(req.agentId,1000);
-    return {status:r.status,message:r.lastMessage ?? '',workspaceId:current.agent.workspaceId,cwd:current.agent.cwd};
+    const final = r.status === 'error' ? await client.fetchAgent({agentId:req.agentId,timeout:10000}) : current;
+    if(!final?.agent || final.agent.labels?.paseo_bot_attempt!==req.attempt || final.agent.workspaceId!==current.agent.workspaceId || final.agent.cwd!==current.agent.cwd) throw Error('ownership');
+    const lastError = final.agent.lastError ?? r.final?.lastError ?? r.error;
+    const error = typeof lastError === 'string' ? lastError : (typeof lastError?.message === 'string' ? lastError.message : '');
+    const quota = /(?:rate[ _-]?limit|usage limit|quota exceeded|insufficient.quota|too many requests|\b429\b|credit balance|out of credits)/i.test(error);
+    const unavailable = /(?:model.{0,60}(?:not found|not available|unsupported|does not exist)|(?:unknown|invalid) model)/i.test(error);
+    return {status:r.status,message:r.lastMessage ?? '',errorKind:final.agent.status === 'error' ? (quota?'quota':unavailable?'model-unavailable':'other') : '',workspaceId:current.agent.workspaceId,cwd:current.agent.cwd};
   }
   if(req.action==='repair') {
     const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
@@ -68,7 +74,17 @@ async function main() {
     const c=await client.getDaemonConfig();
     const matches=profileRows(c.config ?? c).filter(p=>p.name===req.profile);
     if(matches.length!==1) throw Error('profile');
-    const p=matches[0];
+    const p={...matches[0]};
+    const aliases={terra:['codex','gpt-6.1-terra'],sol:['codex','gpt-6.1-sol'],claude:['claude','claude-fable-5-1'],go:['opencode','opencode-go/glm-5.3-flash']};
+    if(req.modelAlias) {
+      const chosen=aliases[req.modelAlias];
+      if(!chosen || p.provider!==chosen[0]) throw Error('profile unsupported');
+      if(chosen[1]) p.model=chosen[1];
+      if(req.effort && req.effort!=='auto') {
+        if(!['low','medium','high'].includes(req.effort)) throw Error('profile unsupported');
+        p.thinkingOptionId=req.effort;
+      } else if(['terra','sol'].includes(req.modelAlias)) p.thinkingOptionId='high';
+    }
     // CLI has no feature flags. Refuse rather than silently drop configured values.
     if(!p.provider || !p.model || Object.keys(p.featureValues ?? {}).length) throw Error('profile unsupported');
     let entry;

@@ -94,13 +94,46 @@ class BotTests(unittest.TestCase):
         self.bot.submit(self.body)
         r = self.drive()
         self.assertEqual(r['state'], 'passed')
-        self.assertEqual([x['profile'] for x in self.fake.launches], ['git-sync', 'coding-hard', 'gpt-task', 'git-sync'])
+        self.assertEqual([x['profile'] for x in self.fake.launches], ['gpt-task', 'coding-hard', 'gpt-task', 'gpt-task'])
         self.assertEqual(r['machine'], 'MAC_MINI')
         self.assertEqual(self.fake.launches[1]['base'], 'a' * 40)
         self.assertNotIn('workspaceId', self.fake.launches[1])
         self.assertEqual(self.fake.launches[2]['workspaceId'], r['workspaceId'])
         self.assertEqual(r['deployment'], 'not-run')
         self.assertEqual(json.loads((self.home/'results/task-1.json').read_text())['state'], 'passed')
+
+    def test_quota_retry_reuses_worktree_and_is_bounded(self):
+        self.bot.submit(dict(self.body, kind='gpt'))
+        for _ in range(4): self.bot.tick()
+        original = self.bot.result('task-1')
+        self.assertEqual(original['stage'], 'work')
+        self.assertEqual(original['state'], 'running')
+        observe = self.fake.__call__
+        def quota(host, action, **kw):
+            if action == 'observe':
+                return dict(status='error', errorKind='quota', workspaceId=original['workspaceId'], cwd=original['worktree'])
+            return observe(host, action, **kw)
+        self.bot.rpc = quota
+        self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'ready')
+        self.bot.tick()
+        self.assertEqual(self.fake.launches[-1]['modelAlias'], 'claude')
+        self.assertEqual(self.fake.launches[-1]['workspaceId'], original['workspaceId'])
+        self.bot.tick(); self.bot.tick()
+        self.assertEqual(self.fake.launches[-1]['modelAlias'], 'go')
+        self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'blocked')
+        self.assertEqual(len(self.fake.launches), 4)
+
+    def test_invalid_model_selection_and_policy(self):
+        for model in ('commandcode', '../x'):
+            with self.assertRaises(ValueError): self.bot.submit(dict(self.body, model=model))
+        self.assertEqual(m.route_model(dict(kind='gpt'), 'work'), 'terra')
+        self.assertEqual(m.route_model(dict(kind='hard'), 'work'), 'claude')
+        self.assertEqual(m.route_model(dict(kind='sync'), 'work'), 'go')
+        self.assertEqual(m.fallback_model('terra', 'model-unavailable'), 'sol')
+        self.assertEqual(m.fallback_model('go', 'quota'), 'terra')
+        self.assertIsNone(m.fallback_model('terra', 'other'))
 
     def test_preparation_cannot_accept_an_implementation_receipt(self):
         record = dict(target=self.target('MAC_MINI'), branch='paseo-bot/task-1')
@@ -428,7 +461,7 @@ class BotTests(unittest.TestCase):
         self.assertEqual(len(self.fake.launches), 2)
 
     def test_classification_prefers_explicit_kind(self):
-        for text, expected in [('bulk refactor files', 'refactor'), ('architecture design', 'hard'), ('git-sync state', 'sync'), ('fix typo', 'gpt')]:
+        for text, expected in [('bulk refactor files', 'refactor'), ('architecture design', 'gpt'), ('complex architecture', 'hard'), ('git-sync state', 'sync'), ('fix typo', 'gpt')]:
             self.assertEqual(m.classify({'title': text}), expected)
         self.assertEqual(m.classify({'title': 'architecture', 'kind': 'refactor'}), 'refactor')
 

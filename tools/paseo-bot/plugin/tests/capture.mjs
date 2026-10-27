@@ -15,7 +15,7 @@ try{
     if(state==='filtered-empty')await page.getByLabel('작업 검색',{exact:true}).fill('해당 결과가 없는 검색');
     if(state==='confirm')await page.getByTestId('plan-card').scrollIntoViewIfNeeded();
     if(state==='detail')await page.getByRole('dialog',{name:'큐 상태 표시 수정',exact:true}).waitFor();
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(650);
     const file=`${state}-${width}-${scheme}.png`;await page.screenshot({path:path.join(out,file),fullPage:false});
     records.push({file,width,scheme,state,fixture:true,rootOverflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});
     await page.close();

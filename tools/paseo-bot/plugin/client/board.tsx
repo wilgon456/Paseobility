@@ -1,7 +1,8 @@
 import { ExternalLink } from "@getpaseo/plugin/client/ui";
-import { useState, type RefObject } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { Animated, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { Filters, Snapshot, TaskRow } from "../shared/contracts";
+import { projectTone, requesterTone, statusTone, tagColors } from "../shared/colors";
 import {
   duration,
   laneOf,
@@ -11,7 +12,7 @@ import {
   safePr,
   stageLabel,
 } from "../shared/model";
-import { Badge, Button, Empty, Glyph, Select, Skeleton, useUi } from "./ui";
+import { Badge, Button, Empty, Glyph, MotionIn, Select, Skeleton, Tag, useReducedMotion, useUi } from "./ui";
 
 export function TaskCard({
   task,
@@ -19,8 +20,12 @@ export function TaskCard({
   onRetry,
   list = false,
   now,
+  projects,
+  direction = 0,
 }: {
   task: TaskRow;
+  projects: string[];
+  direction?: number;
   onOpen: () => void;
   onRetry: () => void;
   list?: boolean;
@@ -28,14 +33,25 @@ export function TaskCard({
 }) {
   const t = useUi();
   const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const reduced = useReducedMotion();
+  const lift = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    lift.stopAnimation();
+    if (reduced) { lift.setValue(0); return; }
+    const animation = Animated.timing(lift, { toValue: hovered ? 1 : 0, duration: 140, useNativeDriver: true });
+    animation.start(); return () => animation.stop();
+  }, [hovered, reduced, lift]);
   const terminal = ["passed", "failed", "blocked", "unknown"].includes(
     task.state,
   );
   return (
-    <View
+    <MotionIn motionKey={`${task.id}:${task.state}`} direction={direction}>
+    <Animated.View
       testID="task-card"
       style={{
         ...t.panel,
+        transform: [{ translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }) }],
         borderColor: focused ? t.c.accent : t.c.border,
         borderRadius: 12,
         overflow: "hidden",
@@ -46,13 +62,15 @@ export function TaskCard({
         accessibilityRole="button"
         accessibilityLabel={`${task.title}, ${task.state}`}
         onPress={onOpen}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={({ pressed }) => ({
           minHeight: 64,
           padding: 16,
           gap: 12,
-          backgroundColor: pressed ? t.c.surface2 : "transparent",
+          backgroundColor: pressed || hovered ? t.c.surface2 : "transparent",
           flexDirection: list ? "row" : "column",
           alignItems: list ? "center" : "stretch",
         })}
@@ -61,7 +79,7 @@ export function TaskCard({
           <Text numberOfLines={3} style={{ ...t.body, fontWeight: "600" }}>
             {task.title}
           </Text>
-          <Text style={t.small}>{task.project}</Text>
+          <View style={{ alignSelf: "flex-start" }}><Tag label={task.project} tone={projectTone(task.project, projects)} /></View>
         </View>
         <Badge
           state={task.state}
@@ -94,18 +112,7 @@ export function TaskCard({
             justifyContent: "space-between",
           }}
         >
-          <View
-            style={{
-              paddingHorizontal: 6,
-              paddingVertical: 2,
-              borderRadius: 8,
-              backgroundColor: t.c.surface2,
-            }}
-          >
-            <Text style={{ ...t.small, color: t.c.foreground }}>
-              {requesterLabel(task.requester)}
-            </Text>
-          </View>
+          <Tag label={requesterLabel(task.requester)} tone={requesterTone(task.requester)} />
           <Text style={t.small}>
             {duration(task.createdAt, terminal ? task.updatedAt : now)}
           </Text>
@@ -133,7 +140,8 @@ export function TaskCard({
           </View>
         )}
       </View>
-    </View>
+    </Animated.View>
+    </MotionIn>
   );
 }
 type Props = {
@@ -153,6 +161,13 @@ export function Board(p: Props) {
   const [boardHeight, setBoardHeight] = useState(400);
   const t = useUi(),
     rows = p.data?.tasks ?? [];
+  const previousLanes = useRef(new Map<string, string>());
+  const movement = (task: TaskRow) => {
+    const before = previousLanes.current.get(task.id);
+    if (!before || before === laneOf(task.state)) return 0;
+    return Math.sign(lanes.findIndex(l => l.id === laneOf(task.state)) - lanes.findIndex(l => l.id === before));
+  };
+  useEffect(() => { previousLanes.current = new Map(rows.map(task => [task.id, laneOf(task.state)])); }, [rows]);
   const set = (f: Partial<Filters>) => p.setFilters({ ...f, offset: 0 });
   const projects = p.data?.projects ?? [],
     machines = [...new Set(projects.flatMap((p) => p.machines))];
@@ -335,7 +350,7 @@ export function Board(p: Props) {
               <View
                 key={lane.id}
                 testID={`lane-${lane.id}`}
-                style={{ width: 248, gap: 12, height: boardHeight }}
+                style={{ width: 248, gap: 12, height: boardHeight, backgroundColor: tagColors(t.c.surface0, t.c.foreground, statusTone(lane.id)).background, borderRadius: 12, padding: 8, borderWidth: 1, borderColor: tagColors(t.c.surface0, t.c.foreground, statusTone(lane.id)).border }}
               >
                 <View
                   style={{
@@ -377,6 +392,8 @@ export function Board(p: Props) {
                       <TaskCard
                         key={task.id}
                         task={task}
+                        projects={projects.map(p => p.id)}
+                        direction={movement(task)}
                         onOpen={() => p.open(task)}
                         onRetry={() => p.retry(task)}
                         now={p.now}
@@ -410,6 +427,8 @@ export function Board(p: Props) {
             <TaskCard
               key={task.id}
               task={task}
+              projects={projects.map(p => p.id)}
+              direction={movement(task)}
               list
               onOpen={() => p.open(task)}
               onRetry={() => p.retry(task)}

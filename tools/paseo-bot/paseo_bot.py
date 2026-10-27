@@ -25,6 +25,25 @@ sys.path.insert(0, str(ROOT / 'skills/paseo-multi/scripts'))
 import hosts as fleet
 
 PROFILES = {'sync': 'git-sync', 'hard': 'coding-hard', 'refactor': 'refactor-bulk', 'gpt': 'gpt-task'}
+# Stable aliases are the only user-selectable providers/models. Profiles carry host-local permissions.
+MODELS = {'terra': ('gpt-task', 'codex', 'gpt-6.1-terra'),
+          'sol': ('gpt-task', 'codex', 'gpt-6.1-sol'),
+          'claude': ('coding-hard', 'claude', 'claude-fable-5-1'),
+          'go': ('refactor-bulk', 'opencode', 'opencode-go/glm-5.3-flash')}
+EFFORTS = {'auto', 'low', 'medium', 'high'}
+
+def route_model(body, stage):
+    selected = body.get('model', 'auto')
+    if selected != 'auto': return selected
+    if stage == 'work' and classify(body) == 'hard': return 'claude'
+    if stage == 'work' and classify(body) == 'sync': return 'go'
+    return 'terra'
+
+def fallback_model(model, reason):
+    if reason == 'model-unavailable' and model == 'terra': return 'sol'
+    if reason != 'quota': return None
+    return {'terra': 'claude', 'sol': 'claude', 'claude': 'go', 'go': 'terra'}.get(model)
+
 STAGES = ['preflight', 'work', 'review', 'postflight']
 TERMINAL = {'passed', 'failed', 'blocked', 'unknown'}
 ID = re.compile(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\Z')
@@ -110,7 +129,7 @@ def classify(body):
     text = (body.get('title', '') + ' ' + body.get('prompt', '')).lower()
     if re.search(r'refactor|bulk|일괄|리팩터', text):
         return 'refactor'
-    if re.search(r'architecture|complex|hard bug|설계|아키텍처|어려운', text):
+    if re.search(r'complex architecture|hard bug|most difficult|복잡한 설계|어려운 버그|최고 난도', text):
         return 'hard'
     if re.search(r'^(git[- ]sync|sync branch|git 상태)', text):
         return 'sync'
@@ -310,9 +329,11 @@ class Bot:
     def _submit(self, body, origin=None, commit=True):
         if not self.ownership()['acceptsTasks']:
             raise ValueError('Queue is standby, retired or bound to another host; intake disabled.')
-        allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine', 'pr_url', 'requester'}
+        allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine', 'pr_url', 'requester', 'model', 'effort', 'modelReason'}
         if not isinstance(body, dict) or set(body) - allowed or not ID.fullmatch(body.get('id', '')):
             raise ValueError('Invalid task ID or fields.')
+        if body.get('model', 'auto') not in ('auto', *MODELS) or body.get('effort', 'auto') not in EFFORTS or not isinstance(body.get('modelReason', ''), str) or len(body.get('modelReason', '')) > 300:
+            raise ValueError('Invalid model selection.')
         if body.get('kind', 'gpt') not in PROFILES:
             raise ValueError('kind must be sync, hard, refactor or gpt.')
         if any(k in body and (not isinstance(body[k], str) or len(body[k]) > 2000) for k in ['pr_url', 'requester']):
@@ -367,8 +388,8 @@ class Bot:
                     continue
                 live = self.rpc(h, 'discover')
                 names = [p['name'] for p in live['profiles'] if p.get('provider') and p.get('model') and not p.get('featureValues')]
-                profile = PROFILES[classify(body)]
-                if all(names.count(p) == 1 for p in ['git-sync', profile, 'gpt-task']):
+                profile = MODELS[route_model(body, 'work')][0]
+                if all(names.count(p) == 1 for p in set(['gpt-task', profile])):
                     candidates.append((live['busy'], index, target, h))
             except (ValueError, KeyError):
                 continue
@@ -479,17 +500,24 @@ class Bot:
             receipt = matches[0]
             if not receipt.get('workspaceId') or not receipt.get('cwd'):
                 raise ValueError('Recovery receipt incomplete.')
-            r['runs'].append(dict(receipt, stage=stage, attempt=r['attempt'], profile=r['profile']))
+            if r.get('retryWorkspace') and (receipt['workspaceId'] != r['retryWorkspace'] or not same_remote_path(receipt['cwd'], r['retryCwd'])):
+                raise ValueError('Recovered retry workspace changed.')
+            r.pop('retryWorkspace', None); r.pop('retryCwd', None)
+            r['runs'].append(dict(receipt, stage=stage, attempt=r['attempt'], profile=r['profile'], modelAlias=r.get('model')))
             r['state'] = 'running'
             if stage == 'work':
                 r.update(workspaceId=receipt['workspaceId'], worktree=receipt['cwd'])
             return self.save(r)
         if r['state'] == 'ready':
-            profile = PROFILES[classify(body)] if stage == 'work' else ('gpt-task' if stage == 'review' else 'git-sync')
-            r.update(state='dispatching', attempt=uuid.uuid4().hex, profile=profile, phaseStartedAt=time.time())
+            model = r.pop('retryModel', None) or route_model(body, stage)
+            profile = MODELS[model][0]
+            effort = body.get('effort', 'auto')
+            r.update(state='dispatching', attempt=uuid.uuid4().hex, profile=profile, model=model, phaseStartedAt=time.time())
             self.save(r)  # Admission is durable BEFORE any launch side effect.
-            args = dict(profile=profile, repo=r['target']['repo'], title='Paseo bot ' + r['id'] + ' ' + stage, attempt=r['attempt'], prompt=self.prompt(body, r, stage))
-            if stage == 'work':
+            args = dict(profile=profile, modelAlias=model, effort=effort, repo=r['target']['repo'], title='Paseo bot ' + r['id'] + ' ' + stage, attempt=r['attempt'], prompt=self.prompt(body, r, stage))
+            if r.get('retryWorkspace'):
+                args['workspaceId'] = r['retryWorkspace']
+            elif stage == 'work':
                 args.update(branch=r['branch'], base=r['evidence']['preflight']['head'])
             elif stage in ['review', 'postflight']:
                 args['workspaceId'] = r['workspaceId']
@@ -502,7 +530,11 @@ class Bot:
                 # CLI/receipt failures remain dispatching for reconciliation.
                 self.save(r)
                 return r
-            r['runs'].append(dict(receipt, stage=stage, attempt=r['attempt']))
+            if r.get('retryWorkspace') and (receipt.get('workspaceId') != r['retryWorkspace'] or not same_remote_path(receipt.get('cwd'), r['retryCwd'])):
+                r.update(state='unknown', reason='Retry workspace receipt mismatch; inspect before proceeding.')
+                return self.save(r)
+            r.pop('retryWorkspace', None); r.pop('retryCwd', None)
+            r['runs'].append(dict(receipt, stage=stage, attempt=r['attempt'], modelAlias=model))
             r['state'] = 'running'
             if stage == 'work':
                 r.update(workspaceId=receipt['workspaceId'], worktree=receipt['cwd'])
@@ -516,6 +548,13 @@ class Bot:
                 if time.time() - r['phaseStartedAt'] > self.config().get('phaseTimeoutSeconds', 7200):
                     r.update(state='blocked', reason='Phase deadline exceeded; agent retained. Inspect before any follow-up.')
                 return self.save(r)
+            if observed['status'] == 'error' and observed.get('errorKind') in ('quota', 'model-unavailable'):
+                next_model = fallback_model(run.get('modelAlias', r.get('model')), observed['errorKind'])
+                used = [item.get('modelAlias') for item in r['runs'] if item.get('stage') == stage]
+                if next_model and next_model not in used:
+                    r.update(state='ready', retryModel=next_model, retryWorkspace=run['workspaceId'], retryCwd=run['cwd'],
+                             reason='Provider limit or model availability; retrying in the same workspace.')
+                    return self.save(r)
             if observed['status'] != 'idle':
                 r.update(state='blocked', reason='Agent error or permission wait; no automatic approval.')
                 return self.save(r)
