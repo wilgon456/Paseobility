@@ -18,6 +18,7 @@ test('conversation, confirmed admission, read-only kanban, filters, result and r
     await page.getByRole('radio',{name:'GPT-6.1 Sol',exact:true}).click();
     await page.getByRole('button',{name:'effort: 자동',exact:true}).click();
     await page.getByRole('radio',{name:'High',exact:true}).click();
+    await page.getByRole('radio',{name:'정밀 검증',exact:true}).click();
     await page.getByRole('button',{name:'접수',exact:true}).click();
     await page.getByRole('status').filter({hasText:'접수했어요.'}).waitFor();
     assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='approve').length),1);
@@ -55,7 +56,7 @@ test('conversation, confirmed admission, read-only kanban, filters, result and r
     await page.keyboard.press('Enter');
     await page.getByRole('status').filter({hasText:'전달했어요.'}).waitFor();
     assert.equal(await input.inputValue(),'');
-    assert.deepEqual(await page.evaluate(()=>window.__actions.findLast(a=>a.action==='send').selection), {project:'paseobility',model:'sol',effort:'high'});
+    assert.deepEqual(await page.evaluate(()=>window.__actions.findLast(a=>a.action==='send').selection), {project:'paseobility',model:'sol',effort:'high',workflow:'verified'});
     await page.getByRole('button',{name:'작업 닫기',exact:true}).focus();await page.keyboard.press('/');
     await page.waitForFunction(()=>document.querySelector('[aria-label="작업 검색"]')===document.activeElement);
     assert.deepEqual(errors,[]);
@@ -91,6 +92,7 @@ test('one sentence starts a conversation without a session form',async()=>{
  assert.equal(await page.getByTestId('secondary-board').count(),0);
  await page.getByLabel('봇에게 요청하기',{exact:true}).fill('로그인 오류를 고쳐 줘');await page.getByRole('button',{name:'보내기',exact:true}).click();
  await page.getByText('로그인 오류를 고쳐 줘',{exact:true}).waitFor();const actions=await page.evaluate(()=>window.__actions);assert.equal(actions.length,1);assert.equal(actions[0].action,'start');assert.equal(actions[0].text,'로그인 오류를 고쳐 줘');
+ assert.equal(actions[0].selection.workflow,'daily');
  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
 });
 test('primary chat is centered and long kanban lanes remain independently reachable',async()=>{
@@ -142,6 +144,50 @@ test('semantic tags maintain AA contrast and reduced motion stops the running in
    await page.close();
   }
  } finally {await b?.close();await new Promise(r=>p.server.close(r));}
+});
+
+test('starters fill the composer without sending; the workflow choice survives a conversation switch',async()=>{
+  const p=await preview();let b;
+  try{b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});
+    for(const colorScheme of ['light','dark'])for(const width of [375,1440]){
+      const page=await b.newPage({viewport:{width,height:1000},colorScheme});await page.goto(p.url+'?state=empty');
+      await page.getByTestId('starters').waitFor();
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${colorScheme} ${width} overflow`);
+      for(const radio of await page.getByRole('radio').all()){const r=await radio.boundingBox();assert.ok(r&&r.height>=43.5,`Small segment ${await radio.getAttribute('aria-label')}: ${r?.height}`);}
+      assert.equal(await page.getByRole('radio',{name:'일상',exact:true}).getAttribute('aria-checked'),'true');
+      await page.getByRole('button',{name:'글 다듬기',exact:true}).click();
+      const field=page.getByLabel('봇에게 요청하기',{exact:true});
+      assert.ok((await field.inputValue()).length>0);
+      await page.waitForFunction(()=>document.querySelector('[data-testid="bot-composer"]')===document.activeElement);
+      assert.equal(await page.evaluate(()=>(window.__actions??[]).length),0);
+      await page.close();
+    }
+    const page=await b.newPage({viewport:{width:1440,height:1000}});await page.goto(p.url+'?state=empty');
+    await page.getByRole('radio',{name:'정밀 검증',exact:true}).click();
+    await page.getByLabel('봇에게 요청하기',{exact:true}).fill('임시 초안');
+    await page.getByRole('button',{name:'새 대화',exact:true}).click();
+    await page.waitForFunction(()=>window.__actions.some(a=>a.action==='create'));
+    assert.equal(await page.getByRole('radio',{name:'일상',exact:true}).getAttribute('aria-checked'),'true');
+    await page.getByRole('button',{name:'대화 기록',exact:true}).click();
+    await page.getByRole('button',{name:'로그인 오류와 모바일 입력 개선',exact:true}).click();
+    assert.equal(await page.getByLabel('봇에게 요청하기',{exact:true}).inputValue(),'임시 초안');
+    assert.equal(await page.getByRole('radio',{name:'정밀 검증',exact:true}).getAttribute('aria-checked'),'true');
+  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
+});
+
+test('daily results show two stages and verified or legacy results show four',async()=>{
+  const p=await preview();let b;
+  try{b=await chromium.launch({...(chrome?{executablePath:chrome}:{}),headless:true});const page=await b.newPage({viewport:{width:1440,height:1000}});
+    await page.goto(p.url+'?state=detail-daily');await page.getByRole('dialog',{name:'모바일 입력 흐름 개선',exact:true}).waitFor();
+    assert.equal(await page.getByTestId('stage-row').count(),2);
+    await page.goto(p.url+'?state=detail');await page.getByRole('dialog',{name:'큐 상태 표시 수정',exact:true}).waitFor();
+    assert.equal(await page.getByTestId('stage-row').count(),4);
+    await page.goto(p.url+'?state=kanban');await page.getByTestId('task-card').first().waitFor();
+    assert.ok(await page.getByLabel(/^진행 .*\/2/).count()>=1);
+    assert.ok(await page.getByLabel(/^진행 .*\/4/).count()>=1);
+    await page.getByRole('button',{name:'테스트 실패 원인 분석, failed',exact:true}).click();await page.getByRole('dialog',{name:'테스트 실패 원인 분석',exact:true}).waitFor();
+    assert.equal(await page.getByTestId('stage-row').count(),4);  // No recorded workflow: the legacy four-stage pipeline.
+  }finally{await b?.close();await new Promise(r=>p.server.close(r));}
 });
 
 test('stuck delivery or a missing manager waits for one explicit operator action',async()=>{

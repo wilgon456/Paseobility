@@ -38,6 +38,7 @@ class Fake:
         self.cleaned = []
         self.cleanup_failure = None
         self.branch_status = 'deleted'
+        self.verified_work = True
 
     def __call__(self, host, action, **kw):
         if action == 'discover':
@@ -53,7 +54,9 @@ class Fake:
                 raise ValueError('cleanup failed')
             if action == 'snapshot-workspace':
                 patch = b'fixture binary patch\x00'
-                return {'patch': m.base64.b64encode(patch).decode(), 'size': len(patch), 'sha256': m.hashlib.sha256(patch).hexdigest(), 'remoteFile': '.paseo-bot-evidence-12345678-1234-1234-1234-123456789abc.patch'}
+                if 'expectedWork' in kw:
+                    assert kw['expectedWork'] == {'head': 'a' * 40, 'branch': 'paseo-bot/task-1', 'snapshot': 'b' * 64}
+                return {'patch': m.base64.b64encode(patch).decode(), 'size': len(patch), 'sha256': m.hashlib.sha256(patch).hexdigest(), 'remoteFile': '.paseo-bot-evidence-12345678-1234-1234-1234-123456789abc.patch', 'verifiedWork': self.verified_work}
             if action == 'archive-workspace':
                 return {'archivedAt': '2026-01-01T00:00:00Z'}
             return {'worktreeRemoved': True, 'branch': self.branch_status}
@@ -129,6 +132,52 @@ class BotTests(unittest.TestCase):
         self.assertEqual(Path(r['cleanup']['patchPath']).read_bytes(), b'fixture binary patch\x00')
         self.assertEqual(r['cleanup']['status'], 'complete')
         self.assertEqual(json.loads((self.home/'results/task-1.json').read_text())['state'], 'passed')
+
+    def test_daily_uses_two_agents_with_worker_checks_and_verified_capture(self):
+        self.bot.submit(dict(self.body, workflow='daily'))
+        result = self.drive()
+        self.assertEqual(result['state'], 'passed')
+        self.assertEqual([call['title'].split()[-1] for call in self.fake.launches], ['preflight', 'work'])
+        self.assertEqual([(call['modelAlias'], call['effort']) for call in self.fake.launches], [('sol', 'medium')] * 2)
+        self.assertEqual(result['verification'], 'self-checked')
+        self.assertEqual(set(result['evidence']), {'preflight', 'work'})
+        self.assertEqual(result['cleanup']['status'], 'complete')
+
+    def test_daily_bad_worker_gate_cannot_pass(self):
+        self.fake.bad_gate = True
+        self.bot.submit(dict(self.body, workflow='daily'))
+        self.assertEqual(self.drive()['state'], 'blocked')
+
+    def test_daily_missing_capture_verification_preserves_workspace(self):
+        self.fake.verified_work = False
+        self.bot.submit(dict(self.body, workflow='daily'))
+        result = self.drive()
+        self.assertEqual(result['state'], 'blocked')
+        self.assertEqual(self.fake.cleaned, ['snapshot-workspace'])
+
+    def test_daily_honors_explicit_model_and_effort(self):
+        self.bot.submit(dict(self.body, workflow='daily', model='go', effort='low'))
+        self.drive()
+        self.assertEqual([(call['modelAlias'], call['effort']) for call in self.fake.launches], [('go', 'low')] * 2)
+
+    def test_daily_invalid_receipt_does_not_spend_a_repair_turn(self):
+        self.fake.empty = True
+        self.bot.submit(dict(self.body, workflow='daily'))
+        self.assertEqual(self.drive()['state'], 'blocked')
+        self.assertEqual(self.fake.repairs, 0)
+        self.assertEqual(len(self.fake.launches), 1)
+
+    def test_daily_quota_failure_does_not_rotate_models(self):
+        original = self.fake
+        def limited(host, action, **kw):
+            result = original(host, action, **kw)
+            if action == 'observe':
+                result.update(status='error', errorKind='quota')
+            return result
+        self.bot.rpc = limited
+        self.bot.submit(dict(self.body, workflow='daily'))
+        self.assertEqual(self.drive()['state'], 'blocked')
+        self.assertEqual(len(self.fake.launches), 1)
 
     def test_failed_and_blocked_work_preserves_evidence_before_cleanup(self):
         self.fake.bad_gate = True

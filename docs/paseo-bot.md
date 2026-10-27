@@ -24,7 +24,13 @@ Paseo without relying on an LLM to stay in an endless chat turn. The service doe
 not restart the Paseo daemon, install an OS login service or auto-start after a
 machine reboot. See deployment below for a dedicated workspace.
 
-Each task advances through four phases:
+Tasks with omitted `workflow` or `workflow: verified` advance through four phases.
+The GUI defaults new plans to `workflow: daily`: preparation and implementation
+only, with complete worker gate receipts and deterministic branch/HEAD/content
+verification during evidence capture. Daily results are `verification: self-checked`,
+never independent-review claims. See [daily workflow](paseo-bot-gui-v2.md#daily-workflow).
+
+The verified phases are:
 
 1. The daemon opens the configured project directory with `openProject`, reusing
    its existing project and directory workspace or registering them on first use.
@@ -41,7 +47,7 @@ Each task advances through four phases:
 4. `git-sync`: a fresh agent verifies branch, HEAD and SHA256 of tracked diff plus
    untracked file contents against the review. A later change fails the task.
 
-`passed` requires all four receipts; `idle` alone never passes. A task result is
+For verified tasks, `passed` requires all four receipts; `idle` alone never passes. A task result is
 agent-reviewed evidence, not proof of provider sandboxing or deployed behavior.
 Reviewers have their configured provider tools: the no-edit/no-deploy rules are
 instructions, not an OS security boundary. Use restricted provider modes and

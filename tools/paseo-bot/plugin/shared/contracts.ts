@@ -4,10 +4,17 @@ import { z } from "zod";
 export const taskId = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/);
 // "terra" is retired: older stored plans may still carry it and display as Sol.
 const storedModel = z.enum(["auto", "terra", "sol", "claude", "go"]);
+// "daily" answers writing in the conversation and self-verifies code tasks;
+// "verified" adds an independent review. Optional so older clients and stored
+// records without a workflow stay valid; the client sends daily by default and
+// reads an absent recorded workflow as the legacy four-stage pipeline.
+export const workflowSchema = z.enum(["daily", "verified"]);
+export type Workflow = z.infer<typeof workflowSchema>;
 export const selectionSchema = z.object({
   project: z.string().min(1).max(200),
   model: z.enum(["auto", "sol", "claude", "go"]),
   effort: z.enum(["auto", "low", "medium", "high"]),
+  workflow: workflowSchema.optional(),
 }).strict();
 export type Selection = z.infer<typeof selectionSchema>;
 export const taskSchema = z
@@ -22,6 +29,7 @@ export const taskSchema = z
     effort: selectionSchema.shape.effort.optional(),
     modelReason: z.string().max(300).optional(),
     resolvedModel: storedModel.exclude(["auto"]).optional(),
+    workflow: workflowSchema.optional(),
   })
   .strict();
 export const rowSchema = z.object({
@@ -39,6 +47,7 @@ export const rowSchema = z.object({
   conversationId: z.string().default(""),
   retryOf: z.string().default(""),
   prUrl: z.string().default(""),
+  workflow: workflowSchema.optional(),
 });
 export const planSchema = z.object({
   id: taskId,

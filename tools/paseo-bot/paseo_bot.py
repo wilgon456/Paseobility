@@ -42,6 +42,7 @@ def model_alias(model):
 def route_model(body, stage):
     selected = body.get('model', 'auto')
     if selected != 'auto': return model_alias(selected)
+    if body.get('workflow') == 'daily': return 'sol'
     if stage == 'work' and classify(body) == 'hard': return 'claude'
     if stage == 'work' and classify(body) == 'sync': return 'go'
     return 'sol'
@@ -362,13 +363,15 @@ class Bot:
     def _submit(self, body, origin=None, commit=True):
         if not self.ownership()['acceptsTasks']:
             raise ValueError('Queue is standby, retired or bound to another host; intake disabled.')
-        allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine', 'pr_url', 'requester', 'model', 'effort', 'modelReason'}
+        allowed = {'id', 'project', 'title', 'prompt', 'kind', 'machine', 'pr_url', 'requester', 'model', 'effort', 'modelReason', 'workflow'}
         if not isinstance(body, dict) or set(body) - allowed or not ID.fullmatch(body.get('id', '')):
             raise ValueError('Invalid task ID or fields.')
         if body.get('model', 'auto') not in MODEL_CHOICES or body.get('effort', 'auto') not in EFFORTS or not isinstance(body.get('modelReason', ''), str) or len(body.get('modelReason', '')) > 300:
             raise ValueError('Invalid model selection.')
         if body.get('kind', 'gpt') not in PROFILES:
             raise ValueError('kind must be sync, hard, refactor or gpt.')
+        if body.get('workflow', 'verified') not in ('daily', 'verified'):
+            raise ValueError('Invalid workflow.')
         if any(k in body and (not isinstance(body[k], str) or len(body[k]) > 2000) for k in ['pr_url', 'requester']):
             raise ValueError('Invalid completion metadata.')
         if any(not isinstance(body.get(k), str) or not body[k].strip() for k in ['project', 'title', 'prompt']) or len(body['prompt']) > 40000:
@@ -384,6 +387,8 @@ class Bot:
                 raise ValueError('Task ID already belongs to a different request.')
             return self.result(body['id'])
         record = {'version': 1, 'id': body['id'], 'project': body['project'], 'state': 'queued', 'createdAt': time.time(), 'runs': [], 'evidence': {}, 'delivery': 'file-outbox', 'deployment': 'not-run'}
+        record['workflow'] = body.get('workflow', 'verified')
+        record['verification'] = 'self-checked' if record['workflow'] == 'daily' else 'independent-review'
         with self.db if commit else nullcontext():
             self.db.execute('INSERT INTO tasks VALUES (?,?,?,?,?)', (body['id'], digest, encoded, 'queued', json.dumps(record)))
             self.db.execute('INSERT INTO events(task_id,time,state) VALUES (?,?,?)', (body['id'], time.time(), 'queued'))
@@ -439,17 +444,24 @@ class Bot:
         return r['cleanup']['resultState'] == 'passed' and r['target'].get('publish', 'none') == 'draft-pr'
 
     def pr_body(self, r):
-        review = r['evidence'].get('review', {})
+        daily = r.get('workflow') == 'daily'
+        review = r['evidence'].get('work' if daily else 'review', {})
         gates = ', '.join('`%s`' % g.get('command', '') for g in review.get('gates', []) if isinstance(g, dict))
-        return scrub(('Paseo bot task `%s`\n\n%s\n\nIndependent review passed; gates: %s.\nOpened as a draft by the Paseo bot after its verification phases.'
-                      % (r['id'], review.get('summary', ''), gates or 'none'))[:4000])
+        level = 'Worker checks passed; no independent review' if daily else 'Independent review passed'
+        return scrub(('Paseo bot task `%s`\n\n%s\n\n%s; gates: %s.\nOpened as a draft by the Paseo bot after its verification phases.'
+                      % (r['id'], review.get('summary', ''), level, gates or 'none'))[:4000])
 
     def cleanup(self, h, r):
         info = r['cleanup']
         args = dict(repo=r['target']['repo'], projectId=r['projectId'], workspaceId=r['workspaceId'],
                     worktree=r['worktree'], runs=r['runs'])
         if info['phase'] == 'snapshot':
+            if r.get('workflow') == 'daily' and info['resultState'] == 'passed':
+                work = r['evidence']['work']
+                args['expectedWork'] = {k: work[k] for k in ('head', 'branch', 'snapshot')}
             result = self.rpc(h, 'snapshot-workspace', **args, base=r['evidence']['preflight']['head'])
+            if 'expectedWork' in args and result.get('verifiedWork') is not True:
+                raise ValueError('Worker evidence was not independently fingerprinted.')
             patch = base64.b64decode(result['patch'], validate=True)
             digest = hashlib.sha256(patch).hexdigest()
             if len(patch) != result['size'] or digest != result['sha256'] or len(patch) > 64 * 1024 * 1024:
@@ -507,7 +519,8 @@ class Bot:
         project = next(p for p in self.config()['projects'] if p['id'] == body['project'])
         candidates, waiting, unreachable = [], False, False
         requested_host = self.host(body['machine']) if body.get('machine') else None
-        needed = {MODELS[route_model(body, stage)][0] for stage in STAGES}
+        stages = ['preflight', 'work'] if body.get('workflow') == 'daily' else STAGES
+        needed = {MODELS[route_model(body, stage)][0] for stage in stages}
         for index, target in enumerate(project['targets']):
             if not target.get('enabled'):
                 continue
@@ -557,7 +570,7 @@ class Bot:
             {'taskId': h['id'], 'summary': h.get('summary', ''), 'updatedAt': h.get('updatedAt')}
             for h in (json.loads(row[0]) for row in history) if h['project'] == body['project']
         ][:3]
-        if stage in ['review', 'postflight']:
+        if stage in ['review', 'postflight'] or (stage == 'work' and body.get('workflow') == 'daily'):
             language, code = snapshot_details(target)
             details['snapshotInstruction'] = 'After gates, execute this exact '+language+' code in the worktree; include the printed SHA256 in the JSON snapshot field.'
             details['snapshot'+language] = code
@@ -583,6 +596,10 @@ class Bot:
             instruction = ('Implement the task in this isolated worktree on the task branch. Follow the project skills and run the configured gates. '
                            'If the task asks to ship, commit, push, open a PR, wait for CI, merge, deploy and verify, and report the final branch head. '
                            'Do not claim completion without evidence.')
+            if body.get('workflow') == 'daily':
+                instruction += (' Daily mode: work as one agent, no delegation or automatic reviews. Inspect only relevant context, implement the smallest correct change, '
+                                'run each required check once unless a failure requires a fix, then stop. Do not repeat unchanged checks or broaden scope. '
+                                'Report actual gate receipts and snapshot; this is self-checking, not independent review.')
         elif stage == 'review':
             instruction = ('Independent review: do not edit files. Inspect the actual diff and untracked files against preflight head; verify task acceptance and scope. '
                            'Run EVERY configured gate yourself and report exact command/exitCode. Return pass only if all pass and no correctness issues remain.')
@@ -608,13 +625,13 @@ class Bot:
         # Work may commit; review must look at exactly what work produced.
         if stage == 'review' and e['head'] != record['evidence']['work']['head']:
             raise ValueError('Review HEAD does not match the work result.')
-        if stage == 'review':
+        if stage == 'review' or (stage == 'work' and record.get('workflow') == 'daily'):
             gates = e.get('gates')
             if not isinstance(gates, list) or len(gates) != len(record['target']['gates']):
                 raise ValueError('Independent gate evidence incomplete.')
             if any(not isinstance(g, dict) or g.get('command') != command or type(g.get('exitCode')) is not int or g['exitCode'] != 0 for command, g in zip(record['target']['gates'], gates)):
                 raise ValueError('Independent gate check failed.')
-        if stage in ['review', 'postflight'] and not re.fullmatch(r'[0-9a-f]{64}', e.get('snapshot', '')):
+        if (stage in ['review', 'postflight'] or (stage == 'work' and record.get('workflow') == 'daily')) and not re.fullmatch(r'[0-9a-f]{64}', e.get('snapshot', '')):
             raise ValueError('Missing reviewed content fingerprint.')
         if stage == 'postflight' and e['head'] != record['evidence']['review']['head']:
             raise ValueError('HEAD changed after independent review.')
@@ -643,6 +660,8 @@ class Bot:
                     raise  # Retried by tick() within the transient grace period.
                 r['cleanup'].update(phase='done', status='failed', reason='Cleanup could not be confirmed; preserve remaining data and inspect privately.')
                 r['state'] = r['cleanup']['resultState']
+                if r.get('workflow') == 'daily' and r['state'] == 'passed':
+                    r.update(state='blocked', reason='Daily evidence or cleanup could not be confirmed; workspace retained for inspection.')
                 return self.save(r)
         if r['state'] == 'repairing':
             r.update(state='unknown', reason='Receipt repair acknowledgement missing; inspect existing agent. No automatic replay.')
@@ -692,6 +711,8 @@ class Bot:
             model = r.pop('retryModel', None) or route_model(body, stage)
             profile = MODELS[model][0]
             effort = body.get('effort', 'auto')
+            if body.get('workflow') == 'daily' and effort == 'auto':
+                effort = 'medium'
             r.update(state='dispatching', attempt=uuid.uuid4().hex, profile=profile, model=model, phaseStartedAt=time.time())
             self.save(r)  # Admission is durable BEFORE any launch side effect.
             args = dict(profile=profile, modelAlias=model, effort=effort, repo=r['target']['repo'], title='Paseo bot ' + r['id'] + ' ' + stage, attempt=r['attempt'], prompt=self.prompt(body, r, stage))
@@ -740,7 +761,7 @@ class Bot:
                 if time.time() - r['phaseStartedAt'] > self.config().get('phaseTimeoutSeconds', 7200):
                     r.update(state='blocked', reason='Phase deadline exceeded; agent retained. Inspect before any follow-up.')
                 return self.save(r)
-            if observed['status'] == 'error' and observed.get('errorKind') in ('quota', 'model-unavailable'):
+            if body.get('workflow') != 'daily' and observed['status'] == 'error' and observed.get('errorKind') in ('quota', 'model-unavailable'):
                 next_model = fallback_model(run.get('modelAlias', r.get('model')), observed['errorKind'])
                 used = [model_alias(item.get('modelAlias')) for item in r['runs'] if item.get('stage') == stage]
                 if next_model and next_model not in used and MODELS[next_model][0] in r.get('profiles', [MODELS[next_model][0]]):
@@ -762,10 +783,12 @@ class Bot:
             except ValueError:
                 e = None
             required = {'verdict', 'summary', 'branch', 'head', 'cwd', 'gates', 'files'}
-            if stage in ['review', 'postflight']:
+            if stage in ['review', 'postflight'] or (stage == 'work' and body.get('workflow') == 'daily'):
                 required.add('snapshot')
             malformed = not isinstance(e, dict) or (e.get('verdict') == 'pass' and not required.issubset(e))
             if malformed:
+                if body.get('workflow') == 'daily':
+                    raise ValueError('Daily worker receipt invalid; no automatic model retry.')
                 repairs = r.setdefault('receiptRepairs', {})
                 if repairs.get(stage):
                     raise ValueError('Agent did not produce a valid receipt after one format correction.')
@@ -779,7 +802,7 @@ class Bot:
                 self.rpc(h, 'repair', agentId=run['agentId'], attempt=run['attempt'], prompt=correction)
                 r['state'] = 'running'
                 return self.save(r)
-            if (stage == 'preflight' and e.get('verdict') == 'blocked' and 'needs-host-fetch' in str(e.get('summary', ''))
+            if (body.get('workflow') != 'daily' and stage == 'preflight' and e.get('verdict') == 'blocked' and 'needs-host-fetch' in str(e.get('summary', ''))
                     and not r.get('hostFetchRetry')):
                 # One automatic retry: the new preflight may fetch the missing base itself.
                 r.update(state='ready', hostFetchRetry=True, reason='needs-host-fetch; retrying preflight once with fetch allowed.')
@@ -788,11 +811,13 @@ class Bot:
                 r.update(state='failed' if e['verdict'] == 'fail' else 'blocked', reason=e.get('summary', 'Agent did not pass.'))
             else:
                 r['evidence'][stage] = e
-                index = STAGES.index(stage)
-                if index == len(STAGES) - 1:
-                    r.update(state='passed', summary=r['evidence']['review'].get('summary', 'Independent review and git verification passed.'))
+                stages = ['preflight', 'work'] if body.get('workflow') == 'daily' else STAGES
+                index = stages.index(stage)
+                if index == len(stages) - 1:
+                    completed = e if body.get('workflow') == 'daily' else r['evidence']['review']
+                    r.update(state='passed', summary=completed.get('summary', 'Required checks passed.'))
                 else:
-                    r.update(stage=STAGES[index + 1], state='ready')
+                    r.update(stage=stages[index + 1], state='ready')
             return self.save(r)
         raise ValueError('Unknown durable task state.')
 

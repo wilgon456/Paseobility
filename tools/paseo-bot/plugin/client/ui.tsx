@@ -2,8 +2,10 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon, Modal } from "@getpaseo/plugin/client/ui";
 import { AccessibilityInfo, Animated, Easing, Pressable, Text, TextInput, View } from "react-native";
-import { laneOf, stageLabel, stageProgress, stages, stateLabel } from "../shared/model";
+import type { Workflow } from "../shared/contracts";
+import { laneOf, stageLabel, stageProgress, stateLabel } from "../shared/model";
 import { statusTone, tagColors, toneInk } from "../shared/colors";
+import { stagesOf } from "./workflow";
 const Theme = createContext<PluginTheme | null>(null);
 export const UiProvider = Theme.Provider;
 export function useUi() {
@@ -99,12 +101,13 @@ export function StatusIcon({ group, color, size = 13 }: { group: string; color: 
   return <Animated.View testID="status-icon" style={{ opacity: group === "success" ? 1 : pulse, transform: [{ scale: group === "success" ? pulse : 1 }, { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] }) }] }}><Glyph name={group === "success" ? "CircleCheck" : group === "failed" ? "CircleX" : group === "attention" ? "CircleAlert" : group === "running" ? "LoaderCircle" : "CircleDashed"} size={size} color={color} /></Animated.View>;
 }
 
-/** Four-stage track: completed stages fill, the active one breathes while running. */
-export function StageRail({ state, stage }: { state: string; stage: string }) {
+/** Stage track (two stages for daily, four for verified): completed stages fill, the active one breathes while running. */
+export function StageRail({ state, stage, workflow }: { state: string; stage: string; workflow?: Workflow }) {
   const { c, small } = useUi();
   const reduced = useReducedMotion();
   const group = laneOf(state);
-  const done = stageProgress(state, stage);
+  const stages = stagesOf(workflow), n = stages.length;
+  const done = Math.min(stageProgress(state, stage), n);
   const ink = toneInk(statusTone(group));
   const glow = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -116,8 +119,8 @@ export function StageRail({ state, stage }: { state: string; stage: string }) {
     ]));
     loop.start(); return () => { loop.stop(); glow.setValue(1); };
   }, [group, reduced, glow]);
-  const caption = group === "success" ? "4/4" : group === "waiting" ? "시작 전" : `${Math.min(done + 1, 4)}/4`;
-  return <View testID="stage-rail" accessibilityLabel={`진행 ${caption} ${group === "waiting" ? "" : stageLabel(stages[Math.min(done, 3)])}`.trim()} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+  const caption = group === "success" ? `${n}/${n}` : group === "waiting" ? "시작 전" : `${Math.min(done + 1, n)}/${n}`;
+  return <View testID="stage-rail" accessibilityLabel={`진행 ${caption} ${group === "waiting" ? "" : stageLabel(stages[Math.min(done, n - 1)])}`.trim()} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
     <View style={{ flex: 1, flexDirection: "row", gap: 4 }}>
       {stages.map((s, i) => {
         const filled = i < done || group === "success";
@@ -249,7 +252,69 @@ export function Badge({ state, label }: { state: string; label?: string }) {
     </View>
   );
 }
-export type Option = { value: string; label: string; note?: string; tone?: string };
+export type Option = { value: string; label: string; note?: string; tone?: string; icon?: string };
+/** Inline two-to-four way choice; each option is a radio named by its label. */
+export function Segmented({
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  options: Option[];
+  onChange: (s: string) => void;
+  disabled?: boolean;
+}) {
+  const { c } = useUi();
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={label}
+      style={{ flexDirection: "row", alignSelf: "flex-start", borderWidth: 1, borderColor: c.border, borderRadius: 999, backgroundColor: c.surface0, opacity: disabled ? 0.45 : 1 }}
+    >
+      {options.map((o) => (
+        <Segment key={o.value} option={o} checked={o.value === value} disabled={disabled} onPress={() => onChange(o.value)} />
+      ))}
+    </View>
+  );
+}
+function Segment({ option, checked, disabled, onPress }: { option: Option; checked: boolean; disabled: boolean; onPress: () => void }) {
+  const t = useUi(), { c, body } = t;
+  const [hover, setHover] = useState(false), [focus, setFocus] = useState(false);
+  const wash = t.tint(option.tone ?? "gray", checked ? 0.22 : hover && !disabled ? 0.1 : 0, c.surface0);
+  const ink = checked ? wash.foreground : c.foregroundMuted;
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityLabel={option.label}
+      accessibilityState={{ checked, disabled }}
+      aria-checked={checked}
+      disabled={disabled}
+      onPress={onPress}
+      onHoverIn={() => setHover(true)}
+      onHoverOut={() => setHover(false)}
+      onFocus={() => setFocus(true)}
+      onBlur={() => setFocus(false)}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: focus ? c.accent : "transparent",
+        backgroundColor: checked || (hover && !disabled) ? wash.background : "transparent",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        transform: [{ scale: pressed && !disabled ? 0.97 : 1 }],
+      })}
+    >
+      {option.icon && <Glyph name={option.icon} size={14} color={ink} />}
+      <Text numberOfLines={1} style={{ ...body, fontWeight: checked ? "600" : "500", color: ink }}>{option.label}</Text>
+    </Pressable>
+  );
+}
 /** Chip-shaped picker. The accessible name stays "label: value". */
 export function Select({
   label,

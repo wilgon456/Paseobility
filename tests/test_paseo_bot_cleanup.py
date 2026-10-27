@@ -15,6 +15,32 @@ spec.loader.exec_module(cleanup)
 
 
 class PatchTests(unittest.TestCase):
+    def test_daily_capture_checks_worker_head_branch_and_content_before_preservation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def git(*args):
+                return subprocess.run(['git', *args], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
+            git('init'); git('config', 'user.email', 'fixture@example.invalid'); git('config', 'user.name', 'Fixture')
+            (root / 'tracked.txt').write_bytes(b'old')
+            git('add', '.'); git('commit', '-m', 'fixture')
+            git('checkout', '-b', 'paseo-bot/daily')
+            head = git('rev-parse', 'HEAD').decode().strip()
+            (root / 'tracked.txt').write_bytes(b'new')
+            (root / 'draft.txt').write_bytes(b'draft')
+            digest = hashlib.sha256(git('diff', '--binary', 'HEAD', '--'))
+            name, content = b'draft.txt', b'draft'
+            digest.update(len(name).to_bytes(8, 'big') + name + len(content).to_bytes(8, 'big') + content)
+            expected = dict(head=head, branch='paseo-bot/daily', snapshot=digest.hexdigest())
+            for wrong in [dict(expected, head='0' * 40), dict(expected, branch='main'), dict(expected, snapshot='0' * 64)]:
+                with self.assertRaises(ValueError):
+                    cleanup.make_patch(root, '.paseo-bot-evidence-wrong.patch', head, wrong)
+                self.assertFalse((root / '.paseo-bot-evidence-wrong.patch').exists())
+            receipt = cleanup.make_patch(root, '.paseo-bot-evidence-daily.patch', head, expected)
+            self.assertTrue(receipt['verifiedWork'])
+            (root / 'draft.txt').write_bytes(b'changed')
+            with self.assertRaises(ValueError):
+                cleanup.verify_work(root, expected, exclude=receipt['file'])
+
     def test_patch_restores_tracked_untracked_binary_and_ignored(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory) / 'repo'

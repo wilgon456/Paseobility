@@ -62,6 +62,7 @@ def snapshot(db, home, request, writable, read_json):
         tasks.append(dict(id=task_id, state=state, title=body.get('title', task_id), project=body['project'],
                           machine=record.get('machine', body.get('machine', '')), profile=record.get('profile', ''), model=model if model in MODELS else '',
                           stage=record.get('stage', ''), createdAt=record.get('createdAt', 0),
+                          workflow=record.get('workflow', body.get('workflow', 'verified')),
                           updatedAt=record.get('updatedAt', record.get('createdAt', 0)),
                           requester=context.get('requester', 'legacy'), conversationId=context.get('conversationId', ''),
                           retryOf=context.get('retryOf') or '',

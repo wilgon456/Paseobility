@@ -101,7 +101,7 @@ export function TaskCard({
                 : undefined
             }
           />
-          <StageRail state={task.state} stage={task.stage} />
+          <StageRail state={task.state} stage={task.stage} workflow={task.workflow} />
         </View>
       </Pressable>
       <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 4 }}>

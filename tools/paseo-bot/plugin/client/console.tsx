@@ -136,8 +136,8 @@ export function Console(p: Props) {
         }}
       >
         <View style={{ flex: 1, minWidth: 160, flexDirection: "row", gap: 12, alignItems: "center" }}>
-          <View style={{ width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.c.accent, ...t.shadow() }}>
-            <Glyph name="Bot" size={22} color={t.c.accentForeground} />
+          <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: t.c.accent }}>
+            <Glyph name="Bot" size={18} color={t.c.accentForeground} />
           </View>
           <View style={{ gap: 2, flexShrink: 1 }}>
             <Text
@@ -207,7 +207,8 @@ export function Console(p: Props) {
               flex: 1,
               minWidth: 0,
               width: "100%",
-              maxWidth: board ? undefined : 900,
+              // Prose measure for daily reading: about 54 Korean characters per line at body size.
+              maxWidth: board ? undefined : 760,
               alignSelf: board ? "stretch" : "center",
               height: "100%",
             }}

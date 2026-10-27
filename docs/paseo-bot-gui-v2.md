@@ -2,7 +2,7 @@
 
 The sidebar plugin is now a conversation with a dedicated **VAXPORT manager**,
 with the existing queue's read-only Kanban/list available in the secondary **작업 보기** panel. The manager understands and
-splits requests; the Mac does not call an LLM. A plan is admitted only after the
+handles writing and questions directly and plans project changes; the Mac does not call an LLM. A plan is admitted only after the
 operator selects the inline plan's single **접수** button. No project, machine or model form is required; the manager selects them from the active registry. Cards are projections,
 not another scheduler. There is no drag/drop or state mutation endpoint.
 
@@ -14,10 +14,49 @@ first confirm a review request and then require the new plan's **접수**.
 
 ## Runtime ownership
 
+### Daily workflow
+
+The composer defaults to **일상** (`workflow: daily`). Writing, translation,
+summaries and ordinary answers are delivered in the conversation with no worker
+plan or Git requirement. Project changes normally use one task, with a
+service-enforced maximum of three tasks per plan. **정밀 검증**
+(`workflow: verified`) explicitly opts into up to twelve tasks and the existing
+independent review pipeline.
+
+Daily coding uses two model stages: source preparation and implementation with
+self-checks. Every configured gate receipt and a content fingerprint are required.
+The deterministic cleanup helper compares the actual branch, HEAD and file
+fingerprint before and after evidence capture. A missing or mismatching receipt
+blocks the task without publishing or archiving the worktree. This is not an
+independent code review. Verified coding retains its four model stages.
+
+Daily automatic coding selection uses Sol with medium effort. Explicit worker
+model/effort choices are honored; daily mode does not automatically rotate to a
+premium model, repair a malformed receipt with another model call, or relaunch
+preparation. The persistent conversational assistant still uses the operator's
+`gui-runtime.json` model/thinking settings; composer model/effort choices are for
+project workers, not retroactive changes to that assistant.
+
+Completion notifications are deterministic messages from stored evidence, not
+another model turn. Each user turn injects at most six recent task summaries
+(600 characters per summary, reason and original request) and three relevant
+saved notes (1,000 characters each), instead of full logs. The provider still
+owns persistent-session history/compaction. These are workflow and context
+bounds, not a hard total-token or billing ceiling, and no percentage saving or
+quality advantage over ordinary chat is claimed without a comparative run.
+
+Read-only references: Dinobot `SOUL.md` (scale planning to the task, check actual
+evidence and stop), `src/auth/request-budget.ts` (bounded retries), and
+`test/compaction-policy.test.ts` (bounded context) at
+https://github.com/dinobot-labs/dinobot, inspected on 2026-10-27.
+The implementation reuses Paseo's queue and manager rather than importing another
+agent framework. Omo's inspect/do/check/stop discipline is used without mandatory
+multi-agent planning or repeated review.
+
 The existing manager is preserved. Every GUI conversation binds a new persistent
 manager agent labelled `paseo_bot_gui=<conversation-id>`. The new manager retains
 the approved full-access mode. Its prompt restricts its role to clarifying,
-planning and explaining verified results; this is **not OS sandboxing**. The
+writing, answering, planning and explaining results; this is **not OS sandboxing**. The
 bridge checks the configured server identity and the session ownership label
 before observing/sending. The Mac cannot choose an agent ID, shell, cwd or model.
 
@@ -52,7 +91,7 @@ Create `<private-state>/gui-runtime.json` privately with these fields:
   "cwd": "C:\\absolute\\pinned-runtime",
   "provider": "codex",
   "model": "VERIFIED_MANAGER_MODEL",
-  "thinking": "high"
+  "thinking": "medium"
 }
 ```
 
@@ -106,7 +145,7 @@ share filters. Running includes preflight/work/review/postflight; blocked and
 unknown are attention, not success or generic failure. Unassigned values stay
 unassigned instead of inventing a machine/model.
 
-Card detail offers a four-stage timeline, structured receipts/gate exit codes,
+Card detail offers a workflow-specific timeline, structured receipts/gate exit codes,
 safe PR links, expandable/filterable JSON and host clipboard copy. It never
 claims unsaved raw logs exist. Chat has no required pickers. It provides source-linked task links, saved
 reading position and drafts within a mounted session, a new-message
@@ -119,13 +158,30 @@ Polling is 2s while chat is pending, 5s during work and 10s idle, with bounded
 read backoff and reconnect guidance. Mutations never retry automatically. Message
 IDs and plan digests make intentional retries idempotent. New sessions have
 separate manager histories and cache slices. Task results generate durable
-origin-conversation notices and queue a real manager explanation; GUI text does
-not impersonate a model response.
+origin-conversation notices directly from stored receipts without a model call;
+GUI text does not impersonate a model response. Ask a follow-up for an explanation.
 
 Tests: Python conversation/admission/recovery/dependency/provenance/readonly
 contracts, Node transport/model contracts, production-view browser interactions,
 light/dark viewport and 44px checks. `npm run screenshots -- <output>` renders
-offline fixtures with the production view and writes 54 images plus metadata.
+offline fixtures with the production view and writes 72 images plus metadata.
 The host chrome is a web stand-in there; live native app screenshots and live
 manager intake evidence must be reported separately. No fixture is a live model
 or production completion claim.
+
+### Daily workflow validation (2026-10-27)
+
+- Shared Python regression suite: 230 tests, 8 platform skips, exit 0.
+- Bot bridge contracts: 13 passed. Final conversation tests after DTO/notice
+  changes: 31 tests, 1 Windows-only skip, exit 0.
+- Plugin typecheck: exit 0. Plugin contracts and browser interactions: 23 passed.
+- Final production-component fixture matrix: 72 captures at 375, 768 and
+  1440 px in light/dark; no root-page overflow. Inspected writing, composer,
+  plan confirmation and daily/verified detail layouts.
+- Native Paseo app verification remains separate: desktop automation reported
+  `COMPUTER_LAUNCH_CONTEXT_REQUIRED` on this Mac. Installed plugin
+  `paseo-bot-v3` still points to its separate runtime worktree; neither it nor
+  the VAXPORT service was deployed/restarted by this change.
+- No live model comparison was run, so quality superiority and measured token
+  savings are unproven. Structural savings are two instead of four coding
+  model stages and zero extra model turns for completion notices.

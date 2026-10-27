@@ -157,13 +157,13 @@ async function main() {
   if(req.action==='snapshot-workspace') {
     await ownedWorkspace();
     const filename='.paseo-bot-evidence-'+randomUUID()+'.patch';
-    const receipt=await remoteHelper(req.workspaceId,req.worktree,{action:'snapshot',worktree:req.worktree,file:filename,base:req.base});
+    const receipt=await remoteHelper(req.workspaceId,req.worktree,{action:'snapshot',worktree:req.worktree,file:filename,base:req.base,expectedWork:req.expectedWork});
     if(receipt.file!==filename || !Number.isSafeInteger(receipt.size) || receipt.size<0 || receipt.size>64*1024*1024 || !/^[a-f0-9]{64}$/.test(receipt.sha256))throw Error('cleanup receipt');
     stage='cleanup-transfer';
     const data=await client.readFile(req.worktree,filename,undefined,64*1024*1024+1,30000);
     const bytes=Buffer.from(data.bytes);
     if(bytes.length!==receipt.size || createHash('sha256').update(bytes).digest('hex')!==receipt.sha256)throw Error('cleanup receipt');
-    return {patch:bytes.toString('base64'),size:receipt.size,sha256:receipt.sha256,remoteFile:filename};
+    return {patch:bytes.toString('base64'),size:receipt.size,sha256:receipt.sha256,remoteFile:filename,verifiedWork:receipt.verifiedWork===true};
   }
   if(req.action==='archive-workspace') {
     await ownedWorkspace();

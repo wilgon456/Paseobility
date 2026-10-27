@@ -58,11 +58,30 @@ def patch_bytes(root, base='HEAD', exclude=None):
     return patch
 
 
-def make_patch(root, filename, base='HEAD'):
+def verify_work(root, expected, exclude=None):
+    """Compare the worker receipt with current Git identity and actual bytes."""
+    if not isinstance(expected, dict) or set(expected) != {'head', 'branch', 'snapshot'}:
+        raise ValueError('invalid worker evidence')
+    if git(root, 'rev-parse', 'HEAD').decode().strip() != expected['head'] or git(root, 'symbolic-ref', '--short', 'HEAD').decode().strip() != expected['branch']:
+        raise ValueError('worker Git identity changed')
+    digest = hashlib.sha256(git(root, 'diff', '--binary', 'HEAD', '--'))
+    for name in sorted(git(root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0')):
+        if not name or os.fsdecode(name) == exclude:
+            continue
+        item = root / os.fsdecode(name)
+        content = os.fsencode(os.readlink(item)) if item.is_symlink() else item.read_bytes()
+        digest.update(len(name).to_bytes(8, 'big') + name + len(content).to_bytes(8, 'big') + content)
+    if digest.hexdigest() != expected['snapshot']:
+        raise ValueError('worker content changed')
+
+
+def make_patch(root, filename, base='HEAD', expected=None):
     root = Path(root)
     output = root / filename
     if output.parent != root or not filename.startswith('.paseo-bot-evidence-') or output.exists() or output.is_symlink():
         raise ValueError('invalid evidence path')
+    if expected is not None:
+        verify_work(root, expected)
     patch = patch_bytes(root, base)
     fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
@@ -73,7 +92,9 @@ def make_patch(root, filename, base='HEAD'):
     except BaseException:
         output.unlink(missing_ok=True)
         raise
-    return {'file': filename, 'size': len(patch), 'sha256': hashlib.sha256(patch).hexdigest()}
+    if expected is not None:
+        verify_work(root, expected, exclude=filename)
+    return {'file': filename, 'size': len(patch), 'sha256': hashlib.sha256(patch).hexdigest(), 'verifiedWork': expected is not None}
 
 
 def github_repo(repo):
@@ -190,7 +211,7 @@ def finish(repo, worktree, branch):
 def main():
     request = json.loads(sys.argv[1])
     if request['action'] == 'snapshot':
-        result = make_patch(request['worktree'], request['file'], request['base'])
+        result = make_patch(request['worktree'], request['file'], request['base'], request.get('expectedWork'))
     elif request['action'] == 'verify':
         root = Path(request['worktree'])
         filename = request['file']

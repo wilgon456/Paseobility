@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ExternalLink, Markdown, useToast } from "@getpaseo/plugin/client/ui";
-import { Animated, Easing, ScrollView, Text, TextInput, View } from "react-native";
-import type { Action, Plan, Selection } from "../shared/contracts";
+import { Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import type { Action, Plan, Selection, Workflow } from "../shared/contracts";
 import { makeTaskId, modelAlias, modelLabel, models, profileLabel, safePr } from "../shared/model";
 import type { Props, ActionResult } from "./screen";
-import { Button, Empty, Glyph, MotionIn, Notice, Select, StatusIcon, Tag, useReducedMotion, useUi, type Option } from "./ui";
+import { Button, Empty, Glyph, MotionIn, Notice, Segmented, Select, StatusIcon, Tag, useReducedMotion, useUi, type Option } from "./ui";
 import { composerKeys } from "./web";
+import { defaultSelection, starters, workflowLabel, workflows } from "./workflow";
 import { projectTone, modelTone, effortTone, toneInk } from "../shared/colors";
 type Request = { id: string; text: string; selection: Selection; conversationId?: string };
 export type DraftState = {
@@ -29,7 +30,7 @@ export function Chat(
   const t = useUi(),
     toast = useToast();
   const cached = p.drafts.get(p.conversation);
-  const [selection, setSelection] = useState<Selection>(cached?.selection ?? {project:"auto",model:"auto",effort:"auto"});
+  const [selection, setSelection] = useState<Selection>({ ...defaultSelection, ...cached?.selection });
   const [draft, setDraft] = useState(cached?.draft ?? ""),
     [problem, setProblem] = useState(cached?.problem ?? "");
   const request = useRef<Request | null>(cached?.request ?? null),
@@ -189,10 +190,27 @@ export function Chat(
         )}
         {messages.length === 0 ? (
           <Empty
-            icon="Sparkles"
-            tone="purple"
+            icon="Bot"
+            tone="gray"
             title="무엇을 도와드릴까요?"
-            body="하고 싶은 일을 편하게 말씀해 주세요. 계획을 보여드리고, 접수하면 시작할게요."
+            body="글과 답변은 대화에서 바로 답해요. 코드는 계획을 보여드리고, 접수하면 작업으로 진행한 뒤 결과를 알려드려요."
+            action={
+              <View testID="starters" style={{ alignSelf: "stretch", flexDirection: "row", flexWrap: "wrap", gap: 8, paddingTop: 8 }}>
+                {starters.map((s) => (
+                  <Starter
+                    key={s.id}
+                    icon={s.icon}
+                    title={s.title}
+                    note={s.note}
+                    disabled={p.pending || !!request.current}
+                    onPress={() => {
+                      setDraft(s.template);
+                      p.composerRef.current?.focus();
+                    }}
+                  />
+                ))}
+              </View>
+            }
           />
         ) : (
           messages.map((m) => {
@@ -260,7 +278,7 @@ export function Chat(
         {plan && plan.tasks.length > 0 && (() => {
           const first = plan.tasks[0];
           const model = (task: typeof first, compact = false) => task.resolvedModel ? modelLabel(task.resolvedModel, compact) : profileLabel(task.kind);
-          const effort = (task: typeof first) => task.effort && task.effort !== "auto" ? task.effort : (modelAlias(task.resolvedModel ?? "") === "sol" ? "high (자동)" : "자동");
+          const effort = (task: typeof first) => task.effort && task.effort !== "auto" ? task.effort : task.workflow === "daily" ? "medium (자동)" : (modelAlias(task.resolvedModel ?? "") === "sol" ? "high (자동)" : "자동");
           const frame = t.tint(t.c.accent, 0.06, t.c.surface0);
           return (
             <MotionIn motionKey={plan.id}>
@@ -276,6 +294,7 @@ export function Chat(
                 <Tag dot surface={frame.background} label={first.project} maxWidth={p.compact ? 96 : 200} tone={projectTone(first.project, projectIds)} />
                 <Tag dot surface={frame.background} label={model(first, p.compact)} tone={modelTone(first.resolvedModel || first.kind)} />
                 <Tag surface={frame.background} label={`effort ${p.compact ? effort(first).replace(" (자동)", "") : effort(first)}`} tone={effortTone(effort(first))} />
+                {!!first.workflow && <Tag surface={frame.background} label={workflowLabel(first.workflow)} tone={workflows[first.workflow].tone} />}
                 {plan.tasks.length > 1 && <Tag surface={frame.background} label={`${plan.tasks.length}단계`} tone="cyan" />}
                 <Tag surface={frame.background} label={first.modelReason === "일반 작업 기본 모델" && p.compact ? "기본 작업" : first.modelReason || "자동 배정"} tone="gray" />
               </ScrollView>
@@ -300,7 +319,7 @@ export function Chat(
                       </View>
                       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                         <Text style={t.body}>{task.title}</Text>
-                        <Text style={t.small}>{task.project} · {task.machine || "프로젝트 기본 머신"} · {model(task)} · {effort(task)}</Text>
+                        <Text style={t.small}>{task.project} · {task.machine || "프로젝트 기본 머신"} · {model(task)} · {effort(task)}{task.workflow ? ` · ${workflowLabel(task.workflow)}` : ""}</Text>
                         {!!task.modelReason && <Text style={t.small}>{task.modelReason}</Text>}
                       </View>
                     </View>
@@ -377,10 +396,19 @@ export function Chat(
               textAlignVertical: "top",
               // Web: the container shows focus; avoid a second ring inside it.
               outlineStyle: "none",
+              // Web: grow with the text between minHeight and maxHeight (native multiline inputs already do).
+              fieldSizing: "content",
             } as object}
           />
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
             <View style={{ flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              <Segmented
+                label="진행 방식"
+                value={selection.workflow ?? defaultSelection.workflow!}
+                disabled={disabledSelect}
+                options={(Object.keys(workflows) as Workflow[]).map((value) => ({ value, label: workflows[value].label, icon: workflows[value].icon, tone: workflows[value].tone }))}
+                onChange={(workflow) => setSelection({ ...selection, workflow: workflow as Workflow })}
+              />
               <Select icon="FolderGit2" tone={selection.project === "auto" ? "gray" : projectTone(selection.project, projectIds)} label="프로젝트" value={selection.project} disabled={disabledSelect} options={[{ value: "auto", label: "자동", note: "대화 내용으로 선택", tone: "gray" }, ...(p.data?.projects ?? []).filter(x => x.enabled).map(x => ({ value: x.id, label: x.id, tone: projectTone(x.id, projectIds) }))]} onChange={(project) => setSelection({ ...selection, project })} />
               <Select icon="Cpu" tone={modelTone(selection.model)} label="모델" value={selection.model} disabled={disabledSelect} options={modelOptions} onChange={(model) => setSelection({ ...selection, model: model as Selection["model"] })} />
               <Select icon="Gauge" tone={effortTone(selection.effort)} label="effort" value={selection.effort} disabled={disabledSelect} options={effortOptions} onChange={(effort) => setSelection({ ...selection, effort: effort as Selection["effort"] })} />
@@ -396,8 +424,48 @@ export function Chat(
             />
           </View>
         </View>
-        <Text style={{ ...t.small }}>Enter 전송 · Shift+Enter 줄바꿈 · 선택하지 않으면 자동</Text>
+        <View style={{ gap: 2, paddingHorizontal: 4 }}>
+          <Text testID="workflow-note" style={t.small}>{workflows[selection.workflow ?? defaultSelection.workflow!].detail}</Text>
+          <Text style={t.small}>Enter 전송 · Shift+Enter 줄바꿈 · 모델·effort는 접수된 코딩 작업에 적용돼요</Text>
+        </View>
       </View>
     </View>
+  );
+}
+function Starter({ icon, title, note, disabled, onPress }: { icon: string; title: string; note: string; disabled: boolean; onPress: () => void }) {
+  const t = useUi();
+  const [hover, setHover] = useState(false), [focus, setFocus] = useState(false);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      onHoverIn={() => setHover(true)}
+      onHoverOut={() => setHover(false)}
+      onFocus={() => setFocus(true)}
+      onBlur={() => setFocus(false)}
+      style={({ pressed }) => ({
+        ...t.panel,
+        ...t.shadow(hover && !disabled),
+        flex: 1,
+        minWidth: 200,
+        minHeight: 44,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        gap: 2,
+        borderColor: focus ? t.c.accent : t.c.border,
+        backgroundColor: pressed ? t.c.surface2 : t.c.surface1,
+        opacity: disabled ? 0.45 : 1,
+        transform: [{ scale: pressed && !disabled ? 0.98 : 1 }],
+      })}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Glyph name={icon} size={16} color={t.c.foreground} />
+        <Text style={{ ...t.body, fontWeight: "600" }}>{title}</Text>
+      </View>
+      <Text style={t.small}>{note}</Text>
+    </Pressable>
   );
 }

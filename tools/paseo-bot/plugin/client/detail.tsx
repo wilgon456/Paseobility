@@ -8,7 +8,8 @@ import {
 import { Text, TextInput, View } from "react-native";
 import type { TaskRow } from "../shared/contracts";
 import { requesterLabel, safePr, stageLabel } from "../shared/model";
-import { Badge, Button, Glyph, Notice, Skeleton, useUi } from "./ui";
+import { Badge, Button, Glyph, Notice, Skeleton, Tag, useUi } from "./ui";
+import { recordedWorkflow, stagesOf, verificationLabel, workflowLabel, workflows } from "./workflow";
 function JsonNode({
   name,
   value,
@@ -89,6 +90,8 @@ export function Detail({
     runs = Array.isArray(data?.runs)
       ? (data!.runs as Record<string, unknown>[])
       : [];
+  const workflow = recordedWorkflow(data?.workflow ?? task.workflow),
+    stages = stagesOf(workflow);
   const json = JSON.stringify(data, null, 2);
   async function copy() {
     try {
@@ -116,6 +119,7 @@ export function Detail({
           }}
         >
           <Badge state={String(data?.state ?? task.state)} />
+          {!!data && <Tag label={`${workflowLabel(workflow)} · ${verificationLabel(data.verification, workflow)}`} tone={workflows[workflow].tone} />}
           <Text style={t.muted}>
             {task.project} · {requesterLabel(task.requester)}
           </Text>
@@ -173,19 +177,20 @@ export function Detail({
                   </View>
                   <View style={{ gap: 4 }}>
                     <Text style={t.heading}>진행 단계</Text>
-                    {["preflight", "work", "review", "postflight"].map(
+                    {stages.map(
                       (stage, index) => {
                         const done = !!evidence[stage],
                           active = data.stage === stage && !done;
                         return (
                           <View
                             key={stage}
+                            testID="stage-row"
                             style={{
                               flexDirection: "row",
                               gap: 12,
                               paddingVertical: 12,
                               alignItems: "center",
-                              borderBottomWidth: index === 3 ? 0 : 1,
+                              borderBottomWidth: index === stages.length - 1 ? 0 : 1,
                               borderColor: t.c.border,
                             }}
                           >
@@ -228,7 +233,7 @@ export function Detail({
                     검증 영수증과 단계별 기록입니다. 원시 도구 출력은 수집하지
                     않습니다.
                   </Text>
-                  {["preflight", "work", "review", "postflight"].map(
+                  {stages.map(
                     (stage) => {
                       const e = object(evidence[stage]),
                         run = runs.find((r) => r.stage === stage);

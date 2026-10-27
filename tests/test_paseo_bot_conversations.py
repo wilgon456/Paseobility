@@ -229,8 +229,44 @@ class ConversationTests(unittest.TestCase):
         plan, digest = self.plan(); task = self.c.approve('session-1', plan, digest)['taskIds'][0]
         self.c.bot.save(dict(self.c.bot.result(task), state='passed', summary='Gate passed'))
         self.c.tick(); self.c.tick()
-        self.assertEqual(self.c.db.execute("SELECT count(*) FROM gui_jobs WHERE kind='result'").fetchone()[0], 1)
-        self.assertEqual(self.c.db.execute("SELECT count(*) FROM gui_messages WHERE role='system' AND text='작업과 확인을 마쳤어요.'").fetchone()[0], 1)
+        self.assertEqual(self.c.db.execute("SELECT count(*) FROM gui_jobs WHERE kind='result'").fetchone()[0], 0)
+        notices = [json.loads(row[0]) for row in self.c.db.execute("SELECT payload FROM gui_messages WHERE role='system'")]
+        self.assertEqual(sum(payload.get('taskIds') == [task] for payload in notices), 2)  # Admission plus one result.
+
+    def test_daily_default_is_enforced_over_model_plan_and_survives_approval(self):
+        plan, digest = self.plan([dict(self.step, workflow='verified')])
+        task = self.c.approve('session-1', plan, digest)['taskIds'][0]
+        body = json.loads(self.c.db.execute('SELECT body FROM tasks WHERE id=?', (task,)).fetchone()[0])
+        self.assertEqual(body['workflow'], 'daily')
+        projected = handle(self.home, dict(action='sync'), True)['tasks'][0]
+        self.assertEqual(projected['workflow'], 'daily')
+
+    def test_daily_plan_budget_rejects_excess_tasks_without_admission(self):
+        with self.assertRaises(ValueError):
+            self.plan([self.step] * 4)
+        self.assertEqual(self.c.db.execute('SELECT count(*) FROM gui_plans').fetchone()[0], 0)
+        self.assertEqual(self.c.db.execute('SELECT count(*) FROM tasks').fetchone()[0], 0)
+
+    def test_verified_selection_allows_larger_plan(self):
+        self.c.send('session-1', 'verified', 'Implement', selection={'workflow': 'verified'})
+        job = self.c.db.execute("SELECT * FROM gui_jobs WHERE id='verified'").fetchone()
+        self.c.collect_reply(job, 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId='verified', reply='Ready', tasks=[self.step] * 4)))
+        body = json.loads(self.c.db.execute('SELECT body FROM gui_plans').fetchone()[0])
+        self.assertEqual([task['workflow'] for task in body['tasks']], ['verified'] * 4)
+
+    def test_writing_deliverable_creates_no_worker_plan(self):
+        self.c.send('session-1', 'writing', 'Write a short announcement')
+        job = self.c.db.execute("SELECT * FROM gui_jobs WHERE id='writing'").fetchone()
+        article = 'A complete fixture announcement.'
+        self.c.collect_reply(job, 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId='writing', reply=article, tasks=[])))
+        reply = self.c.db.execute("SELECT text FROM gui_messages WHERE id='reply-writing'").fetchone()[0]
+        self.assertEqual(reply, article)
+        self.assertEqual(self.c.db.execute('SELECT count(*) FROM gui_plans').fetchone()[0], 0)
+
+    def test_workflow_changes_cannot_reuse_a_message_id(self):
+        self.c.send('session-1', 'same', 'Task', selection={'workflow': 'daily'})
+        with self.assertRaises(ValueError):
+            self.c.send('session-1', 'same', 'Task', selection={'workflow': 'verified'})
 
     def test_short_status_request_receives_actual_conversation_task_context(self):
         plan, digest = self.plan(); task = self.c.approve('session-1', plan, digest)['taskIds'][0]
