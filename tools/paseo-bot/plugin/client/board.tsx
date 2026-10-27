@@ -43,7 +43,7 @@ export function TaskCard({
     const animation = Animated.spring(lift, { toValue: hovered ? 1 : 0, friction: 7, tension: 160, useNativeDriver: true });
     animation.start(); return () => animation.stop();
   }, [hovered, reduced, lift]);
-  const terminal = ["passed", "failed", "blocked", "unknown"].includes(
+  const terminal = ["passed", "failed", "blocked", "unknown", "closed"].includes(
     task.state,
   );
   const group = laneOf(task.state);
