@@ -2,17 +2,18 @@ import { ExternalLink } from "@getpaseo/plugin/client/ui";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Animated, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { Filters, Snapshot, TaskRow } from "../shared/contracts";
-import { projectTone, requesterTone, statusTone, tagColors } from "../shared/colors";
+import { modelTone, projectTone, requesterTone, statusTone, toneInk } from "../shared/colors";
 import {
   duration,
   laneOf,
   lanes,
+  modelLabel,
   relativeTime,
   requesterLabel,
   safePr,
   stageLabel,
 } from "../shared/model";
-import { Badge, Button, Empty, Glyph, MotionIn, Select, Skeleton, Tag, useReducedMotion, useUi } from "./ui";
+import { Badge, Button, Empty, Glyph, MotionIn, Select, Skeleton, StageRail, Tag, useReducedMotion, useUi } from "./ui";
 
 export function TaskCard({
   task,
@@ -39,24 +40,29 @@ export function TaskCard({
   useEffect(() => {
     lift.stopAnimation();
     if (reduced) { lift.setValue(0); return; }
-    const animation = Animated.timing(lift, { toValue: hovered ? 1 : 0, duration: 140, useNativeDriver: true });
+    const animation = Animated.spring(lift, { toValue: hovered ? 1 : 0, friction: 7, tension: 160, useNativeDriver: true });
     animation.start(); return () => animation.stop();
   }, [hovered, reduced, lift]);
   const terminal = ["passed", "failed", "blocked", "unknown"].includes(
     task.state,
   );
+  const group = laneOf(task.state);
+  const tone = statusTone(group);
+  const model = modelLabel(task.model, true);
   return (
     <MotionIn motionKey={`${task.id}:${task.state}`} direction={direction}>
     <Animated.View
       testID="task-card"
       style={{
         ...t.panel,
-        transform: [{ translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }) }],
-        borderColor: focused ? t.c.accent : t.c.border,
-        borderRadius: 12,
+        ...t.shadow(hovered),
+        transform: [{ translateY: lift.interpolate({ inputRange: [0, 1], outputRange: [0, -3] }) }],
+        borderColor: focused ? t.c.accent : hovered ? t.tint(tone, 0.6).background : t.c.border,
+        borderRadius: 14,
         overflow: "hidden",
       }}
     >
+      <View style={{ height: 4, backgroundColor: toneInk(tone), opacity: hovered || group === "running" ? 1 : 0.7 }} />
       <Pressable
         testID="task-open"
         accessibilityRole="button"
@@ -68,29 +74,37 @@ export function TaskCard({
         onBlur={() => setFocused(false)}
         style={({ pressed }) => ({
           minHeight: 64,
-          padding: 16,
-          gap: 12,
-          backgroundColor: pressed || hovered ? t.c.surface2 : "transparent",
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 8,
+          gap: 8,
+          backgroundColor: pressed ? t.c.surface2 : hovered ? t.tint(tone, 0.05).background : "transparent",
           flexDirection: list ? "row" : "column",
           alignItems: list ? "center" : "stretch",
         })}
       >
-        <View style={{ flex: list ? 1 : undefined, gap: 6, minWidth: 0 }}>
+        <View style={{ flex: list ? 1 : undefined, gap: 8, minWidth: 0 }}>
           <Text numberOfLines={3} style={{ ...t.body, fontWeight: "600" }}>
             {task.title}
           </Text>
-          <View style={{ alignSelf: "flex-start" }}><Tag label={task.project} tone={projectTone(task.project, projects)} /></View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+            <Tag dot label={task.project} maxWidth={180} tone={projectTone(task.project, projects)} />
+            {!!model && <Tag dot label={model} tone={modelTone(task.model)} />}
+          </View>
         </View>
-        <Badge
-          state={task.state}
-          label={
-            laneOf(task.state) === "running" && task.stage
-              ? stageLabel(task.stage)
-              : undefined
-          }
-        />
+        <View style={{ gap: 8, minWidth: list ? 200 : undefined }}>
+          <Badge
+            state={task.state}
+            label={
+              group === "running" && task.stage
+                ? stageLabel(task.stage)
+                : undefined
+            }
+          />
+          <StageRail state={task.state} stage={task.stage} />
+        </View>
       </Pressable>
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 8 }}>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 4 }}>
         <View
           style={{
             flexDirection: "row",
@@ -113,9 +127,12 @@ export function TaskCard({
           }}
         >
           <Tag label={requesterLabel(task.requester)} tone={requesterTone(task.requester)} />
-          <Text style={t.small}>
-            {duration(task.createdAt, terminal ? task.updatedAt : now)}
-          </Text>
+          <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
+            <Glyph name="Timer" size={13} />
+            <Text style={t.small}>
+              {duration(task.createdAt, terminal ? task.updatedAt : now)}
+            </Text>
+          </View>
         </View>
         <Text style={t.small}>{relativeTime(task.createdAt, now)} 접수</Text>
         {(safePr(task.prUrl) || task.state === "failed") && (
@@ -135,7 +152,7 @@ export function TaskCard({
               </View>
             )}
             {task.state === "failed" && (
-              <Button label="재시도" icon="RotateCcw" onPress={onRetry} quiet />
+              <Button label="재시도" icon="RotateCcw" onPress={onRetry} tone="red" />
             )}
           </View>
         )}
@@ -182,7 +199,7 @@ export function Board(p: Props) {
         }}
       >
         <View style={{ flex: 1, minWidth: 100 }}>
-          <Text style={t.heading}>작업 보드</Text>
+          <Text accessibilityRole="header" style={t.heading}>작업 보드</Text>
           <Text style={t.small}>
             {p.data
               ? `${p.data.filtered}개 작업 · 봇이 상태를 갱신합니다`
@@ -212,7 +229,7 @@ export function Board(p: Props) {
             gap: 8,
             borderWidth: 1,
             borderColor: t.c.border,
-            borderRadius: 8,
+            borderRadius: 10,
             paddingHorizontal: 12,
             backgroundColor: t.c.surface1,
           }}
@@ -238,24 +255,30 @@ export function Board(p: Props) {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           <Select
             label="상태"
+            icon="CircleDot"
+            tone={p.filters.group ? statusTone(p.filters.group) : undefined}
             value={p.filters.group}
             options={[
               { value: "", label: "전체 상태" },
-              ...lanes.map((l) => ({ value: l.id, label: l.label })),
+              ...lanes.map((l) => ({ value: l.id, label: l.label, tone: statusTone(l.id) })),
             ]}
             onChange={(group) => set({ group: group as Filters["group"] })}
           />
           <Select
             label="프로젝트"
+            icon="FolderGit2"
+            tone={p.filters.project ? projectTone(p.filters.project, projects.map(x => x.id)) : undefined}
             value={p.filters.project}
             options={[
               { value: "", label: "전체" },
-              ...projects.map((p) => ({ value: p.id, label: p.id })),
+              ...projects.map((x) => ({ value: x.id, label: x.id, tone: projectTone(x.id, projects.map(y => y.id)) })),
             ]}
             onChange={(project) => set({ project })}
           />
           <Select
             label="머신"
+            icon="Monitor"
+            tone={p.filters.machine ? "cyan" : undefined}
             value={p.filters.machine}
             options={[
               { value: "", label: "전체" },
@@ -265,18 +288,22 @@ export function Board(p: Props) {
           />
           <Select
             label="요청자"
+            icon="UserRound"
+            tone={p.filters.requester ? requesterTone(p.filters.requester) : undefined}
             value={p.filters.requester}
             options={[
               { value: "", label: "전체" },
               ...["gui", "grok", "cli", "legacy"].map((m) => ({
                 value: m,
                 label: requesterLabel(m),
+                tone: requesterTone(m),
               })),
             ]}
             onChange={(requester) => set({ requester })}
           />
           <Select
             label="정렬"
+            icon="ArrowDownUp"
             value={p.filters.sort}
             options={[
               { value: "newest", label: "최신 접수순" },
@@ -346,11 +373,14 @@ export function Board(p: Props) {
               height: boardHeight,
             }}
           >
-            {lanes.map((lane) => (
+            {lanes.map((lane) => {
+              const tone = statusTone(lane.id), track = t.tint(tone, 0.07, t.c.surface0), head = t.tint(tone, 0.18, t.c.surface0);
+              const count = rows.filter((r) => laneOf(r.state) === lane.id).length;
+              return (
               <View
                 key={lane.id}
                 testID={`lane-${lane.id}`}
-                style={{ width: 248, gap: 12, height: boardHeight, backgroundColor: tagColors(t.c.surface0, t.c.foreground, statusTone(lane.id)).background, borderRadius: 12, padding: 8, borderWidth: 1, borderColor: tagColors(t.c.surface0, t.c.foreground, statusTone(lane.id)).border }}
+                style={{ width: 264, gap: 8, height: boardHeight, backgroundColor: track.background, borderRadius: 14, padding: 8, borderWidth: 1, borderColor: track.border }}
               >
                 <View
                   style={{
@@ -358,7 +388,9 @@ export function Board(p: Props) {
                     gap: 8,
                     alignItems: "center",
                     paddingVertical: 4,
-                    paddingHorizontal: 0,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    backgroundColor: head.background,
                   }}
                 >
                   <Glyph
@@ -373,13 +405,14 @@ export function Board(p: Props) {
                               ? "CircleAlert"
                               : "CircleDashed"
                     }
+                    color={head.foreground}
                   />
-                  <Text style={{ ...t.body, fontWeight: "600" }}>
+                  <Text style={{ ...t.body, fontWeight: "600", flex: 1, color: head.foreground }}>
                     {lane.label}
                   </Text>
-                  <Text style={t.small}>
-                    {rows.filter((r) => laneOf(r.state) === lane.id).length}
-                  </Text>
+                  <View style={{ minWidth: 24, height: 24, paddingHorizontal: 8, borderRadius: 999, alignItems: "center", justifyContent: "center", backgroundColor: t.c.surface1 }}>
+                    <Text style={{ ...t.small, color: t.c.foreground, fontWeight: "600" }}>{count}</Text>
+                  </View>
                 </View>
                 <ScrollView
                   testID={`lane-scroll-${lane.id}`}
@@ -399,15 +432,17 @@ export function Board(p: Props) {
                         now={p.now}
                       />
                     ))}
-                  {!rows.some((r) => laneOf(r.state) === lane.id) && (
+                  {!count && (
                     <View
                       style={{
                         borderWidth: 1,
                         borderStyle: "dashed",
-                        borderColor: t.c.border,
-                        borderRadius: 12,
+                        borderColor: track.border,
+                        borderRadius: 10,
                         padding: 16,
                         minHeight: 80,
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
                       <Text style={t.small}>이 상태의 작업이 없습니다.</Text>
@@ -415,7 +450,7 @@ export function Board(p: Props) {
                   )}
                 </ScrollView>
               </View>
-            ))}
+            );})}
           </ScrollView>
         </View>
       ) : (

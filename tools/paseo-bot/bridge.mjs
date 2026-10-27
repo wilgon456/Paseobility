@@ -205,15 +205,16 @@ async function main() {
     const matches=profileRows(c.config ?? c).filter(p=>p.name===req.profile);
     if(matches.length!==1) throw Error('profile');
     const p={...matches[0]};
-    const aliases={terra:['codex','gpt-6.1-terra'],sol:['codex','gpt-6.1-sol'],claude:['claude','claude-fable-5-1'],go:['opencode','opencode-go/glm-5.3-flash']};
+    const aliases={sol:['codex','gpt-6.1-sol'],claude:['claude','claude-opus-5-5'],go:['opencode','opencode-go/deepseek-v4.1-flash']};
     if(req.modelAlias) {
       const chosen=aliases[req.modelAlias];
       if(!chosen || p.provider!==chosen[0]) throw Error('profile unsupported');
       if(chosen[1]) p.model=chosen[1];
       if(req.effort && req.effort!=='auto') {
         if(!['low','medium','high'].includes(req.effort)) throw Error('profile unsupported');
-        p.thinkingOptionId=req.effort;
-      } else if(['terra','sol'].includes(req.modelAlias)) p.thinkingOptionId='high';
+        // DeepSeek Flash exposes only low/high/max thinking; medium maps up rather than failing launch.
+        p.thinkingOptionId=req.modelAlias==='go' && req.effort==='medium' ? 'high' : req.effort;
+      } else if(req.modelAlias==='sol') p.thinkingOptionId='high';
     }
     // CLI has no feature flags. Refuse rather than silently drop configured values.
     if(!p.provider || !p.model || Object.keys(p.featureValues ?? {}).length) throw Error('profile unsupported');

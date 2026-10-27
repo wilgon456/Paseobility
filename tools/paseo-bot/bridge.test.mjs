@@ -15,8 +15,8 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  fs.writeFileSync(module,`import {createHash} from 'node:crypto';let probes=0,remote;export async function connectToDaemon(){return {
  getDaemonStatus:async()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1'}),
  getLastServerInfoMessage:()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1',features:{workspaceRequestReceipts:true}}),
- getDaemonConfig:async()=>({config:{agentProfiles:[{name:'gpt-task',provider:'codex',model:'fixture-model',thinkingOptionId:'high',${noMode?'':"modeId:'read-only',"}featureValues:${features?'{fast_mode:true}':'{}'},notes:'Fixture profile'}]}}),
- getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:${warming?"(++probes>2?'ready':'loading')":"'ready'"},defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}]}]}),
+ getDaemonConfig:async()=>({config:{agentProfiles:[{name:'gpt-task',provider:'codex',model:'fixture-model',thinkingOptionId:'high',${noMode?'':"modeId:'read-only',"}featureValues:${features?'{fast_mode:true}':'{}'},notes:'Fixture profile'},{name:'refactor-bulk',provider:'opencode',model:'fixture-go',featureValues:{}}]}}),
+ getProvidersSnapshot:async()=>({entries:[{provider:'codex',enabled:true,status:${warming?"(++probes>2?'ready':'loading')":"'ready'"},defaultModeId:'auto-review',modes:[{id:'read-only'},{id:'auto-review'}]},{provider:'opencode',enabled:true,status:'ready',modes:[]}]}),
  listProjects:async()=>({projects:[{projectRootPath:'/repo',projectDisplayName:'fixture'}]}),
  openProject:async()=>({workspace:{id:'local1',projectId:'project1',workspaceDirectory:'/repo'}}),
  createWorkspace:async(x)=>({workspace:{id:'w1',projectId:x.source.projectId,workspaceDirectory:'/worktree',workspaceKind:'worktree'}}),
@@ -89,7 +89,7 @@ test('fresh provider snapshots warm before any launch side effect',t=>{
 });
 
 test('only terminal provider error yields a redacted limit classification',t=>{
- for(const [error,expected] of [['HTTP 429 rate limit exceeded','quota'],['model gpt-6.1-terra not available','model-unavailable'],['network timeout','other']]){
+ for(const [error,expected] of [['HTTP 429 rate limit exceeded','quota'],['model gpt-6.1-sol not available','model-unavailable'],['network timeout','other']]){
   const f=fixture(t,{errorText:error,agentStatus:'error'}); const r=f.call({action:'observe',agentId:'owned',attempt:'attempt'});
   assert.equal(r.result.errorKind,expected); assert.ok(!JSON.stringify(r).includes(error));
  }
@@ -98,10 +98,15 @@ test('only terminal provider error yields a redacted limit classification',t=>{
 });
 test('model aliases are fixed and unknown providers cannot reach the CLI',t=>{
  const f=fixture(t);const req={action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'fixture',workspaceId:'w1'};
- assert.equal(f.call({...req,modelAlias:'terra',effort:'auto'}).ok,true);
+ assert.equal(f.call({...req,modelAlias:'sol',effort:'auto'}).ok,true);
  const a=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json'))).argv;
- assert.equal(a[a.indexOf('--model')+1],'gpt-6.1-terra');
+ assert.equal(a[a.indexOf('--model')+1],'gpt-6.1-sol');
  assert.equal(a[a.indexOf('--thinking')+1],'high');
+ assert.equal(f.call({...req,modelAlias:'terra',effort:'auto'}).ok,false);
  assert.equal(f.call({...req,modelAlias:'commandcode',effort:'high'}).ok,false);
  assert.equal(f.call({...req,modelAlias:'go',effort:'high'}).ok,false);
+ assert.equal(f.call({...req,profile:'refactor-bulk',modelAlias:'go',effort:'medium'}).ok,true);
+ const g=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json'))).argv;
+ assert.equal(g[g.indexOf('--model')+1],'opencode-go/deepseek-v4.1-flash');
+ assert.equal(g[g.indexOf('--thinking')+1],'high');
 });

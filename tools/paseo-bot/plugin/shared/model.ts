@@ -92,3 +92,20 @@ export function safePr(url: unknown): string {
     ? url
     : "";
 }
+export const models = {
+  sol: { label: "GPT-6.1 Sol", short: "Sol", note: "기본 작업" },
+  claude: { label: "Claude Opus 5.5", short: "Opus", note: "어려운 설계·버그" },
+  go: { label: "DeepSeek V4.1 Flash", short: "Flash", note: "가벼운 작업" },
+} as const;
+export const modelAlias = (model: string) => (model === "terra" ? "sol" : model);
+export function modelLabel(model: string, compact = false) {
+  const info = (models as Record<string, { label: string; short: string }>)[modelAlias(model)];
+  return info ? (compact ? info.short : info.label) : "";
+}
+export const stages = ["preflight", "work", "review", "postflight"] as const;
+/** Completed stages (0-4); the current stage is the next one. */
+export function stageProgress(state: string, stage: string) {
+  if (state === "passed") return stages.length;
+  if (laneOf(state) === "waiting") return 0;
+  return Math.max(0, stages.indexOf(stage as (typeof stages)[number]));
+}
