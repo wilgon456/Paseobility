@@ -46,7 +46,13 @@ agent-reviewed evidence, not proof of provider sandboxing or deployed behavior.
 Reviewers have their configured provider tools: the no-edit/no-deploy rules are
 instructions, not an OS security boundary. Use restricted provider modes and
 separate OS accounts for stronger isolation. The bot does not automatically
-commit, push, merge, deploy, approve permissions or change credentials.
+approve permissions or change credentials. Task agents launch in the provider's most
+permissive mode (`full-access`, `bypassPermissions`, `build`) and may commit, push,
+open a PR, wait for CI, merge, deploy and verify. Hard limits: never print secrets,
+never post to Slack, never delete protected runtimes, sessions or agents.
+Failed, blocked or unknown tasks close automatically once reported
+(`autoCloseTestSeconds`, default 600, for test/probe ids; `autoCloseSeconds`,
+default 86400, otherwise) or manually with `paseo-bot.ps1 close <id> -Reason ...`.
 Deployment commands are registry metadata for later authorized work; the bot
 never executes them as a deployment phase. Gates themselves must be trusted
 commands appropriate for that machine and safe without production secrets.

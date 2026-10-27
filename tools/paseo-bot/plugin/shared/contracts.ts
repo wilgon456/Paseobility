@@ -110,7 +110,7 @@ export const syncInput = z
     requester: z.string().max(200).default(""),
     scope: z.string().max(80).default(""),
     group: z
-      .enum(["", "waiting", "running", "attention", "success", "failed"])
+      .enum(["", "waiting", "running", "attention", "success", "failed", "closed"])
       .default(""),
     sort: z.enum(["newest", "oldest", "updated", "title"]).default("newest"),
   })

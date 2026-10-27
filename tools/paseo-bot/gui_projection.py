@@ -7,7 +7,7 @@ from gui_state import project_list
 from paseo_bot import MODELS, model_alias, route_model, scrub
 
 GROUPS = {'waiting': ['queued', 'ready'], 'running': ['dispatching', 'running', 'repairing'],
-          'attention': ['blocked', 'unknown'], 'success': ['passed'], 'failed': ['failed']}
+          'attention': ['blocked', 'unknown'], 'success': ['passed'], 'failed': ['failed'], 'closed': ['closed']}
 
 
 def safe_pr(value):
@@ -35,6 +35,8 @@ def snapshot(db, home, request, writable, read_json):
         if group not in GROUPS:
             raise ValueError('Group')
         where.append('t.state IN (%s)' % ','.join('?' for _ in GROUPS[group])); params.extend(GROUPS[group])
+    else:
+        where.append("t.state<>'closed'")  # Closed cards leave the board; ask for group=closed to see them.
     scope = request.get('scope', '')
     if scope:
         where.append("json_extract(" + origin + ",'$.conversationId')=?"); params.append(scope)

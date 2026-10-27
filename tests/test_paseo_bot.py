@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -525,11 +526,32 @@ class BotTests(unittest.TestCase):
         self.assertEqual(self.drive()['state'], 'blocked')
         self.assertEqual(self.fake.repairs, 1)
 
-    def test_unauthorized_commit_blocks(self):
+    def test_review_head_mismatch_blocks(self):
         self.fake.changed_head = True
         self.bot.submit(self.body)
         self.assertEqual(self.drive()['state'], 'blocked')
-        self.assertEqual(len(self.fake.launches), 2)
+        self.assertEqual(len(self.fake.launches), 3)
+
+    def test_prompt_allows_full_flow_with_three_hard_limits(self):
+        text = self.bot.prompt(self.body, {'target': {'repo': '/r', 'defaultBranch': 'main', 'gates': []}, 'branch': 'b', 'evidence': {}}, 'work')
+        for phrase in ['commit, push, open a PR, wait for CI, merge, deploy', 'never print secrets', 'never post to Slack', 'protected runtimes']:
+            self.assertIn(phrase, text)
+        self.assertNotIn('Do not deploy, merge, push, commit', text)
+        self.assertNotIn('ERP', text)
+
+    def test_close_and_auto_close_reported_attention_tasks(self):
+        self.bot.submit(self.body)
+        r = self.bot.result(self.body['id'])
+        self.bot.save(dict(r, state='unknown', reason='x'))
+        with self.assertRaises(ValueError):
+            self.bot.close('missing-task')
+        self.assertEqual(self.bot.auto_close(now=time.time()), [])
+        closed = self.bot.auto_close(now=time.time() + 90000)
+        self.assertEqual(closed, [self.body['id']])
+        r = self.bot.result(self.body['id'])
+        self.assertEqual((r['state'], r['closedFrom']), ('closed', 'unknown'))
+        raw = (self.home / 'results' / (self.body['id'] + '.json')).read_bytes()
+        self.assertTrue(all(b < 128 for b in raw))
 
     def test_classification_prefers_explicit_kind(self):
         for text, expected in [('bulk refactor files', 'refactor'), ('architecture design', 'gpt'), ('complex architecture', 'hard'), ('git-sync state', 'sync'), ('fix typo', 'gpt')]:

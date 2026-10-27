@@ -8,6 +8,7 @@ export const stateLabels: Record<string, string> = {
   failed: "실패",
   blocked: "차단",
   unknown: "확인 필요",
+  closed: "종료",
 };
 export const stateLabel = (state: string) => stateLabels[state] ?? state;
 export const makeTaskId = () =>
@@ -48,6 +49,7 @@ export function laneOf(state: string) {
         repairing: "running",
         passed: "success",
         failed: "failed",
+        closed: "closed",
       } as Record<string, string>
     )[state] ?? "attention"
   );
