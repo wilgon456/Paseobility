@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // design-check: render pages at phone/tablet/desktop widths in a headless
-// Chromium (Chrome, Edge, Chromium or a Playwright download), measure layout
+// Chromium (Ego Lite preferred, then Chrome/Chromium or a Playwright download), measure layout
 // and typography in the page, save clean + marked screenshots and a report.
 // Zero npm dependencies: talks to the browser over --remote-debugging-pipe.
 //
@@ -81,7 +81,7 @@ const LABEL = { error: '오류', warn: '경고', info: '참고' };
 const ORDER = { error: 0, warn: 1, info: 2 };
 
 // Keyboard-focus probe. Runs after the screenshots because focusing can open menus or move the page.
-const FOCUS_JS = `(() => {
+const FOCUS_JS = `((ignore) => {
   const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=tab],[tabindex]:not([tabindex="-1"])';
   const out = []; let checked = 0, skipped = 0;
   // transitions would make the ring invisible at the instant we look, so switch them off for the probe
@@ -91,6 +91,7 @@ const FOCUS_JS = `(() => {
   const path = (el) => { let p = el.tagName.toLowerCase(); if (el.id) p += '#' + el.id; else if (el.classList.length) p += '.' + [...el.classList].slice(0, 2).join('.'); return p; };
   for (const el of document.querySelectorAll(SEL)) {
     if (checked >= 24) break;
+    if (ignore.some(selector => { try { return el.closest(selector); } catch { return false; } })) continue;
     if (!vis(el) || el.disabled) continue;
     const r = el.getBoundingClientRect(); if (r.width < 4 || r.height < 4) continue;
     const before = snap(el);
@@ -105,7 +106,7 @@ const FOCUS_JS = `(() => {
   }
   st.remove();
   return { checked, skipped, invisible: out };
-})()`;
+})`;
 
 // ---------------- browser discovery ----------------
 function exists(p) { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } }
@@ -124,15 +125,17 @@ export function findBrowser() {
     const pf = process.env.PROGRAMFILES || 'C:\\Program Files';
     const pfx = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
     const la = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    c.push(path.join(pf, 'Google/Chrome/Application/chrome.exe'), path.join(pfx, 'Google/Chrome/Application/chrome.exe'), path.join(la, 'Google/Chrome/Application/chrome.exe'),
-      path.join(pfx, 'Microsoft/Edge/Application/msedge.exe'), path.join(pf, 'Microsoft/Edge/Application/msedge.exe'));
+    // Ego Lite is the Paseobility browser; its Chromium runs headless with a throwaway profile.
+    c.push(path.join(pf, 'Citro Labs/ego lite/Application/ego.exe'), path.join(la, 'Citro Labs/ego lite/Application/ego.exe'));
+    c.push(path.join(pf, 'Google/Chrome/Application/chrome.exe'), path.join(pfx, 'Google/Chrome/Application/chrome.exe'), path.join(la, 'Google/Chrome/Application/chrome.exe'));
     c.push(...globChromium(path.join(la, 'ms-playwright'), ['chrome-win64/chrome.exe', 'chrome-win/chrome.exe']));
   } else if (process.platform === 'darwin') {
+    c.push('/Applications/ego lite.app/Contents/MacOS/ego lite', path.join(home, 'Applications/ego lite.app/Contents/MacOS/ego lite'));
     c.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium',
-      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge', '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser');
+      '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser');
     c.push(...globChromium(path.join(home, 'Library/Caches/ms-playwright'), ['chrome-mac/Chromium.app/Contents/MacOS/Chromium', 'chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing', 'chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing']));
   } else {
-    for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'microsoft-edge-stable']) {
+    for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']) {
       const r = spawnSync('which', [name], { encoding: 'utf8' });
       if (r.status === 0 && r.stdout.trim()) c.push(r.stdout.trim());
     }
@@ -166,25 +169,51 @@ class Browser {
         else if (m.method) for (const l of [...this.listeners]) l(m);
       }
     });
-    this.closed = new Promise((res) => this.proc.on('exit', res));
-    this.proc.on('exit', () => { for (const p of this.pending.values()) p.rej(new Error('browser exited: ' + this.err.split('\n').slice(-3).join(' '))); this.pending.clear(); });
+    const fail = (error) => {
+      this.failure = error;
+      for (const p of this.pending.values()) p.rej(error);
+      this.pending.clear();
+    };
+    this.closed = new Promise((res) => this.proc.once('close', res));
+    this.proc.on('error', fail);
+    this.out.on('error', fail);
+    this.in.on('error', fail);
+    this.proc.on('exit', () => fail(new Error('browser exited: ' + this.err.split('\n').slice(-3).join(' '))));
   }
   send(method, params = {}, sessionId, timeout = 30000) {
+    if (this.failure) return Promise.reject(this.failure);
     const id = ++this.seq; const msg = { id, method, params }; if (sessionId) msg.sessionId = sessionId;
     return new Promise((res, rej) => {
       const t = setTimeout(() => { this.pending.delete(id); rej(new Error(`${method}: timeout`)); }, timeout);
       this.pending.set(id, { res: (v) => { clearTimeout(t); res(v); }, rej: (e) => { clearTimeout(t); rej(e); }, method });
-      this.out.write(JSON.stringify(msg) + '\0');
+      this.out.write(JSON.stringify(msg) + '\0', (error) => {
+        if (!error) return;
+        const p = this.pending.get(id);
+        this.pending.delete(id);
+        if (p) p.rej(error);
+      });
     });
   }
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   waitFor(pred, timeout) {
-    return new Promise((res) => { const off = this.on((m) => { if (pred(m)) { off(); clearTimeout(t); res(m); } }); const t = setTimeout(() => { off(); res(null); }, timeout); });
+    let cancel;
+    const promise = new Promise((res) => {
+      const finish = (value) => { off(); clearTimeout(t); res(value); };
+      const off = this.on((m) => { if (pred(m)) finish(m); });
+      const t = setTimeout(() => finish(null), timeout);
+      cancel = () => finish(null);
+    });
+    return { promise, cancel };
   }
   async close() {
     try { await this.send('Browser.close', {}, undefined, 3000); } catch { /* already gone */ }
-    await Promise.race([this.closed, new Promise((r) => setTimeout(r, 3000))]);
-    try { this.proc.kill(); } catch { /* ignore */ }
+    let timer;
+    try {
+      await Promise.race([this.closed, new Promise((resolve) => {
+        timer = setTimeout(() => { this.proc.kill('SIGKILL'); resolve(); }, 3000);
+      })]);
+      await this.closed;
+    } finally { clearTimeout(timer); }
     for (let i = 0; i < 5; i++) { try { fs.rmSync(this.dir, { recursive: true, force: true }); break; } catch { await new Promise((r) => setTimeout(r, 300)); } }
   }
 }
@@ -195,7 +224,7 @@ async function openTab(b) {
   const s = (m, p, t) => b.send(m, p, sessionId, t);
   await s('Page.enable'); await s('Runtime.enable'); await s('Network.enable');
   let inflight = 0, last = Date.now();
-  b.on((m) => {
+  const off = b.on((m) => {
     if (m.sessionId !== sessionId) return;
     if (m.method === 'Network.requestWillBeSent') { inflight++; last = Date.now(); }
     else if (m.method === 'Network.loadingFinished' || m.method === 'Network.loadingFailed') { inflight = Math.max(0, inflight - 1); last = Date.now(); }
@@ -206,7 +235,7 @@ async function openTab(b) {
     if (r.exceptionDetails) throw new Error('page script: ' + (r.exceptionDetails.exception && r.exceptionDetails.exception.description || r.exceptionDetails.text));
     return r.result.value;
   };
-  return { targetId, sessionId, s, idle, evaluate, close: () => b.send('Target.closeTarget', { targetId }).catch(() => {}) };
+  return { targetId, sessionId, s, idle, evaluate, close: () => { off(); return b.send('Target.closeTarget', { targetId }).catch(() => {}); } };
 }
 
 // ---------------- one page at one width ----------------
@@ -220,9 +249,11 @@ async function checkOne(b, url, width, cfg) {
     await s('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }, { name: 'prefers-color-scheme', value: cfg.scheme }] });
     if (mobile) { await s('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }); await s('Emulation.setUserAgentOverride', { userAgent: MOBILE_UA }); }
     const loaded = b.waitFor((m) => m.sessionId === tab.sessionId && m.method === 'Page.loadEventFired', cfg.timeout);
-    const nav = await s('Page.navigate', { url }, cfg.timeout);
-    if (nav.errorText) throw new Error(`load failed: ${nav.errorText}`);
-    await loaded;
+    try {
+      const nav = await s('Page.navigate', { url }, cfg.timeout);
+      if (nav.errorText) throw new Error(`load failed: ${nav.errorText}`);
+      if (!await loaded.promise) throw new Error('page load: timeout');
+    } finally { loaded.cancel(); }
     await idle(500, 8000);
     await evaluate('document.fonts ? document.fonts.ready.then(() => true) : true', 15000).catch(() => {});
     await evaluate(`(async () => { const h = () => document.documentElement.scrollHeight; for (let y = 0; y < Math.min(h(), ${cfg.maxHeight}); y += Math.round(innerHeight * 0.8)) { scrollTo(0, y); await new Promise(r => setTimeout(r, 70)); } scrollTo(0, 0); await new Promise(r => setTimeout(r, 250)); return true; })()`, 60000).catch(() => {});
@@ -253,8 +284,8 @@ async function checkOne(b, url, width, cfg) {
       document.documentElement.appendChild(o); return true; })()`);
     const marked = await shot(base + '-marked.png');
     await evaluate(`(() => { const o = document.getElementById('__dc_overlay'); if (o) o.remove(); return true; })()`);
-    try {
-      const fz = await evaluate(FOCUS_JS, 30000);
+    if (!cfg.disable.includes('focus-invisible')) try {
+      const fz = await evaluate(`${FOCUS_JS}(${JSON.stringify(cfg.ignore)})`, 30000);
       if (fz && fz.invisible && fz.invisible.length) res.findings.push({ n: res.findings.length + 1, level: 'warn', rule: 'focus-invisible', msg: `키보드 초점이 보이지 않는 요소가 ${fz.invisible.length}개다(초점 검사 ${fz.checked}개 중).`, targets: fz.invisible.slice(0, 6), data: { checked: fz.checked, skipped: fz.skipped }, hint: HINTS['focus-invisible'] });
     } catch (e) { /* focus probing is best effort */ }
     return { width, scheme: cfg.scheme, clean, marked, ...res };
@@ -278,16 +309,17 @@ async function contactSheet(b, cfg, pages) {
   try {
     await tab.s('Emulation.setDeviceMetricsOverride', { width: 24 * 2 + pages.length * 544, height: 800, deviceScaleFactor: 1, mobile: false });
     const loaded = b.waitFor((m) => m.sessionId === tab.sessionId && m.method === 'Page.loadEventFired', 20000);
-    await tab.s('Page.navigate', { url: pathToFileURL(file).href });
-    await loaded;
+    try {
+      await tab.s('Page.navigate', { url: pathToFileURL(file).href });
+      if (!await loaded.promise) throw new Error('contact sheet load: timeout');
+    } finally { loaded.cancel(); }
     const m = await tab.s('Page.getLayoutMetrics');
     const cs = m.cssContentSize || m.contentSize;
     const r = await tab.s('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x: 0, y: 0, width: Math.ceil(cs.width), height: Math.ceil(cs.height), scale: 1 } });
     const out = path.join(cfg.dir, `${cfg.slug}-sheet.png`);
     fs.writeFileSync(out, Buffer.from(r.data, 'base64'));
-    fs.rmSync(file, { force: true });
     return out;
-  } finally { await tab.close(); }
+  } finally { fs.rmSync(file, { force: true }); await tab.close(); }
 }
 
 // ---------------- report ----------------
@@ -334,12 +366,12 @@ export async function run(args, opts = {}) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     const next = () => { const v = args[++i]; if (v === undefined) throw new Error(`${a} needs a value`); return v; };
-    if (a === '--widths') cfg.widths = next().split(',').map((v) => parseInt(v, 10)).filter((v) => v > 0);
+    if (a === '--widths') cfg.widths = next().split(',').map(Number);
     else if (a === '--out') cfg.out = next();
     else if (a === '--scheme') cfg.scheme = next();
-    else if (a === '--max-height') cfg.maxHeight = parseInt(next(), 10);
-    else if (a === '--timeout') cfg.timeout = parseInt(next(), 10) * 1000;
-    else if (a === '--wait') cfg.wait = parseInt(next(), 10);
+    else if (a === '--max-height') cfg.maxHeight = Number(next());
+    else if (a === '--timeout') cfg.timeout = Number(next()) * 1000;
+    else if (a === '--wait') cfg.wait = Number(next());
     else if (a === '--ignore') cfg.ignore.push(...next().split(',').map((v) => v.trim()));
     else if (a === '--disable') cfg.disable.push(...next().split(',').map((v) => v.trim()));
     else if (a === '--fail-on') cfg.failOn = next();
@@ -351,13 +383,19 @@ export async function run(args, opts = {}) {
     else targets.push(a);
   }
   if (!targets.length) throw new Error('usage: design-check <url|file.html>... [--widths 375,768,1440] [--out dir] [--baseline file [--update-baseline]] [--fail-on error|warn|none] [--ignore selectors] [--scheme light|dark]');
+  const schemes = String(cfg.scheme).split(',').map((s) => s.trim());
+  if (!cfg.widths.length || cfg.widths.some((w) => !Number.isSafeInteger(w) || w <= 0)) throw new Error('invalid --widths: use positive integer widths');
+  if (schemes.some((s) => !['light', 'dark'].includes(s))) throw new Error('invalid --scheme: use light,dark');
+  if (!['error', 'warn', 'none'].includes(cfg.failOn)) throw new Error('invalid --fail-on: use error|warn|none');
+  if (!Number.isSafeInteger(cfg.maxHeight) || cfg.maxHeight <= 0) throw new Error('invalid --max-height: use positive pixels');
+  if (!Number.isFinite(cfg.timeout) || cfg.timeout <= 0) throw new Error('invalid --timeout: use positive seconds');
+  if (!Number.isFinite(cfg.wait) || cfg.wait < 0) throw new Error('invalid --wait: use milliseconds >= 0');
   const exe = findBrowser();
-  if (!exe) { const e = new Error('no Chromium-family browser found. Install Chrome/Edge or set DESIGN_CHECK_BROWSER=<path to chrome>.'); e.code = 'NO_BROWSER'; throw e; }
+  if (!exe) { const e = new Error('no Chromium-family browser found. Install Ego Lite (or Chrome) or set DESIGN_CHECK_BROWSER=<path to chrome>.'); e.code = 'NO_BROWSER'; throw e; }
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
   const b = new Browser(exe);
   const results = [];
   const toolErrors = [];
-  const schemes = String(cfg.scheme).split(',').map((s) => s.trim()).filter(Boolean);
   try {
     for (const t of targets) {
       const url = toUrl(t);

@@ -65,6 +65,13 @@ test('--older-than 0 closes recent unattached browsers too', () => {
   assert.equal(found.find(f => f.pid === 301).action, 'keep (in use by pid 300)');
 });
 
+test('a Playwright browser with a live non-daemon controller is not orphaned', () => {
+  const controller = { pid: 700, ppid: 1, ageSeconds: 4 * HOUR, command: 'node fixture-runner.mjs' };
+  const browser = { ...PROCS.find(p => p.pid === 500), ppid: controller.pid };
+  const [found] = findLeftovers([controller, browser], { olderThanMinutes: 0, selfPid: -1 });
+  assert.equal(found.action, 'keep (in use by pid 700)');
+});
+
 test('CLI fixture mode lists and refuses unknown pids', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sweep-'));
   const fixture = path.join(dir, 'p.json');
@@ -81,16 +88,37 @@ test('CLI fixture mode lists and refuses unknown pids', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('a missing process-listing executable is reported without a secondary exception', () => {
+  const result = spawnSync(process.execPath, [SCRIPT, '--json'], {
+    encoding: 'utf8', env: { ...process.env, PATH: '' },
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /process listing failed:.*ENOENT/);
+});
+
 test('a real orphaned fake browser process is closed', { skip: process.platform === 'win32' }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sweep-'));
   const fake = path.join(dir, 'paseobility', 'browser', 'cloakbrowser', 'cache', 'Chromium');
   fs.mkdirSync(path.dirname(fake), { recursive: true });
-  fs.writeFileSync(fake, '#!/bin/sh\nsleep 60\n:\n', { mode: 0o755 });
+  fs.writeFileSync(fake, '#!/bin/sh\nprintf "READY\\n"\nsleep 60\n:\n', { mode: 0o755 });
   // Detach so the fake browser is re-parented away from this test process.
-  const launcher = spawn('/bin/sh', ['-c', `"${fake}" --headless & echo $!`], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
-  const pid = Number((await new Promise(r => launcher.stdout.once('data', r))).toString().trim());
-  await new Promise(r => launcher.once('exit', r));
-  await new Promise(r => setTimeout(r, 300));
+  const launcher = spawn('/bin/sh', ['-c', '"$1" --headless & echo "PID $!"', 'launcher', fake], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  const exited = new Promise((resolve, reject) => { launcher.once('exit', resolve); launcher.once('error', reject); });
+  const pid = await new Promise((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => reject(new Error('fake browser did not become ready')), 5000);
+    const observe = chunk => {
+      output += chunk;
+      const match = /PID (\d+)/.exec(output);
+      if (match && output.includes('READY\n')) {
+        clearTimeout(timer);
+        launcher.stdout.off('data', observe);
+        resolve(Number(match[1]));
+      }
+    };
+    launcher.stdout.on('data', observe);
+  });
+  await exited;
   const r = spawnSync(process.execPath, [SCRIPT, '--close', '--pid', String(pid), '--json'], { encoding: 'utf8' });
   const hit = JSON.parse(r.stdout).browsers.find(b => b.pid === pid);
   try {

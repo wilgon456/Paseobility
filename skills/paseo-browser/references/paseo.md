@@ -90,8 +90,9 @@ Snapshot again after any action that can rerender the page.
 - `browser_disabled`: browser tools must be enabled on the host.
 - `browser_tab_not_found` / `browser_tab_closed`: list tabs and use a current ID.
 - `browser_stale_ref`: take a new snapshot and retry with the new ref.
-- `browser_timeout`: verify host connection and page readiness, then retry once
-  with a bounded wait.
+- `browser_timeout`: verify host connection, page readiness and the action's
+  current result. Retry a read once with a bounded wait; never replay an
+  uncertain submit/send/pay action automatically.
 - Screenshot failures: read [screenshots.md](screenshots.md).
 - `browser_unsupported`: report the active app/runtime limitation.
 

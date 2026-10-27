@@ -105,7 +105,8 @@ detect_driver() {
 # nonzero for a broken candidate, an empty output, or a missing executable.
 driver_version() {
   local out=""
-  out="$("$1" --version 2>/dev/null | head -n 1)" || out=""
+  out="$("$1" --version 2>/dev/null)" || out=""
+  out="${out%%$'\n'*}"
   [ -n "$out" ] || return 1
   printf '%s\n' "$out"
 }

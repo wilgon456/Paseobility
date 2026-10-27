@@ -39,16 +39,16 @@ export function parseEtime(value) {
 export function listProcesses() {
   if (process.platform === 'win32') {
     const ps = 'Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; ppid = $_.ParentProcessId; created = if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString("o") } else { $null }; command = $_.CommandLine } } | ConvertTo-Json -Compress';
-    const r = spawnSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    if (r.status !== 0) throw new Error(`process listing failed: ${r.stderr.trim()}`);
+    const r = spawnSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 15000, windowsHide: true });
+    if (r.status !== 0) throw new Error(`process listing failed: ${r.error ? r.error.message : r.stderr.trim()}`);
     const now = Date.now();
     return [].concat(JSON.parse(r.stdout || '[]')).map(p => ({
       pid: p.pid, ppid: p.ppid, command: p.command || '',
       ageSeconds: p.created ? Math.max(0, Math.round((now - Date.parse(p.created)) / 1000)) : null,
     }));
   }
-  const r = spawnSync('ps', ['-axww', '-o', 'pid=,ppid=,etime=,command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) throw new Error(`process listing failed: ${r.stderr.trim()}`);
+  const r = spawnSync('ps', ['-axww', '-o', 'pid=,ppid=,etime=,command='], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 15000 });
+  if (r.status !== 0) throw new Error(`process listing failed: ${r.error ? r.error.message : r.stderr.trim()}`);
   return r.stdout.split('\n').filter(Boolean).map(line => {
     const m = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(line);
     return m && { pid: Number(m[1]), ppid: Number(m[2]), ageSeconds: parseEtime(m[3]), command: m[4] };
@@ -85,7 +85,7 @@ export function findLeftovers(processes, { olderThanMinutes = 60, selfPid = proc
       kind = 'playwright-browser';
     }
     if (!kind) continue;
-    const attached = kind === 'cloakbrowser' && alive(p.ppid);
+    const attached = (kind === 'cloakbrowser' || kind === 'playwright-browser') && alive(p.ppid);
     const old = p.ageSeconds != null && p.ageSeconds >= limit;
     let action = 'keep (recent)';
     if (attached) action = `keep (in use by pid ${p.ppid})`;

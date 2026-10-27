@@ -145,6 +145,12 @@ class CuaDriverRuntimeTests(unittest.TestCase):
         self.assertIn("present:", result.stdout)
         self.assertEqual(self.reads(), "")
 
+    def test_multiline_version_output_does_not_break_a_working_driver(self):
+        self.write_binary(WORKING_BINARY + "for ((i=0; i<10000; i++)); do printf 'extra version detail\\n'; done\n")
+        result = self.run_driver("--check")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.reads(), "")
+
     def test_existing_broken_executable_is_preserved(self):
         binary = self.write_binary(BROKEN_BINARY)
         result = self.run_driver("--bin-dir", str(self.bin_dir))
