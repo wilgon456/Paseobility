@@ -22,7 +22,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.12.5.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
+**현재 패키지: v2.12.6.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
 
 ## 한 줄 요약
 
@@ -58,6 +58,16 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
 기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
 
+## 2026-10-28 · 어떤 컴퓨터에서든 도는 Paseo 봇: macOS·Linux·Windows (v2.12.6)
+
+이제 봇 본체가 Windows에 있다고 가정하지 않습니다. 상주 감독기가 macOS와 Linux에서도
+같은 방식으로 돕니다. 종료 시 재시작, 멈춤 감지, 정상 종료 요청, 경보가 모두 똑같이
+동작합니다. `supervisor.py install --apply`는 launchd 에이전트나 systemd 사용자 서비스를
+등록하며 관리자 권한이 필요 없습니다. GUI 플러그인은 새 `gui-bridge.sh`로 맥·리눅스 봇에
+붙고, 플러그인과 봇이 같은 컴퓨터에 있으면 SSH 없이(`"host": "local"`) 붙습니다. 화면에는
+실제 봇 호스트 이름이 나옵니다.
+[Paseo 봇](docs/paseo-bot.md#resident-supervisor-opt-in-macos-linux-and-windows).
+
 ## 2026-10-28 · 보호 서비스 설치 안내 개선 (v2.12.5)
 
 `supervise install-service -Apply`는 UAC 승인 창에서 거절하거나 창을 닫았을 때
@@ -75,7 +85,7 @@ Windows 봇 감독기는 이제 종료된 서비스뿐 아니라 응답하지 �
 않습니다. 새로 추가한 선택형 Windows 서비스 `PaseoBotGuardian`
 (`supervise install-service -Apply`, UAC 승인 한 번)은 서비스 관리자의 재시작 정책으로
 감독기 자체를 지킵니다. 사용자 세션과 사용자 권한으로 띄우며, 비밀번호를 저장하지 않고
-콘솔 창도 띄우지 않습니다. [Paseo 봇](docs/paseo-bot.md#resident-supervisor-windows-opt-in).
+콘솔 창도 띄우지 않습니다. [Paseo 봇](docs/paseo-bot.md#resident-supervisor-opt-in-macos-linux-and-windows).
 
 ## 2026-10-28 · Paseo 업데이트 중에도 멈추지 않는 Paseo 봇 (v2.12.3)
 

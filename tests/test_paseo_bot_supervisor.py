@@ -2,7 +2,11 @@
 from pathlib import Path
 import sys
 import json
+import os
+import plistlib
 import sqlite3
+import subprocess
+import time
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -98,11 +102,14 @@ class TaskTests(unittest.TestCase):
 
     def test_install_without_apply_only_describes(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(supervisor.subprocess, 'run') as run, \
-                patch.dict(supervisor.os.environ, {'USERDOMAIN': 'HOST', 'USERNAME': 'me'}):
-            args = type('A', (), dict(state=Path(tmp), tool=Path(tmp), pythonw=Path(tmp) / 'pythonw.exe',
-                                      task_name='T', apply=False))()
+                patch.dict(supervisor.os.environ, {'USERDOMAIN': 'HOST', 'USERNAME': 'me'}), \
+                patch.object(supervisor, 'service_file', return_value=Path(tmp) / 'unit'):
+            args = type('A', (), dict(state=Path(tmp), tool=Path(tmp), python=Path(tmp) / 'python3',
+                                      pythonw=Path(tmp) / 'pythonw.exe', task_name='T', apply=False))()
             out = supervisor.install(args)
-            self.assertFalse(out['applied']); self.assertIn('<LogonTrigger>', out['taskXml'])
+            self.assertFalse(out['applied'])
+            expected = {'win32': '<LogonTrigger>', 'darwin': '<key>KeepAlive</key>'}.get(sys.platform, 'Restart=always')
+            self.assertIn(expected, out.get('taskXml') or out.get('content'))
             self.assertFalse(supervisor.uninstall(args)['applied'])
             run.assert_not_called()
             self.assertEqual(list(Path(tmp).iterdir()), [])
@@ -110,6 +117,114 @@ class TaskTests(unittest.TestCase):
     def test_mutex_is_scoped_to_the_state_directory(self):
         a, b = supervisor.mutex_name('/s/one'), supervisor.mutex_name('/s/two')
         self.assertNotEqual(a, b); self.assertTrue(a.startswith('Local\\PaseoBotSupervisor-'))
+
+
+class ServiceManagerTests(unittest.TestCase):
+    def test_launchd_agent_keeps_the_supervisor_alive_and_lets_services_survive(self):
+        plist = plistlib.loads(supervisor.launchd_plist('/usr/bin/python3', '/opt/P B/supervisor.py', '/Users/me/.config/paseo-bot',
+                                                         '/opt/P B', '/opt/homebrew/bin:/usr/bin'))
+        self.assertEqual(plist['Label'], supervisor.LAUNCHD_LABEL)
+        self.assertEqual(plist['ProgramArguments'], ['/usr/bin/python3', '-X', 'utf8', '/opt/P B/supervisor.py', 'run', '--state', '/Users/me/.config/paseo-bot'])
+        self.assertTrue(plist['KeepAlive'] and plist['RunAtLoad'] and plist['AbandonProcessGroup'])
+        self.assertEqual(plist['EnvironmentVariables']['PATH'], '/opt/homebrew/bin:/usr/bin')
+
+    def test_systemd_unit_restarts_always_and_escapes_specifiers(self):
+        unit = supervisor.systemd_unit('/usr/bin/python3', '/srv/100%/supervisor.py', '/home/me/.config/paseo-bot', '/srv/100%', '/usr/bin')
+        self.assertIn('Restart=always', unit); self.assertIn('KillMode=process', unit)
+        self.assertIn('ExecStart="/usr/bin/python3" "-X" "utf8" "/srv/100%%/supervisor.py" "run"', unit)
+        self.assertIn('WorkingDirectory=/srv/100%%', unit)
+
+    def test_posix_adoption_matches_only_the_service_command(self):
+        listing = ' 12 /usr/bin/python3 -X utf8 /x/paseo_bot.py --state /s serve\n 13 vim /x/paseo_bot.py\n 14 python3 /x/paseo_bot.py --state /s tick\n'
+        self.assertEqual(supervisor.matching_pids(listing, '/x/paseo_bot.py', exclude=99), [12])
+        self.assertEqual(supervisor.matching_pids(listing, '/x/paseo_bot.py', exclude=12), [])
+
+    def test_notification_text_is_data_not_script(self):
+        text = '"; do shell script "touch /tmp/x"'
+        command, _ = supervisor.notify_command('Paseo', text, 'darwin')
+        self.assertEqual(command[-2:], ['Paseo', text])
+        command, env = supervisor.notify_command('Paseo', text, 'win32')
+        self.assertNotIn(text, ' '.join(command)); self.assertEqual(env['PASEO_BOT_TOAST_BODY'], text)
+
+
+FAKE = """import json, os, sys, time
+from pathlib import Path
+state = Path(sys.argv[sys.argv.index('--state') + 1])
+name = Path(sys.argv[0]).stem
+hang = (state / ('hang-' + name)).exists()
+while True:
+    if name == 'paseo_bot':
+        (state / 'health.json').write_text(json.dumps({'pid': os.getpid(), 'lastTickAt': time.time(), 'activeTasks': []}))
+    if hang:
+        time.sleep(3600)  # ticked once, then stopped responding
+    stop = state / (name + '.stop')
+    if stop.exists() and stop.read_text().strip() == str(os.getpid()):
+        stop.unlink(); sys.exit(0)
+    time.sleep(0.2)
+"""
+
+
+class SupervisorRunTests(unittest.TestCase):
+    """Runs the real supervisor loop against fake services on this platform (Windows, macOS, Linux)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.tool, self.state = root / 'tool', root / 'state'
+        self.tool.mkdir(); self.state.mkdir()
+        for name in supervisor.SERVICES:
+            (self.tool / (name + '.py')).write_text(FAKE, encoding='utf-8')
+        command = [sys.executable, str(Path(supervisor.__file__)), 'run', '--tool', str(self.tool), '--state', str(self.state),
+                   '--python', sys.executable, '--stale-seconds', '2', '--check-seconds', '1']
+        self.proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **supervisor.QUIET)
+
+    def tearDown(self):
+        self.proc.kill(); self.proc.wait()
+        for service in self.status().get('services', {}).values():
+            if service.get('pid'):
+                try:
+                    os.kill(service['pid'], 9) if os.name != 'nt' else subprocess.run(['taskkill', '/F', '/PID', str(service['pid'])], capture_output=True)
+                except OSError:
+                    pass
+        time.sleep(0.5)
+        self.tmp.cleanup()
+
+    def status(self):
+        return supervisor.read_json(self.state / 'supervisor.json', {})
+
+    def wait(self, predicate, seconds=40):
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            value = predicate()
+            if value:
+                return value
+            time.sleep(0.2)
+        self.fail('condition not reached; log: ' + (self.state / 'supervisor.log').read_text(encoding='utf-8', errors='replace'))
+
+    def pids(self):
+        services = self.status().get('services', {})
+        return {n: s.get('pid') for n, s in services.items()} if services and all(s.get('pid') for s in services.values()) else None
+
+    def test_restart_after_exit_graceful_restart_request_and_hang(self):
+        first = self.wait(self.pids)
+        # A crash: the dispatcher disappears and comes back within seconds.
+        os.kill(first['paseo_bot'], 9) if os.name != 'nt' else subprocess.run(['taskkill', '/F', '/PID', str(first['paseo_bot'])], capture_output=True)
+        second = self.wait(lambda: (p := self.pids()) and p['paseo_bot'] != first['paseo_bot'] and p)
+        self.assertEqual(second['gui_serve'], first['gui_serve'])
+        # A requested restart: both stop on their own and it is not counted as a failure.
+        (self.state / supervisor.RESTART_REQUEST).write_text('1')
+        third = self.wait(lambda: (p := self.pids()) and all(p[n] != second[n] for n in p) and p)
+        log = (self.state / 'supervisor.log').read_text(encoding='utf-8')
+        self.assertNotIn('ignored the stop request', log)
+        self.assertEqual(self.status()['services']['gui_serve']['failures'], 0)
+        # A second supervisor for the same state directory exits at once.
+        duplicate = subprocess.run([sys.executable, str(Path(supervisor.__file__)), 'run', '--tool', str(self.tool), '--state', str(self.state)],
+                                   capture_output=True, timeout=30, **supervisor.QUIET)
+        self.assertEqual(duplicate.returncode, 0)
+        # A hang: the next dispatcher heartbeats once, then stops; the supervisor alerts and replaces it.
+        (self.state / 'hang-paseo_bot').write_text('1')
+        os.kill(third['paseo_bot'], 9) if os.name != 'nt' else subprocess.run(['taskkill', '/F', '/PID', str(third['paseo_bot'])], capture_output=True)
+        self.wait(lambda: 'paseo_bot' in (self.status().get('alert') or {}) or None, seconds=60)
 
 
 if __name__ == '__main__':

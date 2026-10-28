@@ -51,6 +51,13 @@ place credentials in task text or project policy.
 
 ## Install
 
+The controller may be Windows (`gui-bridge.ps1`) or macOS/Linux
+(`gui-bridge.sh`, run with `/bin/sh`). If the plugin's Paseo daemon runs on the
+controller itself, set `"host": "local"` and omit `user`: the plugin starts the
+bridge directly, without SSH. Otherwise the steps below apply; for a Mac
+controller use its tailnet name and an absolute `.../tools/paseo-bot/gui-bridge.sh`
+path as `bridge`.
+
 1. Pin a clean checkout/worktree on VAXPORT that contains these bridge files and
    the runtime's existing `skills/paseo-multi` imports. Leave its active runtime
    checkout and resident process alone. The authoritative queue remains

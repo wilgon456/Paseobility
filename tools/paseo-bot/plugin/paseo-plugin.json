@@ -1,7 +1,7 @@
 {
   "id": "paseo-bot",
   "name": "Paseo 봇",
-  "description": "Conversation-first VAXPORT manager, confirmed task plans and a read-only Kanban board.",
+  "description": "Conversation-first Paseo bot manager, confirmed task plans and a read-only Kanban board.",
   "requirements": {
     "paseo": ">=0.13.0 <0.14.0"
   }

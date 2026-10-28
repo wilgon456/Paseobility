@@ -50,6 +50,19 @@ class GuiTests(unittest.TestCase):
         out = gui.handle(self.home, dict(action='status'), True)
         self.assertTrue(out['healthy']); self.assertIsNone(out['supervisor'])
 
+    @unittest.skipIf(os.name == 'nt', 'macOS/Linux bridge')
+    def test_posix_bridge_serves_status_over_stdin(self):
+        bridge = ROOT / 'tools/paseo-bot/gui-bridge.sh'
+        self.assertTrue(os.access(bridge, os.X_OK))
+        self.assertEqual(subprocess.run(['sh', '-n', str(bridge)]).returncode, 0)
+        r = subprocess.run(['/bin/sh', str(bridge)], input=json.dumps({'action': 'status'}).encode(), capture_output=True,
+                           env=dict(os.environ, PASEO_BOT_STATE=str(self.home)), timeout=60)
+        out = json.loads(r.stdout)
+        self.assertTrue(out['ok'], r.stdout); self.assertEqual(out['result']['host'], socket.gethostname())
+        r = subprocess.run(['/bin/sh', str(bridge)], input=json.dumps({'action': 'submit', 'task': self.task}).encode(),
+                           capture_output=True, env=dict(os.environ, PASEO_BOT_STATE=str(self.home)), timeout=60)
+        self.assertFalse(json.loads(r.stdout)['ok'])  # read-only without --allow-submit
+
     def test_status_does_not_mutate_database_or_expose_policy(self):
         self.bot.submit(self.task)
         db = self.home / 'queue.sqlite3'

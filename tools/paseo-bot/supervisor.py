@@ -1,4 +1,4 @@
-"""Opt-in resident supervisor for the Windows bot runtime (dispatcher + GUI service).
+"""Opt-in resident supervisor for the bot runtime (dispatcher + GUI service) on Windows, macOS and Linux.
 
 `run` stays resident and keeps `paseo_bot.py serve` and `gui_serve.py serve` alive:
 
@@ -11,24 +11,27 @@
   and waits up to 30 s, so a write is never cut in half; only then is it killed.
 - Alert: five consecutive fast failures or a hang raise an alert in
   `supervisor.json` (the GUI projection reports the host as unhealthy) and a
-  Windows notification.
+  desktop notification.
 
-Run it with pythonw.exe: it has no console, and the services are console
-python.exe processes created with CREATE_NO_WINDOW, so their own children (node,
-git, the Paseo CLI) inherit an invisible console. Nothing flashes on screen even
-when Windows Terminal is the default terminal.
+The operating system's own service manager keeps the supervisor itself alive:
 
-Keeping the supervisor itself alive is the job of the logon task (`install`) or,
-better, the PaseoBotGuardian Windows service (`guardian/`). Task Scheduler does not
-relaunch an action that exited abnormally, so the task also repeats every minute;
-with IgnoreNew that trigger starts nothing while the supervisor is alive.
-macOS and Linux should use launchd KeepAlive or systemd Restart=on-failure.
+- macOS: a per-user launchd agent with KeepAlive (`install`; no admin rights).
+- Linux: a systemd user service with Restart=always (`install`).
+- Windows: the PaseoBotGuardian service (`guardian/`, one UAC consent) or, without
+  admin rights, a logon task that repeats every minute (`install`).
+
+On Windows run it with pythonw.exe: the services are console python.exe processes
+created with CREATE_NO_WINDOW, so they and their children (node, git, the Paseo
+CLI) never flash a console window, even with Windows Terminal as the default.
 """
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
+import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -46,10 +49,13 @@ ALERT_FAILURES = 5
 STATUS_REFRESH_SECONDS = 60
 LOG_LIMIT = 1_000_000
 TASK_NAME = 'PaseoBotSupervisor'
+LAUNCHD_LABEL = 'com.paseobility.paseo-bot-supervisor'
+SYSTEMD_UNIT = 'paseo-bot-supervisor.service'
 RESTART_REQUEST = 'supervisor.restart'
 CREATE_NO_WINDOW = 0x08000000
 SYNCHRONIZE, QUERY_LIMITED, TERMINATE = 0x00100000, 0x1000, 0x0001
 ERROR_ALREADY_EXISTS = 183
+QUIET = dict(creationflags=CREATE_NO_WINDOW) if os.name == 'nt' else {}
 
 
 def next_delay(failures):
@@ -84,13 +90,20 @@ def hung(now, started, last_tick, limit=STALE_SECONDS):
 def default_paths():
     tool = Path(__file__).resolve().parent
     exe = Path(sys.executable)
-    python = exe.with_name('python.exe') if exe.name.lower() == 'pythonw.exe' else exe
-    return dict(tool=tool, state=Path.home() / '.config' / 'paseo-bot', python=python,
-                pythonw=exe.with_name('pythonw.exe') if os.name == 'nt' else exe)
+    if os.name == 'nt':
+        python = exe.with_name('python.exe') if exe.name.lower() == 'pythonw.exe' else exe
+        pythonw = exe.with_name('pythonw.exe')
+    else:
+        python = pythonw = exe
+    return dict(tool=tool, state=Path.home() / '.config' / 'paseo-bot', python=python, pythonw=pythonw)
+
+
+def run_arguments(python, script, state):
+    return [str(python), '-X', 'utf8', str(script), 'run', '--state', str(state)]
 
 
 def task_xml(user, pythonw, script, state, tool, start_boundary):
-    """Logon task for one user; the repeating trigger only revives a dead supervisor."""
+    """Windows logon task for one user; the repeating trigger only revives a dead supervisor."""
     command = '-X utf8 "%s" run --state "%s"' % (script, state)
     return f'''<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -130,6 +143,47 @@ def task_xml(user, pythonw, script, state, tool, start_boundary):
     </Exec>
   </Actions>
 </Task>
+'''
+
+
+def launchd_plist(python, script, state, tool, path_env):
+    """macOS per-user agent: launchd restarts the supervisor whenever it exits, from login on."""
+    return plistlib.dumps({
+        'Label': LAUNCHD_LABEL,
+        'ProgramArguments': run_arguments(python, script, state),
+        'WorkingDirectory': str(tool),
+        'RunAtLoad': True,
+        'KeepAlive': True,
+        'ThrottleInterval': 5,
+        # The services run in their own sessions and must survive a supervisor restart.
+        'AbandonProcessGroup': True,
+        'EnvironmentVariables': {'PATH': path_env, 'PYTHONIOENCODING': 'utf-8'},
+        'StandardOutPath': str(Path(state) / 'supervisor.launchd.log'),
+        'StandardErrorPath': str(Path(state) / 'supervisor.launchd.log'),
+    })
+
+
+def systemd_unit(python, script, state, tool, path_env):
+    """Linux user service: systemd restarts the supervisor; the services outlive its restarts."""
+    def literal(value):  # systemd expands % specifiers and splits on spaces
+        return str(value).replace('%', '%%').replace('"', '\\"')
+    quoted = ' '.join('"%s"' % literal(a) for a in run_arguments(python, script, state))
+    tool, path_env = literal(tool), literal(path_env)
+    return f'''[Unit]
+Description=Paseo bot resident supervisor
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={tool}
+Environment="PATH={path_env}" "PYTHONIOENCODING=utf-8"
+ExecStart={quoted}
+Restart=always
+RestartSec=2
+KillMode=process
+
+[Install]
+WantedBy=default.target
 '''
 
 
@@ -183,21 +237,35 @@ $n.Item(0).AppendChild($t.CreateTextNode($env:PASEO_BOT_TOAST_TITLE)) > $null
 $n.Item(1).AppendChild($t.CreateTextNode($env:PASEO_BOT_TOAST_BODY)) > $null
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($t))
 '''
+OSASCRIPT = ['-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run']
+
+
+def notify_command(title, body, platform=sys.platform):
+    """Command and environment for a desktop notification; text travels as data, never as script."""
+    if platform == 'win32':
+        return (['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', TOAST],
+                dict(os.environ, PASEO_BOT_TOAST_TITLE=title, PASEO_BOT_TOAST_BODY=body))
+    if platform == 'darwin':
+        return ['osascript', *OSASCRIPT, title, body], None
+    if shutil.which('notify-send'):
+        return ['notify-send', title, body], None
+    return None, None
 
 
 def notify(title, body):
-    """Best-effort Windows notification; never blocks supervision."""
+    """Best-effort desktop notification; never blocks supervision."""
+    command, env = notify_command(title, body)
+    if not command:
+        return
     try:
-        subprocess.Popen(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', TOAST],
-                         env=dict(os.environ, PASEO_BOT_TOAST_TITLE=title, PASEO_BOT_TOAST_BODY=body),
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=CREATE_NO_WINDOW)
+        subprocess.Popen(command, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, **QUIET)
     except OSError:
         pass
 
 
 class Win32:
-    """Minimal process access through kernel32/ntdll; Windows only."""
+    """Process access through kernel32/ntdll."""
 
     def __init__(self):
         import ctypes
@@ -218,9 +286,15 @@ class Win32:
             _fields_ = [('Length', w.USHORT), ('MaximumLength', w.USHORT), ('Buffer', ctypes.c_void_p)]
         self.Entry, self.Text = Entry, Text
 
-    def own_mutex(self, name):
-        handle = self.k32.CreateMutexW(None, True, name)
-        return handle if handle and self.c.get_last_error() != ERROR_ALREADY_EXISTS else None
+    def own_lock(self, state):
+        handle = self.k32.CreateMutexW(None, True, mutex_name(state))
+        return bool(handle) and self.c.get_last_error() != ERROR_ALREADY_EXISTS
+
+    def spawn_options(self):
+        return dict(creationflags=CREATE_NO_WINDOW)
+
+    def child(self, proc):
+        return self.open(proc.pid)
 
     def open(self, pid, access=SYNCHRONIZE | QUERY_LIMITED):
         return self.k32.OpenProcess(access, False, pid)
@@ -273,9 +347,79 @@ class Win32:
         return None
 
 
+def matching_pids(ps_output, script, exclude):
+    """PIDs from `ps -o pid=,command=` lines whose command runs `script ... serve`."""
+    out = []
+    for line in ps_output.splitlines():
+        pid, _, command = line.strip().partition(' ')
+        if pid.isdigit() and int(pid) != exclude and str(script) in command and command.rstrip().endswith(' serve'):
+            out.append(int(pid))
+    return out
+
+
+class Posix:
+    """Process access on macOS and Linux. A handle is the Popen we started or the PID we adopted."""
+
+    def own_lock(self, state):
+        import fcntl
+        self.lock = open(Path(state) / 'supervisor.lock', 'a+')
+        try:
+            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+    def spawn_options(self):
+        # Own session: the services survive a supervisor restart and are adopted again.
+        return dict(start_new_session=True)
+
+    def child(self, proc):
+        return proc
+
+    def alive(self, handle):
+        if isinstance(handle, subprocess.Popen):
+            return handle.poll() is None
+        try:
+            os.kill(handle, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+
+    def exited(self, handle, wait_ms=0):
+        deadline = time.monotonic() + wait_ms / 1000
+        while self.alive(handle):
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.1)
+        return True
+
+    def exit_code(self, handle):
+        return handle.returncode if isinstance(handle, subprocess.Popen) else None
+
+    def close(self, handle):
+        pass
+
+    def terminate(self, pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    def find(self, script):
+        listing = subprocess.run(['ps', 'axww', '-o', 'pid=,command='], capture_output=True, text=True).stdout  # BSD form: macOS and procps
+        pids = matching_pids(listing, script, os.getpid())
+        return (pids[0], pids[0]) if pids else None
+
+
+def platform_ops():
+    return Win32() if os.name == 'nt' else Posix()
+
+
 class Service:
-    def __init__(self, name, args, win, log, alert):
-        self.name, self.args, self.win, self.log, self.alert = name, args, win, log, alert
+    def __init__(self, name, args, ops, log, alert):
+        self.name, self.args, self.ops, self.log, self.alert = name, args, ops, log, alert
         self.script = args.tool / (name + '.py')
         self.pid = self.handle = self.proc = None
         self.backoff = Backoff()
@@ -289,7 +433,7 @@ class Service:
     def ensure(self, now):
         if self.handle is not None or now < self.next_start:
             return
-        found = self.win.find(self.script)
+        found = self.ops.find(self.script)
         if found:
             self.pid, self.handle = found
             self.mark_started(now)
@@ -302,30 +446,30 @@ class Service:
                 self.proc = subprocess.Popen(
                     [str(self.args.python), '-X', 'utf8', str(self.script), '--state', str(state), 'serve'],
                     cwd=str(self.args.tool), stdin=subprocess.DEVNULL, stdout=out, stderr=err,
-                    creationflags=CREATE_NO_WINDOW)
+                    **self.ops.spawn_options())
         except OSError as e:
             self.exited(now, 'launch failed: ' + type(e).__name__)
             return
         self.pid = self.proc.pid
-        self.handle = self.win.open(self.pid)
+        self.handle = self.ops.child(self.proc)
         self.mark_started(now)
         self.log(f'{self.name}: started pid {self.pid}')
 
     def mark_started(self, now):
         self.backoff.start(now)
         self.started_wall = time.time()
-        self.next_check = now + HEARTBEAT_CHECK_SECONDS
+        self.next_check = now + self.args.check_seconds
 
     def check(self, now):
         if self.handle is None:
             return
-        if not self.win.exited(self.handle):
+        if not self.ops.exited(self.handle):
             if self.alerted and self.backoff.started is not None and now - self.backoff.started >= HEALTHY_SECONDS:
                 self.alerted = False
                 self.alert(self.name, None)
                 self.log(f'{self.name}: healthy again; alert cleared')
             if now >= self.next_check:
-                self.next_check = now + HEARTBEAT_CHECK_SECONDS
+                self.next_check = now + self.args.check_seconds
                 last = heartbeat(self.args.state, self.name, self.pid)
                 if hung(time.time(), self.started_wall, last, self.args.stale_seconds):
                     reason = f'no heartbeat for {round(time.time() - last)}s'
@@ -333,7 +477,7 @@ class Service:
                     self.raise_alert(f'{self.name} stopped responding ({reason}) and was restarted.')
                     self.stop(now, 'hung: ' + reason, counts=True)
             return
-        self.reap(now, f'pid {self.pid} exited with code {self.win.exit_code(self.handle)}', counts=True)
+        self.reap(now, f'pid {self.pid} exited with code {self.ops.exit_code(self.handle)}', counts=True)
 
     def stop(self, now, why, counts):
         """Ask the service to stop, wait for it, kill it only if it does not comply."""
@@ -343,14 +487,14 @@ class Service:
             (self.args.state / (self.name + '.stop')).write_text(str(self.pid), encoding='utf-8')
         except OSError:
             pass
-        if not self.win.exited(self.handle, STOP_GRACE_SECONDS * 1000):
+        if not self.ops.exited(self.handle, STOP_GRACE_SECONDS * 1000):
             self.log(f'{self.name}: pid {self.pid} ignored the stop request; terminating')
-            self.win.terminate(self.pid)
-            self.win.exited(self.handle, 5000)
+            self.ops.terminate(self.pid)
+            self.ops.exited(self.handle, 5000)
         self.reap(time.monotonic(), why, counts)
 
     def reap(self, now, why, counts):
-        self.win.close(self.handle)
+        self.ops.close(self.handle)
         self.handle = None
         if self.proc is not None:
             self.proc.poll()
@@ -386,9 +530,9 @@ def write_status(path, data):
 
 
 def run(args):
-    win = Win32()
+    ops = platform_ops()
     log = Log(args.state / 'supervisor.log')
-    if not win.own_mutex(mutex_name(args.state)):
+    if not ops.own_lock(args.state):
         log('another supervisor owns this state directory; exiting')
         return 0
     alerts = {}
@@ -401,7 +545,7 @@ def run(args):
         log(f'{name}: ALERT {text}')
         notify('Paseo 봇 확인 필요', text)
 
-    services = [Service(name, args, win, log, alert) for name in SERVICES]
+    services = [Service(name, args, ops, log, alert) for name in SERVICES]
     log(f'supervisor started pid {os.getpid()}')
     last, written = None, 0.0
     while True:
@@ -428,6 +572,9 @@ def run(args):
         time.sleep(POLL_SECONDS)
 
 
+# ---- install / uninstall / status, per operating system -------------------------------
+
+
 def current_user():
     domain, user = os.environ.get('USERDOMAIN', ''), os.environ.get('USERNAME', '')
     if not user:
@@ -435,48 +582,98 @@ def current_user():
     return domain + '\\' + user if domain else user
 
 
+def quiet_run(command, check=False):
+    return subprocess.run(command, capture_output=True, text=True, check=check, **QUIET)
+
+
+def service_file(platform=sys.platform):
+    if platform == 'darwin':
+        return Path.home() / 'Library/LaunchAgents' / (LAUNCHD_LABEL + '.plist')
+    return Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'systemd/user' / SYSTEMD_UNIT
+
+
 def install(args):
-    xml = task_xml(current_user(), args.pythonw, Path(__file__).resolve(), args.state, args.tool,
-                   time.strftime('%Y-%m-%dT%H:%M:%S'))
-    plan = dict(taskName=args.task_name, action=f'{args.pythonw} -X utf8 {Path(__file__).resolve()} run',
-                triggers=['at logon', 'every minute (starts nothing while the supervisor runs)'],
-                files=[str(args.state / 'supervisor.log'), str(args.state / 'supervisor.json')],
-                applied=False)
+    script = Path(__file__).resolve()
+    if os.name == 'nt':
+        xml = task_xml(current_user(), args.pythonw, script, args.state, args.tool, time.strftime('%Y-%m-%dT%H:%M:%S'))
+        plan = dict(kind='windows-logon-task', taskName=args.task_name,
+                    action=f'{args.pythonw} -X utf8 {script} run',
+                    triggers=['at logon', 'every minute (starts nothing while the supervisor runs)'],
+                    recommended='supervise install-service -Apply: the PaseoBotGuardian Windows service', applied=False)
+        if not args.apply:
+            return dict(plan, taskXml=xml, next='Re-run with -Apply (PowerShell) or --apply to register.')
+        if not Path(args.pythonw).is_file():
+            raise ValueError('pythonw.exe not found next to this Python')
+        path = args.state / 'supervisor-task.xml'
+        path.write_text(xml, encoding='utf-16')
+        try:
+            quiet_run(['schtasks', '/Create', '/TN', args.task_name, '/XML', str(path), '/F'], check=True)
+            quiet_run(['schtasks', '/Run', '/TN', args.task_name], check=True)
+        finally:
+            path.unlink(missing_ok=True)
+        return dict(plan, applied=True)
+
+    path_env = os.environ.get('PATH', '/usr/bin:/bin')
+    target = service_file()
+    if sys.platform == 'darwin':
+        content = launchd_plist(args.python, script, args.state, args.tool, path_env).decode('utf-8')
+        plan = dict(kind='launchd-agent', file=str(target), label=LAUNCHD_LABEL, keepAlive=True, applied=False)
+    else:
+        content = systemd_unit(args.python, script, args.state, args.tool, path_env)
+        plan = dict(kind='systemd-user-service', file=str(target), unit=SYSTEMD_UNIT, restart='always', applied=False,
+                    note='Run `loginctl enable-linger` once to keep it running without an open session.')
     if not args.apply:
-        return dict(plan, taskXml=xml, next='Re-run with -Apply (PowerShell) or --apply to register.')
-    if not Path(args.pythonw).is_file():
-        raise ValueError('pythonw.exe not found next to this Python')
-    path = args.state / 'supervisor-task.xml'
-    path.write_text(xml, encoding='utf-16')
-    try:
-        subprocess.run(['schtasks', '/Create', '/TN', args.task_name, '/XML', str(path), '/F'],
-                       check=True, capture_output=True, creationflags=CREATE_NO_WINDOW)
-        subprocess.run(['schtasks', '/Run', '/TN', args.task_name],
-                       check=True, capture_output=True, creationflags=CREATE_NO_WINDOW)
-    finally:
-        path.unlink(missing_ok=True)
+        return dict(plan, content=content, next='Re-run with --apply to install and start it.')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding='utf-8')
+    if sys.platform == 'darwin':
+        domain = f'gui/{os.getuid()}'
+        quiet_run(['launchctl', 'bootout', f'{domain}/{LAUNCHD_LABEL}'])
+        if quiet_run(['launchctl', 'bootstrap', domain, str(target)]).returncode != 0:
+            quiet_run(['launchctl', 'load', '-w', str(target)], check=True)  # sessions without a GUI domain
+    else:
+        quiet_run(['systemctl', '--user', 'daemon-reload'], check=True)
+        quiet_run(['systemctl', '--user', 'enable', '--now', SYSTEMD_UNIT], check=True)
     return dict(plan, applied=True)
 
 
 def uninstall(args):
-    plan = dict(taskName=args.task_name, stops='the supervisor process only; running services keep running',
-                applied=False)
+    if os.name == 'nt':
+        plan = dict(taskName=args.task_name, stops='the supervisor process only; running services keep running', applied=False)
+        if not args.apply:
+            return dict(plan, next='Re-run with -Apply (PowerShell) or --apply to remove.')
+        quiet_run(['schtasks', '/End', '/TN', args.task_name])
+        quiet_run(['schtasks', '/Delete', '/TN', args.task_name, '/F'], check=True)
+        return dict(plan, applied=True)
+    target = service_file()
+    plan = dict(file=str(target), stops='the supervisor process only; running services keep running', applied=False)
     if not args.apply:
-        return dict(plan, next='Re-run with -Apply (PowerShell) or --apply to remove.')
-    subprocess.run(['schtasks', '/End', '/TN', args.task_name], capture_output=True, creationflags=CREATE_NO_WINDOW)
-    subprocess.run(['schtasks', '/Delete', '/TN', args.task_name, '/F'],
-                   check=True, capture_output=True, creationflags=CREATE_NO_WINDOW)
+        return dict(plan, next='Re-run with --apply to remove.')
+    if sys.platform == 'darwin':
+        if quiet_run(['launchctl', 'bootout', f'gui/{os.getuid()}/{LAUNCHD_LABEL}']).returncode != 0:
+            quiet_run(['launchctl', 'unload', str(target)])
+    else:
+        quiet_run(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT])
+    target.unlink(missing_ok=True)
+    if sys.platform != 'darwin':
+        quiet_run(['systemctl', '--user', 'daemon-reload'])
     return dict(plan, applied=True)
 
 
 def status(args):
-    registered = subprocess.run(['schtasks', '/Query', '/TN', args.task_name], capture_output=True,
-                                creationflags=CREATE_NO_WINDOW).returncode == 0
-    guardian = subprocess.run(['sc.exe', 'query', 'PaseoBotGuardian'], capture_output=True, text=True,
-                              creationflags=CREATE_NO_WINDOW)
-    return dict(taskName=args.task_name, registered=registered,
-                guardian='running' if 'RUNNING' in guardian.stdout else 'installed' if guardian.returncode == 0 else 'absent',
-                supervisor=read_json(args.state / 'supervisor.json', None))
+    out = dict(supervisor=read_json(args.state / 'supervisor.json', None))
+    if os.name == 'nt':
+        guardian = quiet_run(['sc.exe', 'query', 'PaseoBotGuardian'])
+        out.update(taskName=args.task_name,
+                   registered=quiet_run(['schtasks', '/Query', '/TN', args.task_name]).returncode == 0,
+                   guardian='running' if 'RUNNING' in guardian.stdout else 'installed' if guardian.returncode == 0 else 'absent')
+    elif sys.platform == 'darwin':
+        out.update(file=str(service_file()), installed=service_file().exists(),
+                   loaded=quiet_run(['launchctl', 'print', f'gui/{os.getuid()}/{LAUNCHD_LABEL}']).returncode == 0)
+    else:
+        out.update(file=str(service_file()), installed=service_file().exists(),
+                   active=quiet_run(['systemctl', '--user', 'is-active', SYSTEMD_UNIT]).stdout.strip())
+    return out
 
 
 def idle(state):
@@ -520,16 +717,14 @@ def main():
     p.add_argument('command', choices=['run', 'install', 'uninstall', 'status', 'restart'])
     p.add_argument('--state', type=Path, default=paths['state'])
     p.add_argument('--tool', type=Path, default=paths['tool'])
-    p.add_argument('--python', type=Path, default=paths['python'], help='console python.exe for the services')
-    p.add_argument('--pythonw', type=Path, default=paths['pythonw'], help='windowless interpreter for the task')
+    p.add_argument('--python', type=Path, default=paths['python'], help='interpreter for the services')
+    p.add_argument('--pythonw', type=Path, default=paths['pythonw'], help='Windows: windowless interpreter for the task')
     p.add_argument('--task-name', default=TASK_NAME)
     p.add_argument('--stale-seconds', type=int, default=STALE_SECONDS, help='run: heartbeat age that counts as hung')
-    p.add_argument('--apply', action='store_true', help='install/uninstall: actually change Task Scheduler')
+    p.add_argument('--check-seconds', type=int, default=HEARTBEAT_CHECK_SECONDS, help=argparse.SUPPRESS)
+    p.add_argument('--apply', action='store_true', help='install/uninstall: actually change the system')
     p.add_argument('--timeout', type=int, default=1800, help='restart: seconds to wait for an idle boundary')
     args = p.parse_args()
-    if os.name != 'nt':
-        print(json.dumps({'ok': False, 'error': 'Windows only; use launchd KeepAlive or systemd Restart=on-failure.'}))
-        return 2
     if args.command == 'run':
         return run(args)
     try:

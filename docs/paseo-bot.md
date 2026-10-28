@@ -270,26 +270,45 @@ refused with a request to update manually. Read-only version checks still run.
 Update that computer by hand: wait until `status` shows no active task, update
 Paseo, then restart the bot runtime.
 
-### Resident supervisor (Windows, opt-in)
+### Resident supervisor (opt-in; macOS, Linux and Windows)
+
+The controller can be any one computer: three Macs work as well as a Windows PC.
+
+```bash
+# macOS / Linux (no admin rights)
+python3 tools/paseo-bot/supervisor.py install          # shows the launchd agent or systemd unit; changes nothing
+python3 tools/paseo-bot/supervisor.py install --apply  # installs and starts it
+python3 tools/paseo-bot/supervisor.py status
+python3 tools/paseo-bot/supervisor.py restart          # after a code update: waits for an idle boundary
+python3 tools/paseo-bot/supervisor.py uninstall --apply
+```
 
 ```powershell
+# Windows
 & $Bot supervise install-service           # shows the Windows service plan; changes nothing
 & $Bot supervise install-service -Apply    # asks for UAC consent, installs and starts it
-& $Bot supervise install                   # alternative without admin: logon task plan
-& $Bot supervise install -Apply
+& $Bot supervise install -Apply            # alternative without admin: logon task
 & $Bot supervise status
-& $Bot supervise restart                   # after a code update: waits for an idle boundary
+& $Bot supervise restart
 & $Bot supervise uninstall-service -Apply  # or: uninstall -Apply for the task
 ```
 
 Two layers keep the bot running. `tools/paseo-bot/supervisor.py` (the
-supervisor) runs under `pythonw.exe` with no console and owns the two services;
-something must in turn keep the supervisor alive.
+supervisor) owns the two services; the operating system's own service manager
+keeps the supervisor alive:
 
-**Supervisor.** It starts `paseo_bot.py serve` and `gui_serve.py serve` as
-`python.exe` children with `CREATE_NO_WINDOW`, so neither they nor the
-node/git/Paseo CLI processes they spawn open a window, even with Windows
-Terminal as the default terminal. A service is restarted when:
+| OS | Keeps the supervisor alive | Admin |
+|---|---|---|
+| macOS | launchd agent `com.paseobility.paseo-bot-supervisor` (`KeepAlive`, from login) | no |
+| Linux | systemd user service `paseo-bot-supervisor` (`Restart=always`; `loginctl enable-linger` to run without a session) | no |
+| Windows | `PaseoBotGuardian` service (recommended) or a logon task | service: once |
+
+**Supervisor.** It starts `paseo_bot.py serve` and `gui_serve.py serve` in
+their own process session (macOS/Linux) or as `python.exe` children with
+`CREATE_NO_WINDOW` (Windows, so neither they nor the node/git/Paseo CLI
+processes they spawn open a window, even with Windows Terminal as the default
+terminal). Services outlive a supervisor restart and are adopted again. A
+service is restarted when:
 
 - it exits: after about one second; exits within five minutes of starting count
   as consecutive failures and back off (1, 2, 4 ... 300 seconds);
@@ -303,7 +322,8 @@ Terminal as the default terminal. A service is restarted when:
 A restart first writes `<state>/<service>.stop` with the service's PID; both
 services finish the current step and exit. Only a service that ignores it for
 30 seconds is terminated. Five consecutive fast failures, or any hang, raise an
-alert: a Windows notification, `alert` in `supervisor.json`, and `healthy: false`
+alert: a desktop notification (Notification Center on macOS, `notify-send` on
+Linux, a toast on Windows), `alert` in `supervisor.json`, and `healthy: false`
 in the GUI status (shown as "확인 필요"). The alert clears after five healthy
 minutes. A service that is already running is adopted, never duplicated, and
 one supervisor runs per state directory. Events go to `supervisor.log`.
@@ -323,10 +343,9 @@ Administrators; the log is `guardian.log` there. Stopping or removing the servic
 leaves the supervisor and bot running. After installing it, remove any older
 logon task that launched the supervisor.
 
-**Logon task (no admin).** `supervise install` registers a task that starts the
-supervisor at logon and repeats every minute; with `IgnoreNew` the repetition
-starts no process while the supervisor runs and only revives a dead one.
-macOS and Linux should use launchd `KeepAlive` or systemd `Restart=on-failure`.
+**Windows logon task (no admin).** `supervise install` registers a task that
+starts the supervisor at logon and repeats every minute; with `IgnoreNew` the
+repetition starts no process while the supervisor runs and only revives a dead one.
 
 The worker advances one task per machine. It does not move a partly completed
 task to another machine, retry failed code automatically, or synthesize missing
