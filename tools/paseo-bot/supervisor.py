@@ -30,6 +30,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import signal
 import sqlite3
@@ -583,7 +584,8 @@ def current_user():
 
 
 def quiet_run(command, check=False):
-    return subprocess.run(command, capture_output=True, text=True, check=check, **QUIET)
+    # Windows tools print in the console code page (e.g. cp949); the keywords we read are ASCII.
+    return subprocess.run(command, capture_output=True, text=True, errors='replace', check=check, **QUIET)
 
 
 def service_file(platform=sys.platform):
@@ -666,7 +668,8 @@ def status(args):
         guardian = quiet_run(['sc.exe', 'query', 'PaseoBotGuardian'])
         out.update(taskName=args.task_name,
                    registered=quiet_run(['schtasks', '/Query', '/TN', args.task_name]).returncode == 0,
-                   guardian='running' if 'RUNNING' in guardian.stdout else 'installed' if guardian.returncode == 0 else 'absent')
+                   # sc.exe localizes its labels (STATE) but not the values (4  RUNNING).
+                   guardian='running' if re.search(r':\s*4\s+RUNNING', guardian.stdout or '') else 'installed' if guardian.returncode == 0 else 'absent')
     elif sys.platform == 'darwin':
         out.update(file=str(service_file()), installed=service_file().exists(),
                    loaded=quiet_run(['launchctl', 'print', f'gui/{os.getuid()}/{LAUNCHD_LABEL}']).returncode == 0)
