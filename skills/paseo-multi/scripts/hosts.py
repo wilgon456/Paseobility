@@ -4,10 +4,12 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
 import sys
+import time
 
 import health
 
@@ -80,6 +82,40 @@ def runtime():
             if candidate.is_file() and parent.name == 'cli':
                 return [node], candidate
     raise ValueError('Installed Paseo client runtime not found; see references/connections.md.')
+
+
+# Installing, replacing, stopping or restarting Paseo. Read-only version checks do not match.
+PASEO_LIFECYCLE = re.compile(
+    r'(?i)(paseo[\w.-]*setup|setup[\w.-]*paseo'
+    r'|\b(winget|choco|scoop)\s+(install|upgrade|update|uninstall)\b[^\n]*paseo'
+    r'|\bbrew\s+(install|upgrade|reinstall|uninstall)\b[^\n]*paseo'
+    r'|\b(npm|pnpm|yarn|bun)\s+(i|install|add|update|up|upgrade)\b[^\n]*(@getpaseo|\bpaseo\b)'
+    r'|\b(stop-process|taskkill|kill|killall|pkill)\b[^\n]*paseo'
+    r'|\b(remove-item|rm|del|move-item|mv|rename-item|copy-item|cp|robocopy|expand-archive|ditto)\b[^\n]*(programs[\\/]+paseo|paseo\.app)'
+    r'|\bpaseo(\.cmd|\.exe)?\s+(daemon\s+)?(restart|stop|update|upgrade)\b)')
+BOT_HOST_MESSAGE = ('{label} runs the Paseo bot. Updating, replacing or restarting Paseo there from an automated run is blocked: '
+                    'it removes the client the bot uses mid-task. Update it manually on that computer: wait until the bot has '
+                    'no active task, update Paseo, then restart the bot runtime (scheduled task or paseo-bot.ps1 supervise restart).')
+
+
+def bot_host_names():
+    """Hosts running the Paseo bot: named by the bot for its agents, or this computer while its bot is alive."""
+    names = {n.strip().casefold() for n in os.environ.get('PASEO_BOT_PROTECTED_HOSTS', '').split(',') if n.strip()}
+    state = Path(os.environ.get('PASEO_BOT_STATE') or Path.home() / '.config/paseo-bot')
+    try:
+        owner = json.loads((state / 'owner.json').read_text(encoding='utf-8-sig'))
+        tick = json.loads((state / 'health.json').read_text(encoding='utf-8-sig')).get('lastTickAt', 0)
+        if owner.get('mode') == 'active' and owner.get('label') and time.time() - tick < 600:
+            names.add(owner['label'].casefold())
+    except (OSError, ValueError, AttributeError):
+        pass
+    return names
+
+
+def guard_bot_host(host, action, script=''):
+    names = {n.casefold() for n in [host['label'], *host.get('aliases', [])]}
+    if names & bot_host_names() and (action == 'restart' or (action == 'exec' and PASEO_LIFECYCLE.search(script))):
+        raise ValueError(BOT_HOST_MESSAGE.format(label=host['label']))
 
 
 def rpc(request, timeout=80):
@@ -184,6 +220,8 @@ def main():
     else:
         host = select_host(hosts, args.host)
     req['host'] = host
+    if args.action == 'restart':
+        guard_bot_host(host, 'restart')
     if args.action in ('health', 'cleanup'):
         if args.action == 'health':
             result = health.report(rpc, req, args.workspace)
@@ -196,6 +234,7 @@ def main():
         if shell is None:
             raise ValueError('Unknown target platform: supply --shell after verifying it.')
         script = args.command if args.command is not None else args.file.read_text(encoding='utf-8')
+        guard_bot_host(host, 'exec', script)
         req.update(script=script, shell=shell, wait=args.wait, keepTerminal=args.keep_terminal)
         if args.workspace:
             req['workspaceId'] = args.workspace

@@ -43,6 +43,13 @@ test('host identity mismatch fails closed without connection data',t=>{
 test('fresh daemon profiles and connected projects are selected',t=>{
  const f=fixture(t);const r=f.call({action:'discover'});assert.equal(r.ok,true);assert.equal(r.result.profiles[0].model,'fixture-model');assert.equal(r.result.projects.length,1);
 });
+test('task agents are told which hosts run the bot; unsafe names are dropped',t=>{
+ const f=fixture(t);const r=f.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'p',workspaceId:'w1',protectedHosts:['VAX_COM','vaxport','bad name;rm']});
+ assert.equal(r.ok,true);const a=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json'))).argv;
+ const i=a.indexOf('--env');assert.ok(i>=0 && i<a.indexOf('--'));assert.equal(a[i+1],'PASEO_BOT_PROTECTED_HOSTS=VAX_COM,vaxport');
+ const g=fixture(t);g.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'p',workspaceId:'w1'});
+ assert.ok(!JSON.parse(fs.readFileSync(path.join(g.dir,'argv.json'))).argv.includes('--env'));
+});
 test('CLI materializes profile, uses existing workspace, no caller or conflicting home',t=>{
  const f=fixture(t);const r=f.call({action:'launch',profile:'gpt-task',repo:'/repo',title:'fixture',attempt:'attempt',prompt:'literal $(not-a-shell) prompt',workspaceId:'w1'});
  assert.equal(r.ok,true);const a=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json')));

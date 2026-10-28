@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.2.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.3.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -57,6 +57,24 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-28 · Paseo bot survives Paseo updates (v2.12.3)
+
+A Paseo installer briefly removes the client the bot uses. The bot now treats a
+missing client runtime as a temporary outage and retries with growing waits
+(5, 10, 20, 40, 80, then every 120 seconds) inside `transientGraceSeconds`. A
+failed status check never stops, archives or removes a still-running agent or
+its worktree: the task becomes `unknown` and the result says so. Every failure
+writes its actual error text to the bot's stderr log. Task agents learn which
+host runs the bot (`PASEO_BOT_PROTECTED_HOSTS`), and `paseo-multi` refuses to
+update, replace or restart Paseo there, asking for a manual update instead.
+
+GUI managers now share one Paseo workspace instead of opening one per
+conversation, and a manager unused for `managerIdleDays` (default 7) is archived;
+the next message starts a fresh one with the earlier conversation as context.
+Windows can opt in to a resident supervisor (`paseo-bot.ps1 supervise install`)
+that restarts the dispatcher and GUI service within seconds without console
+windows. See [Paseo bot](docs/paseo-bot.md).
 
 ## 2026-10-25 · Design judgment and AI slop reduction (v2.12.2)
 

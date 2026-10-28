@@ -760,5 +760,51 @@ class HealthPolicyTests(unittest.TestCase):
 
 
 
+class BotHostGuardTests(unittest.TestCase):
+    """A Paseo update must not pull the client out from under the running bot."""
+
+    def setUp(self):
+        import hosts
+        self.hosts = hosts
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = Path(self.tmp.name)
+        self.host = {'label': 'VAX_COM', 'aliases': ['VAXPORT'], 'serverId': 's'}
+        self.env = patch.dict(os.environ, {'PASEO_BOT_STATE': str(self.state), 'PASEO_BOT_PROTECTED_HOSTS': ''})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def blocked(self, action, script=''):
+        try:
+            self.hosts.guard_bot_host(self.host, action, script)
+        except ValueError as e:
+            self.assertIn('Update it manually', str(e))
+            return True
+        return False
+
+    def test_named_bot_host_refuses_update_and_restart_only(self):
+        os.environ['PASEO_BOT_PROTECTED_HOSTS'] = 'vaxport'
+        self.assertTrue(self.blocked('restart'))
+        for script in [r'Start-Process .\Paseo-Setup-0.13.2.exe -ArgumentList /S', 'winget upgrade --id Getpaseo.Paseo',
+                       'Stop-Process -Name Paseo -Force', r'Remove-Item -Recurse $env:LOCALAPPDATA\Programs\Paseo',
+                       'npm i -g @getpaseo/cli', 'paseo daemon restart']:
+            self.assertTrue(self.blocked('exec', script), script)
+        for script in [r'(Get-Item "$env:LOCALAPPDATA\Programs\Paseo\Paseo.exe").VersionInfo', 'paseo --version', 'git pull']:
+            self.assertFalse(self.blocked('exec', script), script)
+        self.host = {'label': 'MAC_MINI', 'serverId': 'm'}
+        self.assertFalse(self.blocked('restart'))
+
+    def test_live_local_bot_protects_its_own_label(self):
+        (self.state / 'owner.json').write_text(json.dumps({'version': 1, 'label': 'VAX_COM', 'mode': 'active', 'host': 'x'}))
+        (self.state / 'health.json').write_text(json.dumps({'lastTickAt': __import__('time').time()}))
+        self.assertTrue(self.blocked('restart'))
+        (self.state / 'health.json').write_text(json.dumps({'lastTickAt': 0}))  # stopped bot: no protection
+        self.assertFalse(self.blocked('restart'))
+        (self.state / 'owner.json').write_text('not json')
+        self.assertFalse(self.blocked('restart'))
+
+
 if __name__ == '__main__':
     unittest.main()

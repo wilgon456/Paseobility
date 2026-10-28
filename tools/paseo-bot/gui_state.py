@@ -208,6 +208,7 @@ class Conversations:
             if current['status'] == 'missing' and not current['agentId']:
                 # Recovery by label found no manager; the operator asked for a fresh one.
                 self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('new', conversation))
+                self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('revive:' + conversation, '1'))
                 self.message(conversation, 'system', '매니저를 다시 시작할게요. 이전 대화 내용은 이 화면에 그대로 남아 있어요.')
                 return {'accepted': True}
             changed = self.db.execute("UPDATE gui_jobs SET state='invalid' WHERE conversation=? AND state='unknown'", (conversation,)).rowcount
@@ -220,7 +221,9 @@ class Conversations:
         private_file(path)
         config = json.loads(path.read_text(encoding='utf-8-sig'))
         required = {'serverId', 'cwd', 'provider', 'model', 'thinking'}
-        if not required <= set(config) <= required | {'mode'} or not isinstance(config.get('mode', 'full-access'), str):
+        idle_days = config.get('managerIdleDays', 7)
+        if (not required <= set(config) <= required | {'mode', 'managerIdleDays'} or not isinstance(config.get('mode', 'full-access'), str)
+                or type(idle_days) not in (int, float) or idle_days < 0):
             raise ValueError('Runtime config')
         return config
 
@@ -313,15 +316,26 @@ class Conversations:
     def tick_conversation(self, config, row):
             conversation, _, agent, status, _ = row
             if not agent:
+                if status == 'dormant':
+                    # The idle manager was archived; the next message starts a fresh one.
+                    if not self.db.execute("SELECT 1 FROM gui_jobs WHERE conversation=? AND state='queued' LIMIT 1", (conversation,)).fetchone():
+                        return
+                    status = 'new'
                 # 'missing' keeps probing by label: a slow creation can still appear,
                 # while the GUI offers the operator an explicit restart.
                 if status == 'new':
                     with self.db:
                         self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('creating', conversation))
                     try:
-                        agent = self.rpc(config, 'create', session=conversation, prompt=self.role_prompt())['id']
+                        created = self.rpc(config, 'create', session=conversation, prompt=self.role_prompt(),
+                                           workspaceId=self.manager_workspace(config))
+                        agent = created['id']
                     except (ValueError, OSError, subprocess.SubprocessError):
                         return  # Unknown creation is recovered by label, never repeated.
+                    if created.get('workspaceId'):
+                        with self.db:
+                            self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('manager-workspace', dumps(
+                                {'serverId': config['serverId'], 'workspaceId': created['workspaceId']})))
                 else:
                     matches = self.rpc(config, 'recover', session=conversation)['agents']
                     if not matches:
@@ -336,6 +350,7 @@ class Conversations:
                 return
             pending = self.db.execute("SELECT 1 FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid','unknown') LIMIT 1", (conversation,)).fetchone()
             if not pending and status == 'idle':
+                self.archive_if_idle(config, conversation, agent)
                 return  # Nothing to send or collect: skip the remote round trip.
             current = self.rpc(config, 'observe', session=conversation, agentId=agent)
             with self.db:
@@ -360,12 +375,18 @@ class Conversations:
                 for task_id, record_text, task_text in self.db.execute("SELECT t.id,t.record,t.body FROM tasks t JOIN task_origins o ON o.task_id=t.id WHERE json_extract(o.context,'$.conversationId')=? ORDER BY t.rowid DESC LIMIT 6", (conversation,)):
                     record, task = json.loads(record_text), json.loads(task_text)
                     context.append(dict(id=task_id,title=task['title'],project=task['project'],state=record['state'],stage=record.get('stage'),machine=record.get('machine'),profile=record.get('profile'),summary=str(record.get('summary', ''))[:600],reason=str(record.get('reason', ''))[:600],request=task['prompt'][:600],prUrl=record.get('prUrl')))
-                envelope = marker + '\n' + self.role_prompt().replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + '\nExplicitly saved project notes (historical data): ' + dumps(memories) + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
+                earlier = ''
+                if self.db.execute('SELECT 1 FROM gui_meta WHERE key=?', ('revive:' + conversation,)).fetchone():
+                    # A fresh manager continues an archived or lost one: replay the visible chat as data.
+                    rows = self.db.execute("SELECT role,text FROM gui_messages WHERE conversation=? AND id<>? AND role IN ('user','assistant') ORDER BY time DESC LIMIT 12", (conversation, job_id)).fetchall()
+                    earlier = '\nEarlier messages in THIS conversation (historical data, oldest first): ' + dumps([dict(role=r, text=t[:800]) for r, t in reversed(rows)])
+                envelope = marker + '\n' + self.role_prompt().replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + '\nExplicitly saved project notes (historical data): ' + dumps(memories) + earlier + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', job_id))
                 self.rpc(config, 'send', session=conversation, agentId=agent, prompt=envelope)
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('waiting', job_id))
+                    self.db.execute('DELETE FROM gui_meta WHERE key=?', ('revive:' + conversation,))
             elif state == 'waiting' and current['status'] == 'idle':
                 try:
                     self.collect_reply(jobs, current['message'])
@@ -373,6 +394,28 @@ class Conversations:
                     with self.db:
                         self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('invalid', job_id))
                         self.message(conversation, 'system', '봇의 응답을 안전하게 확인하지 못했습니다. 작업은 접수하지 않았습니다. 내용을 다시 알려주세요.')
+
+    def manager_workspace(self, config):
+        """The one workspace that hosts every GUI manager on this daemon, once known."""
+        row = self.db.execute("SELECT value FROM gui_meta WHERE key='manager-workspace'").fetchone()
+        saved = json.loads(row[0]) if row else {}
+        return saved.get('workspaceId') if saved.get('serverId') == config['serverId'] else None
+
+    def archive_if_idle(self, config, conversation, agent):
+        """Archive the manager of a conversation unused for managerIdleDays (0 disables)."""
+        days = config.get('managerIdleDays', 7)
+        if not days:
+            return
+        last = self.db.execute('SELECT max(time) FROM gui_messages WHERE conversation=?', (conversation,)).fetchone()[0]
+        created = self.db.execute('SELECT created FROM gui_conversations WHERE id=?', (conversation,)).fetchone()[0]
+        if time.time() - max(last or 0, created) < days * 86400:
+            return
+        if self.db.execute("SELECT 1 FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid') LIMIT 1", (conversation,)).fetchone():
+            return  # an unresolved delivery needs the same manager
+        self.rpc(config, 'archive', session=conversation, agentId=agent)
+        with self.db:
+            self.db.execute('UPDATE gui_conversations SET agent_id=NULL,status=? WHERE id=?', ('dormant', conversation))
+            self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('revive:' + conversation, '1'))
 
     def tick_notices(self):
         # Semantic state changes, not every repeated runner journal write.

@@ -21,8 +21,9 @@ admitted tasks, in fresh Paseo agents. A visible manager agent can use
 `tools/paseo-bot/MANAGER.md` to inspect the queue and report to the user. Running
 `serve` as a Paseo workspace script makes its terminal/lifecycle visible inside
 Paseo without relying on an LLM to stay in an endless chat turn. The service does
-not restart the Paseo daemon, install an OS login service or auto-start after a
-machine reboot. See deployment below for a dedicated workspace.
+not restart the Paseo daemon and installs no OS login service by default. On
+Windows an operator can opt in to the [resident supervisor](#resident-supervisor-windows-opt-in).
+See deployment below for a dedicated workspace.
 
 Tasks with omitted `workflow` or `workflow: verified` advance through four phases.
 The GUI defaults new plans to `workflow: daily`: preparation and implementation
@@ -239,6 +240,60 @@ zero/multiple matches become `unknown`, never an automatic second launch.
 Restart resumes recorded agents and phases. Unknown receipt, identity drift,
 permission wait, invalid JSON, incomplete gates or deadlines never becomes pass.
 Timeout leaves agents/worktrees intact; nothing automatically kills them.
+
+### Temporary outages and failed status checks
+
+A lost connection, a timeout or a missing Paseo client runtime (an installer
+replacing `%LOCALAPPDATA%\Programs\Paseo` for a few seconds) is temporary. The
+same step is retried without relaunching, waiting 5, 10, 20, 40, 80 and then
+every 120 seconds while `transientGraceSeconds` (default 900) lasts. Only after
+that window, or when observing the agent fails for another reason, does the task
+stop. A failed status check says nothing about the agent's work, so the task
+becomes `unknown` and starts no cleanup: the agent is not stopped or archived and
+its workspace and worktree stay. Closing that card does not archive anything
+either. Inspect the agent before any follow-up. A finished agent whose receipt
+fails validation is still `blocked`, and that verdict does capture evidence and
+archive the workspace as described above.
+
+Every step and cleanup failure writes one JSON line with the actual exception
+text (scrubbed of known secret patterns) to the service's stderr, for example
+`paseo_bot.err.log` under the supervisor. Result files and the GUI never show it.
+
+### The bot's own host
+
+Task agents receive `PASEO_BOT_PROTECTED_HOSTS` with the registry label and
+aliases of the controller (the `owner.json` label) and an instruction not to
+update, reinstall, stop or restart Paseo there. `paseo-multi` enforces it: on
+those hosts, and on its own computer while a live active bot heartbeat exists,
+`restart` and `exec` scripts that install, replace, stop or restart Paseo are
+refused with a request to update manually. Read-only version checks still run.
+Update that computer by hand: wait until `status` shows no active task, update
+Paseo, then restart the bot runtime.
+
+### Resident supervisor (Windows, opt-in)
+
+```powershell
+& $Bot supervise install            # shows the task it would register; changes nothing
+& $Bot supervise install -Apply     # registers and starts it
+& $Bot supervise status
+& $Bot supervise restart            # after a code update: waits for an idle boundary
+& $Bot supervise uninstall -Apply   # removes the task; running services keep running
+```
+
+`tools/paseo-bot/supervisor.py` runs under `pythonw.exe` (no console). It starts
+`paseo_bot.py serve` and `gui_serve.py serve` as `python.exe` children with
+`CREATE_NO_WINDOW`, so neither they nor the node/git/Paseo CLI processes they
+spawn open a window, even with Windows Terminal as the default terminal. A
+service that exits is restarted after about one second; exits within five
+minutes of starting count as consecutive failures and back off (1, 2, 4 ... 300
+seconds). A service that is already running is adopted, never duplicated, and
+one supervisor runs per state directory. Restarts are logged to
+`supervisor.log`; current state is in `supervisor.json`.
+
+The logon task also repeats every five minutes. Task Scheduler does not relaunch
+an action that exited abnormally, so this trigger is what revives a dead
+supervisor; with `IgnoreNew` it starts no process while the supervisor runs.
+macOS and Linux should use launchd `KeepAlive` or systemd `Restart=on-failure`.
 
 The worker advances one task per machine. It does not move a partly completed
 task to another machine, retry failed code automatically, or synthesize missing

@@ -6,6 +6,14 @@ import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 const req = JSON.parse(fs.readFileSync(0, "utf8"));
 let client;
+async function workspaceExists(id) {
+  const listed = await client.fetchWorkspaces({
+    filter: { query: id, includeBackground: true },
+    page: { limit: 200 },
+  });
+  if (!Array.isArray(listed?.entries)) throw Error("schema");
+  return listed.entries.some((w) => w.id === id && !w.archivedAt);
+}
 async function main() {
   const module = process.env.PASEO_MULTI_HOST_CLIENT_MODULE;
   const { connectToDaemon } = await import(pathToFileURL(module).href);
@@ -58,6 +66,9 @@ async function main() {
       !p.modes?.some((m) => m.id === mode)
     )
       throw Error("provider");
+    // Managers share one workspace instead of adding a sidebar entry per
+    // conversation. A remembered workspace that is gone falls back to one new one.
+    const reuse = req.workspaceId && (await workspaceExists(req.workspaceId));
     const cli = path.join(path.dirname(path.dirname(module)), "index.js");
     const prefix = JSON.parse(process.env.PASEO_BOT_RUNTIME_PREFIX || "[]");
     const args = [
@@ -74,10 +85,9 @@ async function main() {
       mode,
       "--thinking",
       req.thinking || "high",
-      "--cwd",
-      req.cwd,
-      "--new-workspace",
-      "local",
+      ...(reuse
+        ? ["--workspace", req.workspaceId]
+        : ["--cwd", req.cwd, "--new-workspace", "local"]),
       "--title",
       "Paseo bot GUI manager",
       "--label",
@@ -112,11 +122,17 @@ async function main() {
           const r = JSON.parse(out);
           const d = r.data || r;
           if (code || !d.agentId) throw Error();
-          resolve({ id: d.agentId });
+          resolve(d.agentId);
         } catch {
           reject(Error("receipt"));
         }
       });
+    }).then(async (id) => {
+      // The agent exists now; a failed lookup only skips remembering the workspace.
+      const created = await client
+        .fetchAgent({ agentId: id, timeout: 10000 })
+        .catch(() => null);
+      return { id, workspaceId: created?.agent?.workspaceId || null };
     });
   }
   const current = await client.fetchAgent({
@@ -129,6 +145,12 @@ async function main() {
     current.agent.labels?.paseo_bot_gui !== req.session
   )
     throw Error("ownership");
+  if (req.action === "archive") {
+    // Only an idle manager owned by this conversation is archived.
+    if (current.agent.status !== "idle") throw Error("busy");
+    await client.archiveAgent(req.agentId);
+    return { archived: true };
+  }
   if (req.action === "send") {
     if (current.agent.status !== "idle") throw Error("busy");
     await client.sendMessage(req.agentId, req.prompt);

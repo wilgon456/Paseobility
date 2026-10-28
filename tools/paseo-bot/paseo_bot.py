@@ -65,11 +65,12 @@ DEFAULT_HOME = Path.home() / '.config/paseo-bot'
 
 
 class BridgeFailure(ValueError):
-    def __init__(self, stage='operation', reason='operation'):
+    def __init__(self, stage='operation', reason='operation', detail=''):
         self.stage = stage if stage in ['connect', 'identity', 'profile', 'cli', 'receipt'] else 'operation'
-        self.reason = reason if reason in ['identity', 'connection', 'profile', 'profile-unsupported', 'provider-unavailable', 'unknown-mode', 'launch', 'launch-outcome-unknown', 'schema', 'receipt', 'workspace-receipt', 'ownership', 'action', 'pagination', 'project-receipt', 'cleanup-terminal-create', 'cleanup-terminal-capture', 'cleanup-helper-error', 'cleanup-terminal-timeout', 'cleanup-terminal-close', 'cleanup-receipt'] else 'operation'
+        self.reason = reason if reason in ['runtime-missing', 'identity', 'connection', 'profile', 'profile-unsupported', 'provider-unavailable', 'unknown-mode', 'launch', 'launch-outcome-unknown', 'schema', 'receipt', 'workspace-receipt', 'ownership', 'action', 'pagination', 'project-receipt', 'cleanup-terminal-create', 'cleanup-terminal-capture', 'cleanup-helper-error', 'cleanup-terminal-timeout', 'cleanup-terminal-close', 'cleanup-receipt'] else 'operation'
         # An unclassified failure is a lost connection or timeout, not a verdict.
         self.transient = self.stage == 'connect' or self.reason == 'operation'
+        self.detail = str(detail)[:500]
         super().__init__('Paseo operation failed; inspect private host and profile configuration.')
 
 
@@ -79,8 +80,34 @@ class TransientBridgeError(ValueError):
     transient = True
 
 
+class StatusCheckFailed(ValueError):
+    """Observing a running agent failed; says nothing about the agent's work."""
+    transient = False
+
+
 def transient(error):
     return getattr(error, 'transient', False) is True
+
+
+def describe(error):
+    """Actual failure text for the private bot log (secrets scrubbed); never shown in results."""
+    parts = [type(error).__name__ + ': ' + str(error)]
+    for key in ('stage', 'reason', 'detail'):
+        if getattr(error, key, None):
+            parts.append(key + '=' + str(getattr(error, key)))
+    if error.__cause__ is not None or error.__context__ is not None:
+        cause = error.__cause__ or error.__context__
+        parts.append('cause=' + type(cause).__name__ + ': ' + str(cause))
+    return scrub(' | '.join(parts))[:2000]
+
+
+def log_event(**fields):
+    print(json.dumps(dict(fields, time=time.strftime('%Y-%m-%dT%H:%M:%S')), ensure_ascii=False), file=sys.stderr, flush=True)
+
+
+def retry_delay(failures):
+    """Growing wait between transient retries: 5, 10, 20, 40, 80, then every 120 seconds."""
+    return min(120, 5 * 2 ** max(0, failures - 1))
 
 
 PR_URL = re.compile(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*\Z')
@@ -235,7 +262,11 @@ def lock(home, name='runner.lock'):
 
 
 def bridge(host, action, timeout=65, **kwargs):
-    launch, module = fleet.runtime()
+    try:
+        launch, module = fleet.runtime()
+    except (ValueError, OSError) as error:
+        # A Paseo installer replaces the client for a few seconds: a blip, not a verdict.
+        raise BridgeFailure('connect', 'runtime-missing', str(error)) from None
     env = dict(os.environ, ELECTRON_RUN_AS_NODE='1', PASEO_MULTI_HOST_CLIENT_MODULE=str(module), PASEO_BOT_RUNTIME_PREFIX=json.dumps(launch[1:]))
     try:
         r = subprocess.run(launch + [str(Path(__file__).with_name('bridge.mjs'))],
@@ -247,8 +278,8 @@ def bridge(host, action, timeout=65, **kwargs):
         return value['result']
     except BridgeFailure:
         raise
-    except (subprocess.SubprocessError, ValueError, OSError):
-        raise TransientBridgeError('Paseo operation failed; inspect private host and profile configuration.') from None
+    except (subprocess.SubprocessError, ValueError, OSError) as error:
+        raise TransientBridgeError('Paseo operation failed (' + type(error).__name__ + ': ' + str(error)[:300] + ')') from None
 
 
 def validate_config(c):
@@ -559,6 +590,8 @@ class Bot:
             'For web pages or browser work use the paseo-browser skill: Ego Lite (ego-browser) is the default browser. '
             'Never choose Microsoft Edge or another personal browser unless the task explicitly names it. '
             'Do not change the configured gate commands or bot state/registry. '
+            'Never update, reinstall, stop or restart Paseo (app, CLI or daemon) on a host listed in PASEO_BOT_PROTECTED_HOSTS: '
+            'the Paseo bot runs there and would lose its client mid-task. Leave that host out and report it as needing a manual update. '
             'Finish with exactly one line PASEO_BOT_RESULT=<JSON object>, no secrets or raw logs. '
             'JSON requires verdict (pass/fail/blocked), summary, branch, head (full git SHA), cwd (absolute path), gates (array of {command,exitCode}), files (array of changed paths). '
         )
@@ -658,6 +691,7 @@ class Bot:
             except (ValueError, KeyError, TypeError, OSError) as error:
                 if transient(error):
                     raise  # Retried by tick() within the transient grace period.
+                log_event(status='cleanup-error', task=r['id'], phase=r['cleanup'].get('phase'), error=describe(error))
                 r['cleanup'].update(phase='done', status='failed', reason='Cleanup could not be confirmed; preserve remaining data and inspect privately.')
                 r['state'] = r['cleanup']['resultState']
                 if r.get('workflow') == 'daily' and r['state'] == 'passed':
@@ -716,6 +750,9 @@ class Bot:
             r.update(state='dispatching', attempt=uuid.uuid4().hex, profile=profile, model=model, phaseStartedAt=time.time())
             self.save(r)  # Admission is durable BEFORE any launch side effect.
             args = dict(profile=profile, modelAlias=model, effort=effort, repo=r['target']['repo'], title='Paseo bot ' + r['id'] + ' ' + stage, attempt=r['attempt'], prompt=self.prompt(body, r, stage))
+            protected = self.protected_hosts()
+            if protected:
+                args['protectedHosts'] = protected
             if r.get('retryWorkspace'):
                 args['workspaceId'] = r['retryWorkspace']
             elif stage == 'preflight':
@@ -754,12 +791,17 @@ class Bot:
             return self.save(r)
         if r['state'] == 'running':
             run = r['runs'][-1]
-            observed = self.rpc(h, 'observe', agentId=run['agentId'], attempt=run['attempt'])
+            try:
+                observed = self.rpc(h, 'observe', agentId=run['agentId'], attempt=run['attempt'])
+            except ValueError as error:
+                if transient(error):
+                    raise
+                raise StatusCheckFailed('Agent status check failed.') from error
             if observed.get('workspaceId') != run['workspaceId'] or not same_remote_path(observed.get('cwd'), run['cwd']):
-                raise ValueError('Agent placement changed; inspect task ownership.')
+                raise StatusCheckFailed('Agent placement changed; inspect task ownership.')
             if observed['status'] == 'timeout':
                 if time.time() - r['phaseStartedAt'] > self.config().get('phaseTimeoutSeconds', 7200):
-                    r.update(state='blocked', reason='Phase deadline exceeded; agent retained. Inspect before any follow-up.')
+                    r.update(state='blocked', reason='Phase deadline exceeded; the bot captures evidence, then archives the workspace (stopping its agent) and removes the worktree.')
                 return self.save(r)
             if body.get('workflow') != 'daily' and observed['status'] == 'error' and observed.get('errorKind') in ('quota', 'model-unavailable'):
                 next_model = fallback_model(run.get('modelAlias', r.get('model')), observed['errorKind'])
@@ -827,13 +869,16 @@ class Bot:
             now = time.time()
             since = record.get('transientSince') or now
             if now - since <= grace:
-                # A Tailscale/daemon blip is not a verdict: keep the state, never relaunch.
-                record.update(transientSince=since, transientFailures=record.get('transientFailures', 0) + 1,
+                # A Tailscale/daemon blip or a client being replaced is not a verdict:
+                # keep the state, never relaunch, and wait longer between attempts.
+                failures = record.get('transientFailures', 0) + 1
+                record.update(transientSince=since, transientFailures=failures, retryAt=now + retry_delay(failures),
                               reason='Destination temporarily unreachable; retrying the same step without relaunching.')
                 return self.save(record)
-            expired = 'Destination unreachable for longer than the retry window; agent retained, never relaunched.'
+            expired = 'Destination unreachable for longer than the retry window.'
         else:
             expired = None
+        record.pop('retryAt', None)
         if record['state'] == 'provisioning':
             record['reason'] = 'Workspace creation acknowledgement unavailable; retrying the same durable request.'
             self.save(record)
@@ -847,10 +892,28 @@ class Bot:
         elif record['state'] not in ['running', 'dispatching']:
             record.update(state='blocked', reason=expired or 'Routing, registry or result validation failed. Inspect task evidence privately.')
             self.save(record)
-        else:
-            # A validation failure is visible; existing agent is retained.
-            record.update(state='blocked', reason=expired or 'Observation or receipt validation failed; agent retained, never relaunched.')
+        elif expired or isinstance(error, StatusCheckFailed):
+            # Only the status check failed; the agent may still be working. 'unknown' starts no
+            # cleanup, so its agent, workspace and worktree stay exactly as they are.
+            record.update(state='unknown', reason=(expired or 'Agent status could not be checked.') +
+                          ' The agent may still be running; it was not stopped or archived and its worktree was kept. Inspect it before any follow-up; nothing is relaunched.')
             self.save(record)
+        else:
+            # The agent finished but its receipt failed validation: a visible verdict.
+            record.update(state='blocked', reason='Result receipt validation failed; the bot captures evidence, then archives the workspace. Nothing is relaunched.')
+            self.save(record)
+
+    def protected_hosts(self):
+        """Registry label and aliases of the computer running this bot; empty when unknown."""
+        label = self.ownership().get('label')
+        if not label:
+            return []
+        try:
+            hosts = fleet.load_hosts(fleet.DEFAULT_CONFIG)
+        except (OSError, ValueError):
+            return [label]
+        match = next((h for h in hosts if label.casefold() in [n.casefold() for n in [h['label'], *h.get('aliases', [])]]), None)
+        return list(dict.fromkeys([label, *([match['label'], *match.get('aliases', [])] if match else [])]))
 
     def heartbeat(self, owner, active, extra=None):
         write_json(self.home / 'health.json', dict({'version': 1, 'pid': os.getpid(), 'lastTickAt': time.time(),
@@ -882,14 +945,19 @@ class Bot:
                     continue
                 if any(s != 'passed' for s in parents):
                     continue
+                if record.get('retryAt', 0) > time.time():
+                    active.append(record['id'])  # waiting out a transient failure
+                    continue
                 try:
                     self.step(json.loads(b), record)
                 except (ValueError, KeyError, TypeError, StopIteration) as error:
+                    log_event(status='step-error', task=record['id'], state=record['state'], stage=record.get('stage'),
+                              transient=transient(error), error=describe(error))
                     self.step_failed(record['id'], error, grace)
                 else:
                     current = self.result(record['id'])
                     if 'transientSince' in current:
-                        current.pop('transientSince'); current.pop('transientFailures', None)
+                        current.pop('transientSince'); current.pop('transientFailures', None); current.pop('retryAt', None)
                         if current.get('reason', '').startswith('Destination temporarily unreachable'):
                             current.pop('reason')
                         self.save(current)
@@ -1006,8 +1074,8 @@ def main():
             while not stopping:
                 try:
                     bot.tick()
-                except (OSError, ValueError, sqlite3.Error):
-                    print(json.dumps({'status': 'tick-error', 'detail': 'Inspect private bot state; no raw exception is logged.'}), flush=True)
+                except (OSError, ValueError, sqlite3.Error) as error:
+                    log_event(status='tick-error', error=describe(error))
                 for _ in range(50):
                     if stopping:
                         break

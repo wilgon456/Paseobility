@@ -1,13 +1,14 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory=$true,Position=0)]
-  [ValidateSet('submit','status','result','health','list','serve','discover','tick','close')]
+  [ValidateSet('submit','status','result','health','list','serve','discover','tick','close','supervise')]
   [string]$Command,
   [Parameter(Position=1)][string]$Id,
   [string]$File,
   [string]$State = (Join-Path $env:USERPROFILE '.config\paseo-bot'),
   [string]$Python,
   [string]$Reason,
+  [switch]$Apply,
   [ValidateSet('cli','grok')][string]$Producer = 'cli',
   [Parameter(ValueFromPipeline=$true)][AllowEmptyString()][string]$Json
 )
@@ -32,8 +33,15 @@ end {
         $prefix = @('-3')
       }
     }
-    $argv = $prefix + @('-X','utf8',(Join-Path $PSScriptRoot 'paseo_bot.py'),'--state',$State,$Command)
-    if ($Id) { $argv += $Id }
+    if ($Command -eq 'supervise') {
+      # Opt-in resident supervisor; install/uninstall only change Task Scheduler with -Apply.
+      if ($Id -notin @('install','uninstall','status','restart')) { throw 'supervise needs install, uninstall, status or restart' }
+      $argv = $prefix + @('-X','utf8',(Join-Path $PSScriptRoot 'supervisor.py'),'--state',$State,$Id)
+      if ($Apply) { $argv += '--apply' }
+    } else {
+      $argv = $prefix + @('-X','utf8',(Join-Path $PSScriptRoot 'paseo_bot.py'),'--state',$State,$Command)
+      if ($Id) { $argv += $Id }
+    }
     if ($File) { $argv += @('--file',$File) }
     if ($Command -eq 'close' -and $Reason) { $argv += @('--reason',$Reason) }
     if ($Command -eq 'submit') { $argv += @('--producer',$Producer) }
