@@ -4,7 +4,7 @@ import argparse
 import signal
 import time
 from pathlib import Path
-from paseo_bot import lock
+from paseo_bot import describe, lock, log_event, stop_requested
 from gui_state import Conversations
 
 
@@ -28,12 +28,14 @@ def main():
             while running:
                 try:
                     c.tick()
-                except Exception:
-                    print('GUI manager tick unavailable; inspect private state. No request was automatically replayed.', flush=True)
+                except Exception as error:
+                    # No request is automatically replayed; the real cause goes to the private stderr log.
+                    log_event(status='gui-tick-error', error=describe(error))
                 if args.command == 'tick':
                     break
-                for _ in range(30):
-                    if not running:
+                for i in range(30):
+                    if not running or (i % 10 == 0 and stop_requested(args.state, 'gui_serve')):
+                        running = False
                         break
                     time.sleep(.1)
     finally:

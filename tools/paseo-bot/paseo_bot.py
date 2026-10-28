@@ -105,6 +105,18 @@ def log_event(**fields):
     print(json.dumps(dict(fields, time=time.strftime('%Y-%m-%dT%H:%M:%S')), ensure_ascii=False), file=sys.stderr, flush=True)
 
 
+def stop_requested(home, name):
+    """True once the supervisor asked this process to stop (``<home>/<name>.stop`` holds our pid)."""
+    path = Path(home) / (name + '.stop')
+    try:
+        if path.read_text(encoding='utf-8').strip() != str(os.getpid()):
+            return False
+    except (OSError, ValueError):
+        return False
+    path.unlink(missing_ok=True)
+    return True
+
+
 def retry_delay(failures):
     """Growing wait between transient retries: 5, 10, 20, 40, 80, then every 120 seconds."""
     return min(120, 5 * 2 ** max(0, failures - 1))
@@ -1076,8 +1088,9 @@ def main():
                     bot.tick()
                 except (OSError, ValueError, sqlite3.Error) as error:
                     log_event(status='tick-error', error=describe(error))
-                for _ in range(50):
-                    if stopping:
+                for i in range(50):
+                    if stopping or (i % 10 == 0 and stop_requested(bot.home, 'paseo_bot')):
+                        stopping = True
                         break
                     time.sleep(.1)
             out = {'status': 'stopped'}

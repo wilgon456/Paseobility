@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 from paseo_bot import Bot, ID, private_file, scrub
-from gui_projection import snapshot
+from gui_projection import apply_supervisor, snapshot
 from gui_state import Conversations
 
 MAX_INPUT = 200000
@@ -99,11 +99,11 @@ def handle(home, request, allow_submit=False):
         config = read_json(home / 'projects.json', {'projects': []})
         import time
         active = owner.get('mode') == 'active' and owner.get('host', '').casefold() == socket.gethostname().casefold()
-        return scrub(dict(host=socket.gethostname(), healthy=time.time() - health.get('lastTickAt', 0) < 120,
+        return scrub(apply_supervisor(dict(host=socket.gethostname(), healthy=time.time() - health.get('lastTickAt', 0) < 120,
                           lastTickAt=health.get('lastTickAt', 0), acceptsTasks=active and allow_submit,
                           queue=counts, tasks=tasks, total=sum(counts.values()), offset=offset,
                           projects=[dict(id=p['id'], enabled=any(t.get('enabled') for t in p.get('targets', [])))
-                                    for p in config.get('projects', [])]))
+                                    for p in config.get('projects', [])]), home, read_json))
     finally:
         db.close()
 

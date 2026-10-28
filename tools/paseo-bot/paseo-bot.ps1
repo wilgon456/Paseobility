@@ -34,8 +34,8 @@ end {
       }
     }
     if ($Command -eq 'supervise') {
-      # Opt-in resident supervisor; install/uninstall only change Task Scheduler with -Apply.
-      if ($Id -notin @('install','uninstall','status','restart')) { throw 'supervise needs install, uninstall, status or restart' }
+      # Opt-in resident supervisor; install/uninstall (task) and *-service (guardian) change nothing without -Apply.
+      if ($Id -notin @('install','uninstall','status','restart','install-service','uninstall-service')) { throw 'supervise needs install, uninstall, status, restart, install-service or uninstall-service' }
       $argv = $prefix + @('-X','utf8',(Join-Path $PSScriptRoot 'supervisor.py'),'--state',$State,$Id)
       if ($Apply) { $argv += '--apply' }
     } else {
@@ -61,6 +61,26 @@ end {
       [void]$builder.Append('"')
       return $builder.ToString()
     }
+    if ($Command -eq 'supervise' -and $Id -in @('install-service','uninstall-service')) {
+      # Guardian service layer. The installer runs elevated only with -Apply, after UAC consent,
+      # and receives this user's SID so it never guesses whose session to supervise.
+      $installer = Join-Path $PSScriptRoot 'guardian\install-guardian.ps1'
+      $common = @('-NoProfile','-ExecutionPolicy','Bypass','-File',$installer,'-UserSid',[Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'-State',$State)
+      $pythonw = Join-Path (Split-Path $Python) 'pythonw.exe'
+      if (Test-Path $pythonw) { $common += @('-Pythonw',$pythonw) }
+      if ($Id -eq 'uninstall-service') { $common += '-Uninstall' }
+      if ($Apply) {
+        $resultFile = [IO.Path]::GetTempFileName()
+        $elevated = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -PassThru `
+          -ArgumentList ((($common + @('-Apply','-ResultFile',$resultFile)) | ForEach-Object { Quote-NativeArgument $_ }) -join ' ')
+        $output = [IO.File]::ReadAllText($resultFile); Remove-Item $resultFile
+        $code = $elevated.ExitCode
+      } else {
+        $output = (& powershell.exe @common) -join [Environment]::NewLine; $code = $LASTEXITCODE
+      }
+      if (!$output) { $output = '{"ok":false,"error":"Guardian installer returned no result."}'; $code = 1 }
+      [Console]::WriteLine($output)
+    } else {
     $needsInput = $Command -eq 'submit' -and !$File
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = $Python
@@ -96,6 +116,7 @@ end {
     if ($output) { [Console]::Write($output) }
     else { [Console]::WriteLine('{"ok":false,"error":"Python returned no JSON output."}'); $code = 1 }
     $child.Dispose()
+    }
   } catch {
     [Console]::WriteLine('{"ok":false,"error":"PowerShell bot invocation failed. Check Python, command, file and state path."}')
     $code = 1

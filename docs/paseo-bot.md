@@ -273,26 +273,59 @@ Paseo, then restart the bot runtime.
 ### Resident supervisor (Windows, opt-in)
 
 ```powershell
-& $Bot supervise install            # shows the task it would register; changes nothing
-& $Bot supervise install -Apply     # registers and starts it
+& $Bot supervise install-service           # shows the Windows service plan; changes nothing
+& $Bot supervise install-service -Apply    # asks for UAC consent, installs and starts it
+& $Bot supervise install                   # alternative without admin: logon task plan
+& $Bot supervise install -Apply
 & $Bot supervise status
-& $Bot supervise restart            # after a code update: waits for an idle boundary
-& $Bot supervise uninstall -Apply   # removes the task; running services keep running
+& $Bot supervise restart                   # after a code update: waits for an idle boundary
+& $Bot supervise uninstall-service -Apply  # or: uninstall -Apply for the task
 ```
 
-`tools/paseo-bot/supervisor.py` runs under `pythonw.exe` (no console). It starts
-`paseo_bot.py serve` and `gui_serve.py serve` as `python.exe` children with
-`CREATE_NO_WINDOW`, so neither they nor the node/git/Paseo CLI processes they
-spawn open a window, even with Windows Terminal as the default terminal. A
-service that exits is restarted after about one second; exits within five
-minutes of starting count as consecutive failures and back off (1, 2, 4 ... 300
-seconds). A service that is already running is adopted, never duplicated, and
-one supervisor runs per state directory. Restarts are logged to
-`supervisor.log`; current state is in `supervisor.json`.
+Two layers keep the bot running. `tools/paseo-bot/supervisor.py` (the
+supervisor) runs under `pythonw.exe` with no console and owns the two services;
+something must in turn keep the supervisor alive.
 
-The logon task also repeats every five minutes. Task Scheduler does not relaunch
-an action that exited abnormally, so this trigger is what revives a dead
-supervisor; with `IgnoreNew` it starts no process while the supervisor runs.
+**Supervisor.** It starts `paseo_bot.py serve` and `gui_serve.py serve` as
+`python.exe` children with `CREATE_NO_WINDOW`, so neither they nor the
+node/git/Paseo CLI processes they spawn open a window, even with Windows
+Terminal as the default terminal. A service is restarted when:
+
+- it exits: after about one second; exits within five minutes of starting count
+  as consecutive failures and back off (1, 2, 4 ... 300 seconds);
+- it hangs: once it has written a heartbeat since its start, a heartbeat older
+  than `--stale-seconds` (default 900, longer than any single bot RPC) restarts
+  it. The dispatcher's heartbeat is `health.json`, the GUI service's is
+  `gui_meta.heartbeat`;
+- `supervise restart` asks for it after a code update, at an idle boundary.
+  This does not count as a failure.
+
+A restart first writes `<state>/<service>.stop` with the service's PID; both
+services finish the current step and exit. Only a service that ignores it for
+30 seconds is terminated. Five consecutive fast failures, or any hang, raise an
+alert: a Windows notification, `alert` in `supervisor.json`, and `healthy: false`
+in the GUI status (shown as "확인 필요"). The alert clears after five healthy
+minutes. A service that is already running is adopted, never duplicated, and
+one supervisor runs per state directory. Events go to `supervisor.log`.
+
+**Guardian service (recommended).** Task Scheduler does not relaunch an action
+that exited abnormally. `PaseoBotGuardian` (`tools/paseo-bot/guardian/`) is a
+small Windows service built with the .NET Framework compiler that ships with
+Windows. The Service Control Manager restarts it after 1, 5 and 30 seconds if it
+fails; it starts the supervisor with the configured user's own non-elevated
+token in that user's session (`WTSQueryUserToken`, `CreateProcessAsUser`,
+`CREATE_NO_WINDOW`), restarts it with backoff when it exits, adopts one that is
+already running, and reacts to logon and unlock immediately. It stores no
+password and never runs the bot as SYSTEM. Its binary lives in
+`%ProgramFiles%\PaseoBotGuardian` and its configuration in
+`%ProgramData%\PaseoBotGuardian\guardian.ini`, both writable only by SYSTEM and
+Administrators; the log is `guardian.log` there. Stopping or removing the service
+leaves the supervisor and bot running. After installing it, remove any older
+logon task that launched the supervisor.
+
+**Logon task (no admin).** `supervise install` registers a task that starts the
+supervisor at logon and repeats every minute; with `IgnoreNew` the repetition
+starts no process while the supervisor runs and only revives a dead one.
 macOS and Linux should use launchd `KeepAlive` or systemd `Restart=on-failure`.
 
 The worker advances one task per machine. It does not move a partly completed
