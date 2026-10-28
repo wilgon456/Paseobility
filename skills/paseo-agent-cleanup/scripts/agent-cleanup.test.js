@@ -9,6 +9,7 @@ const test = require("node:test");
 
 const {
   execute,
+  npmClientModule,
   parseArgs,
   printHuman,
 } = require("./agent-cleanup.js");
@@ -491,4 +492,27 @@ test("hidden background workspaces are reported instead of implying absence", ()
   assert.match(result.summary.validationErrors[0], /agent-background.*background-workspace records are not visible/);
   const covered = execute(parseArgs([]), createRunner({agents: [idleAgent]}).run);
   assert.equal(covered.summary.verification.backgroundCovered, true);
+});
+
+test("finds the client of a Windows npm shim and a POSIX prefix install", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-npm-"));
+  try {
+    const shim = path.join(root, "npm", "paseo.cmd");
+    fs.mkdirSync(path.dirname(shim), {recursive: true});
+    fs.writeFileSync(shim, "@echo off");
+    assert.equal(npmClientModule(shim), null);
+    const windowsModule = path.join(root, "npm", "node_modules", "@getpaseo", "cli", "dist", "utils", "client.js");
+    fs.mkdirSync(path.dirname(windowsModule), {recursive: true});
+    fs.writeFileSync(windowsModule, "//");
+    assert.equal(npmClientModule(shim), windowsModule);
+    const launcher = path.join(root, "prefix", "bin", "paseo");
+    fs.mkdirSync(path.dirname(launcher), {recursive: true});
+    fs.writeFileSync(launcher, "#!/bin/sh");
+    const posixModule = path.join(root, "prefix", "lib", "node_modules", "@getpaseo", "cli", "dist", "utils", "client.js");
+    fs.mkdirSync(path.dirname(posixModule), {recursive: true});
+    fs.writeFileSync(posixModule, "//");
+    assert.equal(npmClientModule(launcher), posixModule);
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+  }
 });

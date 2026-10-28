@@ -76,7 +76,7 @@ m.TaskTab(sys.argv[2],'live-process-recovery',CrashAfterCreate()).open(sys.argv[
             assert len(owned_ids) == 1, 'expected exactly one recoverable test tab'
             command = [sys.executable, '-B', helper, 'open', '--task', 'live-process-recovery',
                        '--state-dir', state, '--window', args.window, '--url', 'about:blank']
-            result = subprocess.run(command, capture_output=True, text=True, timeout=60, check=True)
+            result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, check=True)
             assert json.loads(result.stdout)['tabId'] in owned_ids, 'recovery created a duplicate tab'
         finally:
             recovery_task.close()

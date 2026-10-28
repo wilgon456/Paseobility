@@ -43,6 +43,11 @@ export const SKILLS = [
     summary: "Share files through a private Git repository with preview links.",
   },
   {
+    id: "paseo-research",
+    summary:
+      "Answer how, why and compatibility questions from primary sources with a cited report.",
+  },
+  {
     id: "paseo-spyware-check",
     summary:
       "Statically inspect a repository for spyware and supply-chain risks.",

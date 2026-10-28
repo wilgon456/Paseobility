@@ -61,11 +61,7 @@ def runtime():
             raise ValueError('Set both client module and Node executable to existing files.')
         return [node], Path(module)
     custom = os.environ.get('PASEO_MULTI_HOST_RESOURCES')
-    candidates = [Path(custom)] if custom else (
-        [Path(os.environ[k]) / suffix for k, suffix in
-         [('LOCALAPPDATA', 'Programs/Paseo/resources'), ('ProgramFiles', 'Paseo/resources')]
-         if os.environ.get(k)] if os.name == 'nt' else
-        [Path('/Applications/Paseo.app/Contents/Resources')])
+    candidates = [Path(custom)] if custom else app_resource_candidates()
     for resources in candidates:
         module = resources / 'app.asar/node_modules/@getpaseo/cli/dist/utils/client.js'
         runner = resources / 'app.asar.unpacked/dist/daemon/node-entrypoint-runner.js'
@@ -76,12 +72,38 @@ def runtime():
             return [str(electron), '--disable-warning=DEP0040', str(runner), 'node-script'], module
     cli = shutil.which('paseo')
     node = shutil.which('node')
-    if cli and node:
-        for parent in Path(cli).resolve().parents:
-            candidate = parent / 'dist/utils/client.js'
-            if candidate.is_file() and parent.name == 'cli':
-                return [node], candidate
+    module = npm_client_module(cli) if cli else None
+    if module and node:
+        return [node], module
     raise ValueError('Installed Paseo client runtime not found; see references/connections.md.')
+
+
+def app_resource_candidates(windows=None, env=None, home=None):
+    """Desktop-app resource folders: per-user and machine-wide installs."""
+    windows = os.name == 'nt' if windows is None else windows
+    env = os.environ if env is None else env
+    if windows:
+        return [Path(env[k]) / suffix for k, suffix in
+                [('LOCALAPPDATA', 'Programs/Paseo/resources'), ('ProgramFiles', 'Paseo/resources')] if env.get(k)]
+    home = Path.home() if home is None else Path(home)
+    # macOS apps live in /Applications or, for a per-user install, ~/Applications.
+    return [Path('/Applications/Paseo.app/Contents/Resources'), home / 'Applications/Paseo.app/Contents/Resources']
+
+
+def npm_client_module(cli):
+    """client.js of a standalone npm CLI install, from the `paseo` launcher found on PATH."""
+    launcher = Path(cli)
+    # macOS/Linux: the launcher is a symlink into .../@getpaseo/cli/dist.
+    for parent in launcher.resolve().parents:
+        candidate = parent / 'dist/utils/client.js'
+        if candidate.is_file() and parent.name == 'cli':
+            return candidate
+    # Windows npm writes a paseo.cmd shim beside node_modules; a POSIX prefix keeps lib/node_modules.
+    for base in (launcher.parent / 'node_modules', launcher.parent.parent / 'lib/node_modules'):
+        candidate = base / '@getpaseo/cli/dist/utils/client.js'
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 # Installing, replacing, stopping or restarting Paseo. Read-only version checks do not match.

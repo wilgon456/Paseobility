@@ -83,5 +83,13 @@ created from a background workspace inherits that flag.
   the job. Ask first before pushing, merging to shared branches, deploying,
   publishing, spending money or irreversible deletion.
 
+- With three or more agents, a heartbeat, or a user who has stepped away, keep
+  a decision log in the system temporary folder: one tab-separated line per
+  decision with time, phase, decision, reason, evidence pointer and result
+  (launched, retried, reassigned, rejected, integrated). Append with your file
+  tool, not a shell helper, so it works on Windows and macOS. Keep each cell on
+  one line and prefix a cell that starts with `=`, `+`, `-` or `@` with `'` so a
+  spreadsheet does not run it. Link the log in the report.
+
 Report profiles/providers used, deliverables, verification, the synthesis or
 comparison result, and any resources left active.

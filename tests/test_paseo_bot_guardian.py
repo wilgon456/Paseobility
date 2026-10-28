@@ -20,7 +20,7 @@ class GuardianTests(unittest.TestCase):
         cls.exe = Path(cls.tmp.name) / 'PaseoBotGuardian.exe'
         build = subprocess.run([str(CSC), '/nologo', '/target:exe', '/warnaserror', '/r:System.ServiceProcess.dll',
                                 '/r:System.Management.dll', '/out:' + str(cls.exe), str(GUARDIAN / 'PaseoBotGuardian.cs')],
-                               capture_output=True, text=True)
+                               capture_output=True, text=True, encoding='utf-8', errors='replace')
         cls.build = build
 
     @classmethod
@@ -42,7 +42,7 @@ class GuardianTests(unittest.TestCase):
 
     def test_installer_without_apply_only_plans(self):
         sid = subprocess.run(['powershell.exe', '-NoProfile', '-Command', '[Security.Principal.WindowsIdentity]::GetCurrent().User.Value'],
-                             capture_output=True, text=True).stdout.strip()
+                             capture_output=True, text=True, encoding='utf-8', errors='replace').stdout.strip()
         r = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(GUARDIAN / 'install-guardian.ps1'),
                             '-UserSid', sid, '-Pythonw', sys.executable, '-State', self.tmp.name],
                            capture_output=True, text=True, encoding='utf-8')

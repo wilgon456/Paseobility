@@ -24,7 +24,7 @@ class ContextTests(unittest.TestCase):
                 module.mkdir(parents=True)
                 (module / 'AGENTS.md').write_text('MODULE_INSTRUCTION_FIXTURE')
             result = subprocess.run(['bash', str(SCRIPT), '--root', str(root)],
-                                    capture_output=True, text=True, timeout=15)
+                                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
             context = (root / '.paseobility/context.md').read_text()
             commands = (root / '.paseobility/commands.md').read_text()
@@ -66,11 +66,11 @@ class ContextTests(unittest.TestCase):
             root = Path(temporary)
             (root / 'README.md').write_text('x' * 200000)
             command = ['bash', str(SCRIPT), '--root', str(root)]
-            first = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            first = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
             self.assertEqual(first.returncode, 0, first.stderr)
             context = root / '.paseobility/context.md'
             original = context.read_bytes()
-            second = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            second = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
             self.assertEqual(second.returncode, 0, second.stderr)
             self.assertEqual(context.read_bytes(), original)
 
@@ -79,7 +79,7 @@ class ContextTests(unittest.TestCase):
             root = Path(temporary)
             result = subprocess.run(
                 ['bash', str(SCRIPT), '--root', str(root), '--stdout'],
-                capture_output=True, text=True, timeout=15)
+                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(list(root.iterdir()), [])
 
@@ -90,7 +90,7 @@ class ContextTests(unittest.TestCase):
             (root / 'main.txt').write_text('fixture')
             result = subprocess.run(
                 ['bash', str(SCRIPT), '--root', str(root)],
-                capture_output=True, text=True, timeout=15)
+                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
             project_map = (root / '.paseobility/project-map.md').read_text()
             self.assertIn('\nmain.txt\n', project_map)
@@ -105,7 +105,7 @@ class ContextTests(unittest.TestCase):
                 source.write_text('GENERATED_INSTRUCTION_FIXTURE')
             result = subprocess.run(
                 ['bash', str(SCRIPT), '--root', str(root)],
-                capture_output=True, text=True, timeout=15)
+                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
             context = (root / '.paseobility/context.md').read_text()
             self.assertNotIn('GENERATED_INSTRUCTION_FIXTURE', context)

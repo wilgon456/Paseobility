@@ -85,7 +85,7 @@ records for other skills.
 
 ## Consolidated skill migration
 
-The package contains eleven skills. `paseo-toss` wraps the official Toss
+The package contains twelve skills. `paseo-toss` wraps the official Toss
 Apps-in-Toss Harness for planning, scaffolding, development, phone testing and
 pre-launch review; install it alone with `--skill paseo-toss`. Console OAuth and
 provider-specific debugger setup remain separate from copying the skill. `paseo-god` is explicit-only task execution,

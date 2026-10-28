@@ -16,7 +16,11 @@
 5. For handoff, write a self-contained prompt: root, goal, completed work,
    constraints, relevant files, commands, blockers, branch/base or HEAD,
    uncommitted paths, date of runtime evidence and the next unmet criterion.
-   Mark inherited claims you did not refresh.
+   Mark inherited claims you did not refresh. Point to artifacts that already
+   exist (spec, diff, commit, issue, PR, report) by path or URL instead of
+   copying them in, name the skills the next agent should load, and redact
+   secrets. A handoff saved as a file goes to the system temporary folder
+   (`$TMPDIR` or `/tmp`; `$env:TEMP` on Windows), not into the repository.
 
 When `.paseobility/` context is missing or stale, refresh it from what you just
 read (context helper with `--force`, or edit the files directly). Skip

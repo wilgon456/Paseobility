@@ -110,6 +110,21 @@ choosing animation technology. Keep demos truthful about simulated behavior.
   scheduling evidence, not proof of displayed FPS on a user's device. Neither
   120 FPS nor a Lighthouse score is a universal acceptance criterion.
 
+## Compare variants on the real screen
+
+When several compositions are worth comparing, build them as variants of the
+real screen rather than separate mockups: one route, a `?variant=A|B|C` switch,
+the real data and components. Make three, five at most, and make them differ in
+structure (content priority, grouping, density, hierarchy), not only in color or
+radius. Show a small variant switcher only in development builds.
+
+Render every variant with design-check in the same run, for example
+`design-check "http://localhost:5173/checkout?variant=A" "...?variant=B" "...?variant=C"`.
+Each variant keeps its own screenshots and report. Compare them against the
+task, pick one, and write the choice and the reasons the others lost into the
+existing brief. Then delete the losing variants and the switch from the code;
+the brief keeps the decision.
+
 ## Review the rendered result and carry corrections forward
 
 Review the first useful rendered screen before spreading its composition.

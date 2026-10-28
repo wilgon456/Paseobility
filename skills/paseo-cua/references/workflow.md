@@ -52,7 +52,7 @@ verification checkpoint.
 
 ## Persistent state
 
-One-shot calls use `cua-driver <tool> '<json>'`. Cursor overlays, recording,
+One-shot calls use `cua-driver <tool> '<json>'`. On Windows, use PowerShell 7 (`pwsh`). Windows PowerShell 5.1 strips the double quotes from a JSON argument (`'{"x":1}'` arrives as `{x:1}`) and pipes ASCII by default; there, set `$OutputEncoding = [Text.UTF8Encoding]::new($false)` and pipe the JSON instead: `'<json>' | cua-driver call <tool>`. Cursor overlays, recording,
 browser sessions, and named sessions need one persistent `cua-driver mcp`
 connection; a repeated session label does not adopt another process's state.
 

@@ -35,9 +35,9 @@ target. Clone GitHub URLs into a temporary directory.
    ```bash
    bash <skill-dir>/scripts/spyware-check.sh --target <url-or-path>
    ```
-4. On Windows, run the bundled PowerShell helper when available:
+4. On Windows, run the bundled PowerShell helper when available. `<skill-dir>` is an absolute path, so call it with `&`:
    ```powershell
-   .\<skill-dir>\scripts\spyware-check.ps1 -Target <url-or-path>
+   & "<skill-dir>\scripts\spyware-check.ps1" -Target <url-or-path>
    ```
 5. Review high-signal files manually.
 6. Produce a verdict with evidence and limitations.
@@ -106,8 +106,8 @@ exit nonzero. Inspect its status output before retrying.
 Prefer the bundled helper:
 
 ```powershell
-.\<skill-dir>\scripts\spyware-check.ps1 -Target https://github.com/owner/repo
-.\<skill-dir>\scripts\spyware-check.ps1 -Target C:\path\to\repo -Out $env:TEMP\paseo-spyware-report
+& "<skill-dir>\scripts\spyware-check.ps1" -Target https://github.com/owner/repo
+& "<skill-dir>\scripts\spyware-check.ps1" -Target C:\path\to\repo -Out $env:TEMP\paseo-spyware-report
 ```
 
 The PowerShell helper follows the same safety model: clone or inspect, do not
@@ -117,7 +117,7 @@ write `report.md` with the same `Finding Summary` and classified findings table.
 To add scanners on Windows (`-DryRun` shows the plan first):
 
 ```powershell
-.\<skill-dir>\scripts\install-scanners.ps1 -Yes
+& "<skill-dir>\scripts\install-scanners.ps1" -Yes
 ```
 
 The installer does not use remote shell pipes. It only runs planned package

@@ -32,7 +32,7 @@ class PosixScannerHelperTests(unittest.TestCase):
                 output = root / ('report-' + str(attempt))
                 result = subprocess.run([shutil.which('bash'), str(SCRIPT.with_suffix('.sh')),
                     '--target', str(target), '--out', str(output)],
-                    capture_output=True, text=True, timeout=15,
+                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=15,
                     env=dict(os.environ, PATH=str(tools), RIPGREP_CONFIG_PATH=str(config)))
                 self.assertEqual(result.returncode, 0, result.stderr)
                 report = (output / 'report.md').read_text()
@@ -51,7 +51,7 @@ class PosixScannerHelperTests(unittest.TestCase):
                 fake.chmod(0o755)
             for attempt in range(2):
                 result = subprocess.run([shutil.which('bash'), str(suite)],
-                    capture_output=True, text=True, timeout=30,
+                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30,
                     env=dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
                              HOST_TOOL_SENTINEL=str(sentinel)))
                 self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
@@ -127,14 +127,14 @@ function global:osv-scanner {
                 self.assertEqual(output['results'], [])
                 previous = (report / 'report.md').read_bytes()
                 again = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                    '-File', str(wrapper)], capture_output=True, text=True, timeout=30,
+                    '-File', str(wrapper)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30,
                     env=dict(os.environ, FIXTURE_SCANNER=str(SCRIPT),
                              FIXTURE_TARGET=str(target), FIXTURE_REPORT=str(report)))
                 self.assertNotEqual(again.returncode, 0)
                 self.assertIn('report directory must be empty', again.stderr)
                 self.assertEqual((report / 'report.md').read_bytes(), previous)
                 nested = subprocess.run([shell, '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                    '-File', str(wrapper)], capture_output=True, text=True, timeout=30,
+                    '-File', str(wrapper)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30,
                     env=dict(os.environ, FIXTURE_SCANNER=str(SCRIPT),
                              FIXTURE_TARGET=str(target), FIXTURE_REPORT=str(target / 'report')))
                 self.assertNotEqual(nested.returncode, 0)

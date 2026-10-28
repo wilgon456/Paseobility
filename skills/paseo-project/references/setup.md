@@ -16,7 +16,7 @@ reconstruct these commands.
 
 | Helper | Purpose |
 | --- | --- |
-| `scripts/paseobility-doctor.sh --root <project>` | Read-only environment diagnosis |
+| `scripts/paseobility-doctor.sh --root <project>` (Windows: `scripts\paseobility-doctor.ps1 -Root <project>`) | Read-only environment diagnosis |
 | `scripts/paseobility-context.sh --root <project>` | Generate context/commands/project-map/bootstrap-log under `.paseobility/` |
 | `scripts/paseobility-init.sh --no-context` | Install skills with overwrite backups |
 | `scripts/paseobility-install.ps1` | Native Windows installation |
@@ -53,9 +53,10 @@ separately; an install or a healthy daemon alone does not prove the repair.
 
 ## Platform boundaries
 
-On Windows use the PowerShell installer. Bash doctor/context scripts need a
-compatible shell; without one, write the context files directly from README,
-agent instructions and manifests. Do not claim a repair without evidence.
+On Windows use the PowerShell installer and `paseobility-doctor.ps1`; both
+wrap cross-platform code. The context script is Bash only: without a compatible
+shell, write the context files directly from README, agent instructions and
+manifests. Do not claim a repair without evidence.
 
 Report what changed, generated artifacts, verified commands/runtime identity,
 backups and remaining setup issues.
