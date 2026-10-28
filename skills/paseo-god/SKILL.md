@@ -44,7 +44,9 @@ overlap, its own worktree. Do not rewrite another run to resolve a conflict.
 ## Plan before substantive work
 
 After reading enough context to choose an approach, briefly state the plan to
-the user and put its TODO in `RUN.md` before substantive changes. Choose
+the user and put its TODO in `RUN.md` before substantive changes. For an
+investigation, bug fix, change or shipping task, start the TODO from the
+matching [playbook](references/playbooks.md). Choose
 concrete actions that advance the criteria, order dependencies and include the
 checks that establish the outcome. A small correction needs only one or two
 steps; a larger task needs meaningful stages, not an exhaustive task graph.
@@ -99,6 +101,9 @@ Per-task overhead repeats on every small change, so size it to the change.
 - Missing, truncated, skipped or ambiguous evidence leaves the affected
   obligation unproven. Inspect actual output/artifacts; a tool's successful
   return or a helper's `complete` label is not an outcome check.
+- Before reporting or acting on a measured number (time, size, speedup, error
+  rate), find what limits it and rule out that it measured something else:
+  a cache, a warm process, a different input or a skipped step.
 
 ## Work, check, continue
 
@@ -125,6 +130,8 @@ Per-task overhead repeats on every small change, so size it to the change.
 - Distinguish a product/check failure from a tool or environment failure. Two
   attempts with the same cause and no new evidence call for a different
   approach; rerunning a regression after a relevant fix is useful progress.
+  When two fixes built on the same premise have failed, write the premise down
+  and test it directly before a third.
   If an interrupted action may already have taken effect, reconcile its state
   before retrying; cancellation or timeout does not prove rollback. Continue
   independent work. Save
