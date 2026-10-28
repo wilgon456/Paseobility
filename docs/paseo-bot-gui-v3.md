@@ -38,3 +38,19 @@ existing installs). The manager only plans and explains, so pin the narrowest
 mode its provider advertises that still answers without permission prompts.
 Task rows include the model alias, and passed tasks on `publish: draft-pr`
 targets carry their draft PR link.
+
+## Fewer workspaces and agents (v5)
+
+Conversation managers share one Paseo workspace on the configured daemon instead
+of opening a new local workspace per conversation. The first manager creates it;
+its ID is remembered in the queue database for that `serverId` and reused with
+`paseo run --workspace`. If that workspace was archived, the next manager opens
+one new workspace and that one is remembered.
+
+A conversation whose last message is older than `managerIdleDays` (optional in
+`gui-runtime.json`, default 7, `0` disables) has its idle manager archived and
+becomes `dormant`. Nothing remote happens until the user writes again; then a
+fresh manager starts and the first request carries the last twelve visible
+messages as historical data. Conversations with an unresolved request keep their
+manager. The same history replay applies after the operator restarts a missing
+manager.

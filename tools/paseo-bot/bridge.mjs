@@ -246,6 +246,9 @@ async function main() {
     // CLI/server creation otherwise chose "auto" on 0.13.1 even when the
     // configured provider default was auto-review. Preserve the actual default.
     if(mode)argv.push('--mode',mode);
+    // Task agents learn which hosts run the bot; paseo-multi refuses Paseo lifecycle changes there.
+    const protectedHosts=(Array.isArray(req.protectedHosts)?req.protectedHosts:[]).filter(n=>typeof n==='string'&&/^[A-Za-z0-9_.-]{1,64}$/.test(n));
+    if(protectedHosts.length)argv.push('--env','PASEO_BOT_PROTECTED_HOSTS='+protectedHosts.join(','));
     if(!req.workspaceId)throw Error('workspace receipt');
     argv.push('--workspace',req.workspaceId);
     argv.push('--',req.prompt);

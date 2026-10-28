@@ -20,9 +20,16 @@ class FakeManager:
         self.reply = ''
         self.lose_ack = False
         self.found = True
+        self.created = []
+        self.archived = []
 
     def __call__(self, config, action, **kw):
-        if action == 'create': return {'id': 'new-gui-manager'}
+        if action == 'create':
+            self.created.append(kw)
+            return {'id': 'new-gui-manager', 'workspaceId': 'manager-ws'}
+        if action == 'archive':
+            self.archived.append(kw['agentId'])
+            return {'archived': True}
         if action == 'recover': return {'agents': [{'id': 'new-gui-manager'}]}
         if action == 'observe': return {'status': 'idle', 'message': self.reply}
         if action == 'send':
@@ -318,6 +325,64 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout)
         out = handle(self.home, dict(action='sync', requester='grok'))
         self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['requester'], 'grok')
+
+    def age(self, conversation, days):
+        old = time.time() - days * 86400
+        self.c.db.execute('UPDATE gui_messages SET time=? WHERE conversation=?', (old, conversation))
+        self.c.db.execute('UPDATE gui_conversations SET created=? WHERE id=?', (old, conversation))
+        self.c.db.commit()
+
+    def converse(self, message, text, reply):
+        self.c.send('session-1', message, text)
+        self.c.tick()
+        self.fake.reply = 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId=message, reply=reply, tasks=[]))
+        self.c.tick()
+
+    def test_managers_share_one_workspace_per_daemon(self):
+        self.assertIsNone(self.fake.created[0]['workspaceId'])
+        self.c.create('session-2'); self.c.tick()
+        self.assertEqual(self.fake.created[1]['workspaceId'], 'manager-ws')
+        config = json.loads((self.home / 'gui-runtime.json').read_text(encoding='utf-8'))
+        write_json(self.home / 'gui-runtime.json', dict(config, serverId='other-server'))
+        self.c.create('session-3'); self.c.tick()
+        self.assertIsNone(self.fake.created[2]['workspaceId'])
+
+    def test_idle_manager_is_archived_then_revived_with_history(self):
+        self.converse('one', 'Remember the fixture deadline', 'Noted the deadline')
+        self.c.tick()
+        self.assertEqual(self.fake.archived, [])
+        self.age('session-1', 8)
+        self.c.tick()
+        self.assertEqual(self.fake.archived, ['new-gui-manager'])
+        self.assertEqual(self.c.conversation('session-1')['status'], 'dormant')
+        self.c.tick()  # dormant without a new message: no remote call, no new manager
+        self.assertEqual((len(self.fake.created), self.fake.archived), (1, ['new-gui-manager']))
+        self.c.send('session-1', 'two', 'What was the deadline?')
+        self.c.tick(); self.c.tick()
+        self.assertEqual(len(self.fake.created), 2)
+        prompt = self.fake.sent[-1]['prompt']
+        self.assertIn('Earlier messages in THIS conversation', prompt)
+        self.assertIn('Remember the fixture deadline', prompt); self.assertIn('Noted the deadline', prompt)
+        self.assertIsNone(self.c.db.execute("SELECT 1 FROM gui_meta WHERE key='revive:session-1'").fetchone())
+        self.fake.reply = 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId='two', reply='It was noted', tasks=[]))
+        self.c.tick()
+        self.c.send('session-1', 'three', 'Thanks'); self.c.tick()
+        self.assertNotIn('Earlier messages', self.fake.sent[-1]['prompt'])
+
+    def test_idle_archive_respects_pending_work_and_opt_out(self):
+        self.c.send('session-1', 'one', 'A request')
+        self.c.db.execute("UPDATE gui_jobs SET state='unknown'"); self.c.db.commit()
+        self.age('session-1', 30)
+        self.c.tick()
+        self.assertEqual(self.fake.archived, [])
+        self.c.resolve('session-1')
+        self.age('session-1', 30)
+        config =json.loads((self.home / 'gui-runtime.json').read_text(encoding='utf-8'))
+        write_json(self.home / 'gui-runtime.json', dict(config, managerIdleDays=0))
+        self.c.tick()
+        self.assertEqual(self.fake.archived, [])
+        write_json(self.home / 'gui-runtime.json', dict(config, managerIdleDays=-1))
+        with self.assertRaises(ValueError): self.c.runtime_config()
 
     @unittest.skipUnless(sys.platform == 'win32', 'Windows producer byte-stream contract')
     def test_windows_grok_producer_wrapper(self):

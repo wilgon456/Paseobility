@@ -641,48 +641,88 @@ class BotTests(unittest.TestCase):
         self.assertNotEqual(first['machine'], second['machine'])
         self.assertEqual(json.loads((self.home/'health.json').read_text())['activeTasks'], ['task-1', 'task-2'])
 
-    def test_transient_observation_failure_keeps_running_until_grace(self):
-        self.config['transientGraceSeconds'] = 60
+    def offline_observe(self, error):
+        observe = self.fake.__call__
+        calls = []
+        def rpc(host, action, **kw):
+            calls.append(action)
+            if action == 'observe':
+                raise error
+            return observe(host, action, **kw)
+        return rpc, calls
+
+    def test_transient_observation_failure_backs_off_and_keeps_the_agent(self):
+        self.config['transientGraceSeconds'] = 600
         m.write_json(self.bot.registry_path, self.config)
         self.bot.submit(self.body)
         for _ in range(4): self.bot.tick()
         self.assertEqual(self.bot.result('task-1')['state'], 'running')
         self.fake.status = 'timeout'  # The work agent is still busy.
         observe = self.fake.__call__
-        def offline(host, action, **kw):
-            if action == 'observe':
-                raise m.TransientBridgeError('lost')
-            return observe(host, action, **kw)
+        offline, calls = self.offline_observe(m.BridgeFailure('connect', 'runtime-missing', 'Installed Paseo client runtime not found'))
         self.bot.rpc = offline
-        for _ in range(3): self.bot.tick()
-        r = self.bot.result('task-1')
-        self.assertEqual(r['state'], 'running')
-        self.assertEqual(r['transientFailures'], 3)
-        self.bot.rpc = observe  # Connection returns: the same agent continues and the marker clears.
-        self.bot.tick()
-        self.assertNotIn('transientSince', self.bot.result('task-1'))
-        self.bot.rpc = offline
-        self.bot.tick()
-        with patch.object(m.time, 'time', return_value=m.time.time() + 120):
+        clock = [m.time.time()]
+        with patch.object(m.time, 'time', side_effect=lambda: clock[0]):
+            waits = []
+            for _ in range(4):
+                self.bot.tick(); self.bot.tick()  # the second tick waits instead of retrying
+                r = self.bot.result('task-1')
+                waits.append(round(r['retryAt'] - clock[0]))
+                clock[0] = r['retryAt']
+            self.assertEqual(waits, [5, 10, 20, 40])
+            self.assertEqual((calls.count('observe'), r['state'], r['transientFailures']), (4, 'running', 4))
+            self.bot.rpc = observe  # The client is back: the same agent continues and the markers clear.
+            self.bot.tick()
+            r = self.bot.result('task-1')
+            self.assertFalse({'transientSince', 'retryAt'} & set(r))
+            self.bot.rpc = offline
+            self.bot.tick()
+            clock[0] += 700
             self.bot.tick()
         r = self.bot.result('task-1')
-        self.assertEqual(r['cleanup']['resultState'], 'blocked')  # Evidence capture precedes the verdict.
-        self.assertIn('retry window', r['reason'])
+        self.assertEqual(r['state'], 'unknown')
+        self.assertNotIn('cleanup', r)  # no evidence-and-archive run, so no agent stop or worktree removal
+        self.assertIn('retry window', r['reason']); self.assertIn('not stopped or archived', r['reason'])
+        self.assertNotIn('archive-workspace', calls); self.assertEqual(self.fake.cleaned, [])
         self.assertEqual(len(self.fake.launches), 2)
 
-    def test_permanent_bridge_failure_still_blocks(self):
+    def test_failed_status_check_never_stops_or_archives_the_agent(self):
         self.bot.submit(self.body)
         for _ in range(4): self.bot.tick()
-        observe = self.fake.__call__
-        def foreign(host, action, **kw):
-            if action == 'observe':
-                raise m.BridgeFailure('identity', 'ownership')
-            return observe(host, action, **kw)
-        self.bot.rpc = foreign
-        self.bot.tick()
+        self.bot.rpc, calls = self.offline_observe(m.BridgeFailure('identity', 'ownership'))
+        for _ in range(3): self.bot.tick()
         r = self.bot.result('task-1')
-        self.assertEqual(r['cleanup']['resultState'], 'blocked')
-        self.assertNotIn('transientSince', r)
+        self.assertEqual(r['state'], 'unknown')
+        self.assertNotIn('cleanup', r); self.assertNotIn('transientSince', r)
+        self.assertEqual(self.fake.cleaned, []); self.assertEqual(calls.count('observe'), 1)
+        self.assertIn('worktree was kept', r['reason'])
+        self.assertEqual(self.bot.close('task-1')['state'], 'closed')
+        self.assertEqual(self.fake.cleaned, [])  # closing the card does not archive either
+
+    def test_missing_client_runtime_is_transient_and_logged(self):
+        with patch.object(m.fleet, 'runtime', side_effect=ValueError('Installed Paseo client runtime not found')):
+            with self.assertRaises(m.BridgeFailure) as caught:
+                m.bridge({'label': 'VAXPORT'}, 'observe')
+        self.assertTrue(m.transient(caught.exception)); self.assertEqual(caught.exception.reason, 'runtime-missing')
+        self.bot.submit(self.body)
+        for _ in range(4): self.bot.tick()
+        self.bot.rpc, _ = self.offline_observe(caught.exception)
+        with patch('sys.stderr', new_callable=__import__('io').StringIO) as err:
+            self.bot.tick()
+        line = json.loads(err.getvalue().splitlines()[-1])
+        self.assertEqual((line['status'], line['task'], line['transient']), ('step-error', 'task-1', True))
+        self.assertIn('Installed Paseo client runtime not found', line['error'])
+        self.assertEqual(self.bot.result('task-1')['state'], 'running')
+
+    def test_task_agents_learn_the_bot_host(self):
+        m.write_json(self.home / 'owner.json', {'version': 1, 'host': m.socket.gethostname().casefold(), 'label': 'VAX_COM', 'mode': 'active'})
+        registry = [{'label': 'VAX_COM', 'aliases': ['VAXPORT'], 'serverId': 'srv'}]
+        with patch.object(m.fleet, 'load_hosts', return_value=registry):
+            self.bot.submit(self.body)
+            for _ in range(2): self.bot.tick()
+        launch = self.fake.launches[0]
+        self.assertEqual(launch['protectedHosts'], ['VAX_COM', 'VAXPORT'])
+        self.assertIn('PASEO_BOT_PROTECTED_HOSTS', launch['prompt'])
 
     def test_draft_pr_publish_runs_before_archive_and_reaches_webhook(self):
         for t in self.config['projects'][0]['targets']:
