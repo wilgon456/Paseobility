@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.4.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.5.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -57,6 +57,13 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-28 · Guardian install feedback (v2.12.5)
+
+`supervise install-service -Apply` now says plainly when the UAC prompt was
+declined or closed, and that nothing changed. The Windows test suite builds the
+guardian service with warnings as errors, validates its configuration checks
+and confirms the installer only plans without `-Apply`.
 
 ## 2026-10-28 · Paseo bot guardian service and hang detection (v2.12.4)
 
