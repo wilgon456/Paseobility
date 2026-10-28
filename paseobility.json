@@ -1,6 +1,6 @@
 {
   "name": "Paseobility",
-  "version": "2.12.9",
+  "version": "2.12.10",
   "skillPath": "skills",
   "installTargets": {
     "paseo": {
@@ -21,6 +21,7 @@
     "paseo-multi",
     "paseo-orchestration",
     "paseo-project",
+    "paseo-research",
     "paseo-share",
     "paseo-spyware-check",
     "paseo-toss"

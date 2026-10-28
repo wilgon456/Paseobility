@@ -4,7 +4,7 @@
 
 # Paseobility
 
-프로젝트·브라우저·산출물·Paseo로 연결된 PC를 다루는 11개 스킬입니다.
+프로젝트·브라우저·산출물·Paseo로 연결된 PC를 다루는 12개 스킬입니다.
 
 [English](README.md) · **한국어**
 
@@ -22,7 +22,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.12.9.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
+**현재 패키지: v2.12.10.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
 
 ## 한 줄 요약
 
@@ -57,6 +57,17 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
 기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
+
+## 2026-10-28 · 리서치 스킬, 디자인 비교, Windows·macOS 보완 (v2.12.10)
+
+새 `paseo-research` 스킬은 코드·이력·공식 문서 같은 원본 자료로 "어떻게, 왜, 호환되는가"를
+답하고, 주장마다 확신 정도를 표시한 보고서 하나를 남깁니다. `design-check --compare`는 이전
+실행과 화소를 비교해서, 화면이 바뀌면 안 되는 작업에서 화면이 달라지면 실패로 처리합니다.
+디자인 시안은 실제 화면에서 비교하고 시안마다 보고서가 따로 남습니다. 브라우저 작업은 자주
+가는 사이트의 메모를 남기고, 인계는 이미 있는 결과물을 가리키며, 긴 오케스트레이션은 결정
+기록을 남깁니다. Windows·macOS 보완: npm으로 설치한 CLI와 `~/Applications`의 앱을 찾고,
+PowerShell 5.1의 경로·JSON 문제와 올바른 사용법을 적었으며, 절대 경로로 도우미를 실행할 수
+있게 했습니다. [무엇을 왜 가져왔는지](docs/skill-specialization-2026-10-28.md).
 
 ## 2026-10-28 · Paseo God 작업 절차, 재현 우선 디버깅, 두 갈래 검토 (v2.12.9)
 
@@ -496,6 +507,7 @@ Windows, 격리된 upstream PR 빌드에 대한 **사용자 보고** 사례는 �
 | `/paseo-agent-cleanup` | 선택한 테스트 에이전트·workspace 정리 |
 | `/paseo-multi` | 선택한 원격 PC의 상태·에이전트 확인, 명령 실행과 업데이트 |
 | `/paseo-share` | 개인 기기 간 산출물 공유 |
+| `/paseo-research` | 코드·이력·공식 문서로 근거를 남기는 조사 |
 | `/paseo-spyware-check` | 설치 전 저장소 정적 보안 검사 |
 
 오케스트레이션과 God 모드는 `allow_implicit_invocation: false`를 유지하고, `paseo-cua`는 암시적 호출을 허용합니다.
@@ -660,6 +672,7 @@ https://github.com/wilgon456/Paseobility
 | `/paseo-multi` | 연결된 PC 조작 | 이름 또는 `all`(등록된 모든 호스트를 병렬로)로 대상 선택, 원격 상태·에이전트 확인, 인라인·파일 Bash·PowerShell 실행(`exec --command`, `--wait` 최대 300초), 업데이트 검증, 즉시 재시작을 요청했을 때만 `restart --force`, `import-saved`는 병합 |
 | `/paseo-design` | 웹·앱 프론트 워크플로 | 프로젝트 디자인 규칙, 기존 컴포넌트 활용과 화면 검토 |
 | `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private `paseo_share` 자동 준비, 50 MiB 이하 모든 파일 형식(한 번에 여러 개 게시 가능), 클릭 가능한 미리보기/다운로드 링크, 공유 ID 기반 검증·가져오기 |
+| `/paseo-research` | 근거 있는 조사 | 고정 커밋의 코드, 변경 이력, 버전별 공식 문서; 주장마다 관측·문서·추론·미확인 등급 표시 |
 | `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
 | `/paseo-agent-cleanup` | 비활성 agent/workspace 정리 | 기본은 미리보기, 일반 idle 보존, 지정했거나 테스트 표식이 있는 후보는 바로 archive, 활성 agent 보호, workspace는 `--yes`가 있을 때만 archive |
 

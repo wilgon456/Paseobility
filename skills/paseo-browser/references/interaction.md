@@ -77,3 +77,13 @@ recovery. Never rerun the whole test under a new name to hide an unresolved task
 Live macOS evidence does not imply Windows/Linux GUI support, real website login,
 user handoff, permission prompts, canvas editing, or OS-process-crash recovery.
 Offline tests cover transport and stop boundaries only.
+
+## Sites you return to
+
+When a task repeats on the same site, keep short notes in the project's
+existing notes (or `.paseobility/` when the project has none): stable selectors
+or labels that worked, the steps that need the person (sign-in, payment,
+CAPTCHA, a code sent to their phone), and the page state that proves the task
+succeeded. Read them before the next run and correct them when the site has
+changed. Never write passwords, cookies, tokens, personal data or one-time codes
+into these notes.

@@ -63,7 +63,7 @@ with s.silent_sdk():
   kernel.WriteFile(kernel.GetStdHandle((-12)&0xffffffff),b'private-win32-value',19,ctypes.byref(size),None)
 print('safe-receipt')
 """
-        result = subprocess.run([sys.executable, '-c', script, str(TOOLS)], capture_output=True, text=True)
+        result = subprocess.run([sys.executable, '-c', script, str(TOOLS)], capture_output=True, text=True, encoding='utf-8', errors='replace')
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout.strip(), 'safe-receipt')
         self.assertEqual(result.stderr, '')

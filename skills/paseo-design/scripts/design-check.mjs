@@ -322,6 +322,38 @@ async function contactSheet(b, cfg, pages) {
   } finally { fs.rmSync(file, { force: true }); await tab.close(); }
 }
 
+// ---------------- compare with an earlier run ----------------
+const DIFF_JS = `async ({ a, b, tolerance }) => {
+  const load = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image decode failed')); i.src = 'data:image/png;base64,' + src; });
+  const [A, B] = await Promise.all([load(a), load(b)]);
+  const w = Math.max(A.width, B.width), h = Math.max(A.height, B.height);
+  const pixels = (img) => { const c = new OffscreenCanvas(w, h).getContext('2d'); c.drawImage(img, 0, 0); return c.getImageData(0, 0, w, h).data; };
+  const pa = pixels(A), pb = pixels(B);
+  const out = new OffscreenCanvas(w, h).getContext('2d');
+  out.globalAlpha = 0.3; out.drawImage(B, 0, 0); out.globalAlpha = 1;
+  const od = out.getImageData(0, 0, w, h);
+  let changed = 0;
+  for (let i = 0; i < pa.length; i += 4) {
+    const d = Math.max(Math.abs(pa[i] - pb[i]), Math.abs(pa[i + 1] - pb[i + 1]), Math.abs(pa[i + 2] - pb[i + 2]), Math.abs(pa[i + 3] - pb[i + 3]));
+    if (d > tolerance) { changed++; od.data[i] = 225; od.data[i + 1] = 29; od.data[i + 2] = 72; od.data[i + 3] = 255; }
+  }
+  out.putImageData(od, 0, 0);
+  const bytes = new Uint8Array(await (await out.canvas.convertToBlob({ type: 'image/png' })).arrayBuffer());
+  let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return { width: w, height: h, changed, total: w * h, before: [A.width, A.height], after: [B.width, B.height], png: btoa(bin) };
+}`;
+async function comparePage(b, cfg, page) {
+  const previous = path.join(path.resolve(cfg.compare), path.basename(page.clean));
+  if (!fs.existsSync(previous)) return { previous, missing: true };
+  const tab = await openTab(b);
+  try {
+    const r = await tab.evaluate(`(${DIFF_JS})(${JSON.stringify({ a: fs.readFileSync(previous).toString('base64'), b: fs.readFileSync(page.clean).toString('base64'), tolerance: cfg.pixelTolerance })})`, 120000);
+    const diff = page.clean.replace(/\.png$/, '-diff.png');
+    fs.writeFileSync(diff, Buffer.from(r.png, 'base64'));
+    return { previous, diff, changed: r.changed, total: r.total, ratio: r.changed / r.total, before: r.before, after: r.after };
+  } finally { await tab.close(); }
+}
+
 // ---------------- report ----------------
 function toUrl(arg) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(arg) || arg.startsWith('about:') || arg.startsWith('data:')) return arg;
@@ -329,10 +361,13 @@ function toUrl(arg) {
   if (!fs.existsSync(p)) throw new Error(`not a URL and no such file: ${arg}`);
   return pathToFileURL(p).href;
 }
-function slugOf(url) {
+export function slugOf(url) {
+  // The query and hash stay in the name, so ?variant=A and ?variant=B never overwrite each other.
+  const extra = ((url.match(/[?#].*$/) || [''])[0]).replace(/^[?#]+/, '').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
   let s = url.replace(/^file:\/\/\/?/, '').replace(/^[a-z]+:\/\//i, '').replace(/[?#].*$/, '');
   s = s.split(/[\\/]/).filter(Boolean).slice(-3).join('-').replace(/[^\w.-]+/g, '_').replace(/\.html?$/i, '');
-  return (s || 'page').slice(0, 60);
+  s = (s || 'page').slice(0, extra ? 59 - extra.length : 60);
+  return extra ? `${s}-${extra}` : s;
 }
 const pageKey = (p) => `${p.width}${p.scheme && p.scheme !== 'light' ? '-' + p.scheme : ''}`;
 function counts(pages) { const c = {}; for (const p of pages) { const k = pageKey(p); c[k] = {}; for (const f of p.findings) if (f.level !== 'info') c[k][f.rule] = (c[k][f.rule] || 0) + 1; } return c; }
@@ -341,10 +376,13 @@ function writeReport(cfg, url, pages, sheet) {
   const errs = pages.reduce((a, p) => a + p.findings.filter((f) => f.level === 'error').length, 0);
   const warns = pages.reduce((a, p) => a + p.findings.filter((f) => f.level === 'warn').length, 0);
   L.push(`# design-check: ${url}`, '', `오류 ${errs} · 경고 ${warns} · ${new Date().toISOString()}`, '');
+  if (cfg.rerun) L.push(`다시 돌리기: \`node design-check.mjs ${cfg.rerun.args.map((a) => /[\s"'$&|<>]/.test(a) ? JSON.stringify(a) : a).join(' ')}\``, `브라우저: ${cfg.rerun.browser}${cfg.rerun.version ? ` (${cfg.rerun.version})` : ''}`, '');
   if (sheet) L.push(`한눈에 보기: ${sheet}`, '');
   for (const p of pages) {
     L.push(`## ${p.width}px${p.scheme && p.scheme !== 'light' ? ' · ' + p.scheme : ''}`, '', `- 깨끗한 화면: ${p.clean}`, `- 표시한 화면: ${p.marked}`,
       `- 글자 크기 ${p.stats.fontSizes.length}종: ${p.stats.fontSizes.join(', ')} · 첫 글꼴: ${p.stats.firstFont} · 모서리: ${p.stats.radii.join(', ') || '-'}`, '');
+    if (p.compare) L.push(p.compare.missing ? `- 이전 결과와 비교: 이전 폴더에 같은 화면이 없다 (${p.compare.previous})`
+      : `- 이전 결과와 비교: 바뀐 화소 ${(p.compare.ratio * 100).toFixed(3)}% (${p.compare.changed}/${p.compare.total}, 크기 ${p.compare.before.join('×')} → ${p.compare.after.join('×')}) · 차이 그림: ${p.compare.diff}`, '');
     if (!p.findings.length) { L.push('걸린 것 없음.', ''); continue; }
     for (const f of [...p.findings].sort((a, b) => (ORDER[a.level] - ORDER[b.level]) || (a.n - b.n))) {
       L.push(`${f.n}. **${LABEL[f.level] || f.level} ${f.rule}**: ${f.msg}`);
@@ -355,13 +393,13 @@ function writeReport(cfg, url, pages, sheet) {
   }
   const file = path.join(cfg.dir, `${cfg.slug}-report.md`);
   fs.writeFileSync(file, L.join('\n'));
-  fs.writeFileSync(path.join(cfg.dir, `${cfg.slug}-report.json`), JSON.stringify({ url, pages: pages.map(({ clean, marked, width, scheme, meta, stats, findings }) => ({ width, scheme, clean, marked, meta, stats, findings })), sheet }, null, 1));
+  fs.writeFileSync(path.join(cfg.dir, `${cfg.slug}-report.json`), JSON.stringify({ url, rerun: cfg.rerun || null, pages: pages.map(({ clean, marked, width, scheme, meta, stats, findings, compare }) => ({ width, scheme, clean, marked, meta, stats, findings, compare })), sheet }, null, 1));
   return { file, errs, warns };
 }
 
 // ---------------- main ----------------
 export async function run(args, opts = {}) {
-  const cfg = { widths: [375, 768, 1440], out: null, scheme: 'light', maxHeight: 8000, timeout: 45000, wait: 0, ignore: [], disable: [], failOn: 'error', baseline: null, updateBaseline: false, sheet: true, quiet: false, ...opts };
+  const cfg = { widths: [375, 768, 1440], out: null, scheme: 'light', maxHeight: 8000, timeout: 45000, wait: 0, ignore: [], disable: [], failOn: 'error', baseline: null, updateBaseline: false, sheet: true, quiet: false, compare: null, maxDiff: 0, pixelTolerance: 8, ...opts };
   const targets = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -378,11 +416,15 @@ export async function run(args, opts = {}) {
     else if (a === '--baseline') cfg.baseline = next();
     else if (a === '--update-baseline') cfg.updateBaseline = true;
     else if (a === '--no-sheet') cfg.sheet = false;
+    else if (a === '--compare') cfg.compare = next();
+    else if (a === '--max-diff') cfg.maxDiff = Number(next());
     else if (a === '--quiet') cfg.quiet = true;
     else if (a.startsWith('--')) throw new Error(`unknown option ${a}`);
     else targets.push(a);
   }
-  if (!targets.length) throw new Error('usage: design-check <url|file.html>... [--widths 375,768,1440] [--out dir] [--baseline file [--update-baseline]] [--fail-on error|warn|none] [--ignore selectors] [--scheme light|dark]');
+  if (!targets.length) throw new Error('usage: design-check <url|file.html>... [--widths 375,768,1440] [--out dir] [--baseline file [--update-baseline]] [--compare previous-out-dir [--max-diff ratio]] [--fail-on error|warn|none] [--ignore selectors] [--scheme light|dark]');
+  if (!Number.isFinite(cfg.maxDiff) || cfg.maxDiff < 0 || cfg.maxDiff > 1) throw new Error('invalid --max-diff: use a ratio between 0 and 1');
+  if (cfg.compare && !fs.existsSync(cfg.compare)) throw new Error(`--compare: no such folder ${cfg.compare}`);
   const schemes = String(cfg.scheme).split(',').map((s) => s.trim());
   if (!cfg.widths.length || cfg.widths.some((w) => !Number.isSafeInteger(w) || w <= 0)) throw new Error('invalid --widths: use positive integer widths');
   if (schemes.some((s) => !['light', 'dark'].includes(s))) throw new Error('invalid --scheme: use light,dark');
@@ -396,7 +438,10 @@ export async function run(args, opts = {}) {
   const b = new Browser(exe);
   const results = [];
   const toolErrors = [];
+  const compareFailures = [];
   try {
+    const version = await b.send('Browser.getVersion').then((v) => v.product).catch(() => '');
+    cfg.rerun = { args: [...args], browser: exe, version };
     for (const t of targets) {
       const url = toUrl(t);
       const slug = slugOf(url);
@@ -409,6 +454,12 @@ export async function run(args, opts = {}) {
         catch (e) { toolErrors.push({ url, width: w, scheme: sch, error: e.message }); }
       }
       if (!pages.length) { results.push({ url, dir, pages, sheet: null, report: null, errors: 0, warnings: 0, counts: {} }); continue; }
+      if (cfg.compare) for (const p of pages) {
+        try { p.compare = await comparePage(b, c, p); }
+        catch (e) { toolErrors.push({ url, width: p.width, scheme: p.scheme, error: 'compare: ' + e.message }); continue; }
+        if (p.compare.missing) compareFailures.push(`${url} ${pageKey(p)}: 이전 결과에 같은 화면이 없다`);
+        else if (p.compare.ratio > cfg.maxDiff) compareFailures.push(`${url} ${pageKey(p)}: 바뀐 화소 ${(p.compare.ratio * 100).toFixed(3)}%`);
+      }
       const sheet = cfg.sheet ? await contactSheet(b, c, pages) : null;
       const rep = writeReport(c, url, pages, sheet);
       results.push({ url, dir, pages, sheet, report: rep.file, errors: rep.errs, warnings: rep.warns, counts: counts(pages) });
@@ -425,9 +476,9 @@ export async function run(args, opts = {}) {
     }
     if (cfg.updateBaseline) { const next = { ...prev }; for (const r of results) next[r.url] = r.counts; fs.writeFileSync(cfg.baseline, JSON.stringify(next, null, 1)); regressions = []; }
   }
-  const failing = cfg.baseline ? regressions.length > 0
-    : results.some((r) => r.pages.some((p) => p.findings.some((f) => cfg.failOn === 'none' ? false : f.level === 'error' || (cfg.failOn === 'warn' && f.level === 'warn'))));
-  return { results, regressions, failing, browser: exe, toolErrors };
+  const failing = compareFailures.length > 0 || (cfg.baseline ? regressions.length > 0
+    : results.some((r) => r.pages.some((p) => p.findings.some((f) => cfg.failOn === 'none' ? false : f.level === 'error' || (cfg.failOn === 'warn' && f.level === 'warn')))));
+  return { results, regressions, compareFailures, failing, browser: exe, toolErrors };
 }
 
 function printSummary(out) {
@@ -442,6 +493,7 @@ function printSummary(out) {
     if (r.sheet) console.log(`  한눈에: ${r.sheet}`);
   }
   if (out.regressions.length) { console.log('\n기준보다 늘어난 것:'); for (const x of out.regressions) console.log('  ' + x); }
+  if (out.compareFailures && out.compareFailures.length) { console.log('\n이전 결과와 달라진 화면:'); for (const x of out.compareFailures) console.log('  ' + x); }
   if (out.toolErrors.length) { console.log('\n검사가 돌지 않은 쪽:'); for (const t of out.toolErrors) console.log(`  ${t.url} ${t.width}px${t.scheme !== 'light' ? ' ' + t.scheme : ''}: ${t.error}`); }
   console.log(out.toolErrors.length ? '\n결과: 일부 쪽은 검사하지 못했다 (exit 2)' : out.failing ? '\n결과: 고칠 것이 남았다 (exit 1)' : '\n결과: 통과 (exit 0)');
 }

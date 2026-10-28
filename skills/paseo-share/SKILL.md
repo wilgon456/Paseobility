@@ -1,12 +1,10 @@
 ---
 name: paseo-share
 description: >-
-  Share Paseo files (up to 50 MiB each) through a dedicated private Git
-  repository and return clickable preview/download links, with automatic
-  first-use GitHub onboarding to the authenticated account’s private
-  paseo_share repository. Use when the user asks to share a file or result, or
-  to find, list, preview, open, or fetch documents, code, PDFs, images,
-  archives, or other files across Paseo computers or on mobile. Triggers
+  Share Paseo files (up to 50 MiB each) through a private Git repository and
+  return preview/download links, onboarding the account's private paseo_share
+  repository on first use. Use to share a file or result, or to find, list,
+  preview or fetch shared files across Paseo computers or on mobile. Triggers
   include "share this file", "show the file from my other computer", "latest
   shared artifact", "공유해줘", "올려줘", "다른 컴퓨터 파일", and "공유한 파일
   가져와".

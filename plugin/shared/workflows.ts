@@ -45,6 +45,15 @@ export const WORKFLOWS = [
     placeholder: "예: /경로/보고서.pdf를 공유해줘…",
   },
   {
+    id: "paseo-research",
+    icon: "FolderSearch",
+    glyph: "R",
+    en: { title: "Research with sources", hint: "Answer from code, history and docs" },
+    title: "근거 있는 조사",
+    hint: "코드·이력·공식 문서로 답하기",
+    placeholder: "예: 이 기능이 Paseo 0.13에서 어떻게 동작하는지 조사해줘…",
+  },
+  {
     id: "paseo-spyware-check",
     icon: "ShieldCheck",
     glyph: "!",

@@ -4,7 +4,7 @@
 
 # Paseobility
 
-Eleven reusable skills for projects, browsers, artifacts and computers connected through Paseo.
+Twelve reusable skills for projects, browsers, artifacts and computers connected through Paseo.
 
 **English** · [한국어](README.ko.md)
 
@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.9.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.10.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -57,6 +57,19 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-28 · Research skill, design comparisons and Windows/macOS fixes (v2.12.10)
+
+A new `paseo-research` skill answers how, why and compatibility questions from
+primary sources and leaves one cited report with each claim graded. `design-check
+--compare` measures changed pixels against an earlier run, so a change that must
+not alter the look fails when it does; design variants are compared on the real
+screen and keep separate reports. Browser work keeps notes for sites you return
+to, handoffs point to existing artifacts, and long orchestration runs keep a
+decision log. Windows and macOS fixes: the standalone npm CLI and `~/Applications`
+installs are found, PowerShell 5.1 path and JSON pitfalls are documented with
+working forms, and helper invocations work from absolute paths.
+[What was adopted and why](docs/skill-specialization-2026-10-28.md).
 
 ## 2026-10-28 · Paseo God playbooks, debugging loop and two-axis review (v2.12.9)
 
@@ -480,6 +493,7 @@ The package now has **11 skills**. [`/paseo-toss`](docs/paseo-toss.md) bundles t
 | `/paseo-agent-cleanup` | Cleaning up selected test agents/workspaces |
 | `/paseo-toss` | Apps in Toss planning, development, phone testing and pre-launch review |
 | `/paseo-share` | Artifact sharing between personal devices |
+| `/paseo-research` | Evidence-backed answers to how, why and compatibility questions, saved as one cited report |
 | `/paseo-spyware-check` | Pre-install static security inspection of a repo |
 
 Orchestration and God mode keep `allow_implicit_invocation: false`; `paseo-cua` allows implicit invocation. The project skill does not run for ordinary coding or session resume alone. Only the reference for the selected mode is read for compare/coordinator and summary/setup details.
@@ -615,6 +629,7 @@ When you explicitly request these tasks, you can use the following capabilities:
 | `/paseo-orchestration` | Multi-agent coordination and comparison | Explicitly requested coordination or tournament, mode-specific guidance |
 | `/paseo-project` | Project summary and setup | Requested brief (writes or refreshes stale `.paseobility` context) or environment/context setup |
 | `/paseo-share` | Computer/mobile artifact sharing | Auto-prepare private `paseo_share`, any file type up to 50 MiB (several per publish), clickable preview/download links, share-ID-based verification and fetch |
+| `/paseo-research` | Research with primary sources | Code at a pinned commit, history, official versioned docs; each claim graded observed/documented/inferred/unknown |
 | `/paseo-spyware-check` | Pre-install security/spyware static check | Checking GitHub URLs, local repos, install scripts, secrets, exfiltration, supply-chain risk |
 | `/paseo-agent-cleanup` | Inactive agent/workspace cleanup | Preview by default, preserve ordinary idle, archive named or test-marked candidates directly, protect active agents, archive workspaces only with `--yes` |
 

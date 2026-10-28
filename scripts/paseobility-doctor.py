@@ -60,6 +60,7 @@ KNOWN_SKILLS = (
     "paseo-design",
     "paseo-god",
     "paseo-share",
+    "paseo-research",
     "paseo-spyware-check",
     "paseo-toss",
 )

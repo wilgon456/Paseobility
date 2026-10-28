@@ -84,7 +84,7 @@ class FixtureServerTests(unittest.TestCase):
     def test_serves_fixture_on_localhost(self):
         process = subprocess.Popen(
             [sys.executable, str(SERVE), "--bind", "127.0.0.1", "--port", "0"],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
         try:
             line = read_first_line(process, timeout=20)
             self.assertIsNotNone(line, "fixture did not print a URL in time")

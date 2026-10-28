@@ -42,7 +42,7 @@ class TossCheckoutTests(unittest.TestCase):
 
     def git(self, cwd, *args):
         result = subprocess.run(['git', *args], cwd=cwd, env=self.env,
-                                capture_output=True, text=True, timeout=30)
+                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
 
@@ -118,7 +118,7 @@ class TossCheckoutTests(unittest.TestCase):
                        '--with-claude', '--skip-cua-driver', '--no-paseo-check', '--no-context']
         for cycle in range(3):
             result = subprocess.run(command, cwd=clone, env=self.env,
-                                    capture_output=True, text=True, timeout=60)
+                                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             for provider in ['.agents', '.claude']:
                 errors, _ = VERIFY.verify(home / provider / 'skills/paseo-toss')

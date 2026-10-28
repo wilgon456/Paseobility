@@ -54,7 +54,7 @@ class SkillMigrationTests(unittest.TestCase):
             ["bash", str(ROOT / "scripts/paseobility-init.sh"),
              "--target-home", str(self.home), "--root", str(ROOT),
              "--no-context", "--no-paseo-check", *args],
-            capture_output=True, text=True, timeout=30)
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
 
     def assert_success(self, result):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -70,7 +70,7 @@ class SkillMigrationTests(unittest.TestCase):
         unrelated.write_text("unrelated")
         self.assert_success(self.install("--migrate-skills", "--with-claude"))
         expected = json.loads((ROOT / "paseobility.json").read_text())["skills"]
-        self.assertEqual(len(expected), 11)
+        self.assertEqual(len(expected), 12)
         for base in (".agents", ".claude"):
             for name in RETIRED:
                 self.assertFalse((self.home / base / "skills" / name).exists())
@@ -190,7 +190,7 @@ class PowerShellSelectionTests(unittest.TestCase):
         encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
         return subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive",
                                "-EncodedCommand", encoded],
-                              capture_output=True, text=True, timeout=60)
+                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
 
     def test_duplicate_selection_preserves_backup_under_literal_home_path(self):
         skill = self.home / ".agents/skills/paseo-project/SKILL.md"

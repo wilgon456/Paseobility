@@ -139,7 +139,7 @@ def load_doctor_module():
 def run_doctor(*args, timeout=90):
     return subprocess.run(
         [sys.executable, str(DOCTOR), *args],
-        capture_output=True, text=True, timeout=timeout)
+        capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout)
 
 
 def offline_args(temp_home):

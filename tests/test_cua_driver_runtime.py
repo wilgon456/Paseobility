@@ -110,14 +110,14 @@ class CuaDriverRuntimeTests(unittest.TestCase):
 
     def run_driver(self, *args, env=None):
         return subprocess.run(["bash", str(DRIVER), *args],
-                              capture_output=True, text=True, timeout=60,
+                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60,
                               env=env or self.env())
 
     def install(self, *args, env=None):
         return subprocess.run(
             ["bash", str(INIT), "--target-home", str(self.base / "home"),
              "--root", str(ROOT), "--no-context", "--no-paseo-check", *args],
-            capture_output=True, text=True, timeout=60, env=env or self.env())
+            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, env=env or self.env())
 
     def reads(self):
         return self.log.read_text() if self.log.exists() else ""

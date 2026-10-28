@@ -317,7 +317,7 @@ class AdapterTests(unittest.TestCase):
         result=subprocess.run([shutil.which('node'),str(SCRIPT.with_name('rpc.mjs'))],input=json.dumps(request),
                               env=env,capture_output=True,text=True,encoding='utf-8',timeout=15)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-        options=json.loads(Path(str(self.calls)+'.terminal.options').read_text())
+        options=json.loads(Path(str(self.calls)+'.terminal.options').read_text(encoding='utf-8'))
         self.assertLess(len(' '.join(options['args'])),28000)
 
     def test_run_provenance_is_inherited_and_keep_is_durable(self):
@@ -325,11 +325,11 @@ class AdapterTests(unittest.TestCase):
         for shell in ['bash', 'powershell']:
             p, d = self.run_command('run-success', '--shell', shell, '--keep-terminal')
             run_id = d['result']['runId']
-            options = json.loads(Path(str(self.calls)+'.terminal.options').read_text())
+            options = json.loads(Path(str(self.calls)+'.terminal.options').read_text(encoding='utf-8'))
             wrapper = options['args'][-1] if shell=='bash' else base64.b64decode(options['args'][-1]).decode('utf-16le')
             self.assertIn('PASEO_MULTI_SESSION', wrapper)
             self.assertIn(run_id, wrapper)
-            self.assertTrue(json.loads((self.root/'runs'/(run_id+'.json')).read_text())['keepTerminal'])
+            self.assertTrue(json.loads((self.root/'runs'/(run_id+'.json')).read_text(encoding='utf-8'))['keepTerminal'])
 
     def test_cleanup_terminal_requires_complete_owned_output(self):
         p, d = self.run_command('run-pending')
@@ -343,11 +343,11 @@ class AdapterTests(unittest.TestCase):
         for mode in ['run-pending','run-truncated','run-trailing','run-duplicate-marker']:
             reply = json.loads(rpc_call(mode).stdout)
             self.assertFalse(reply['ok'], (mode, reply))
-            self.assertNotIn('kill', self.calls.read_text())
+            self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
         reply = json.loads(rpc_call('run-cleanup').stdout)
         self.assertTrue(reply['ok'], reply)
         self.assertEqual(reply['result']['status'], 'closed')
-        log = (self.root/'runs/cleanup.jsonl').read_text()
+        log = (self.root/'runs/cleanup.jsonl').read_text(encoding='utf-8')
         self.assertIn('owned completed run', log)
         self.assertNotIn('secret-key-123', log)
 
@@ -363,9 +363,9 @@ class AdapterTests(unittest.TestCase):
         reply = inventory()
         self.assertTrue(reply['ok'], reply)
         self.assertEqual(reply['result']['terminals'][0]['tier'], 'AUTO')
-        self.assertNotIn('kill', self.calls.read_text())
+        self.assertNotIn('kill', self.calls.read_text(encoding='utf-8'))
         record = self.root/'runs'/(d['result']['runId']+'.json')
-        value=json.loads(record.read_text());value['keepTerminal']=True;record.write_text(json.dumps(value))
+        value=json.loads(record.read_text(encoding='utf-8'));value['keepTerminal']=True;record.write_text(json.dumps(value))
         reply=inventory()
         self.assertEqual(reply['result']['terminals'], [])
 
@@ -710,12 +710,12 @@ class HealthPolicyTests(unittest.TestCase):
                 if os.name=='nt': return
                 result=remote_health.apply(dict(items=items,daemonPid=999,picks=[],ended=[]))
                 self.assertEqual(result[0]['status'],'quarantined')
-                self.assertTrue(fresh.exists());self.assertEqual(outside.read_text(),'private')
+                self.assertTrue(fresh.exists());self.assertEqual(outside.read_text(encoding='utf-8'),'private')
                 q=list((root/'quarantine').iterdir())[0]
                 os.utime(q,(time.time()-700000,)*2)
                 remote_health.apply(dict(items=[],daemonPid=999,picks=[],ended=[]))
                 self.assertFalse(q.exists())
-                self.assertIn('purged',(root/'cleanup.jsonl').read_text())
+                self.assertIn('purged',(root/'cleanup.jsonl').read_text(encoding='utf-8'))
 
 
     @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell/CIM integration')
@@ -741,7 +741,7 @@ class HealthPolicyTests(unittest.TestCase):
                 wrapper='& powershell.exe -NoProfile -EncodedCommand '+base64.b64encode(inner.encode('utf-16le')).decode()+'; exit $LASTEXITCODE'
                 packed=base64.b64encode(gzip.compress(wrapper.encode())).decode()
                 loader="$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String('"+packed+"'));$z=New-Object IO.Compression.GZipStream($s,[IO.Compression.CompressionMode]::Decompress);$r=New-Object IO.StreamReader($z); & ([scriptblock]::Create($r.ReadToEnd()))"
-                result=subprocess.run(['powershell.exe','-NoProfile','-EncodedCommand',base64.b64encode(loader.encode('utf-16le')).decode()],env=env,capture_output=True,text=True,timeout=180)
+                result=subprocess.run(['powershell.exe','-NoProfile','-EncodedCommand',base64.b64encode(loader.encode('utf-16le')).decode()],env=env,capture_output=True,text=True, encoding='utf-8', errors='replace',timeout=180)
                 self.assertEqual(result.returncode,0,result.stderr)
                 lines=result.stdout.strip().splitlines()
                 self.assertTrue(lines, result.stderr)
@@ -804,6 +804,40 @@ class BotHostGuardTests(unittest.TestCase):
         self.assertFalse(self.blocked('restart'))
         (self.state / 'owner.json').write_text('not json')
         self.assertFalse(self.blocked('restart'))
+
+
+class RuntimeDiscoveryTests(unittest.TestCase):
+    """The Paseo client is found for desktop and standalone npm installs on Windows and macOS."""
+
+    def module_at(self, base):
+        module = Path(base) / '@getpaseo/cli/dist/utils/client.js'
+        module.parent.mkdir(parents=True); module.write_text('//', encoding='utf-8')
+        return module
+
+    def test_windows_npm_shim_beside_node_modules(self):
+        import hosts
+        with tempfile.TemporaryDirectory() as tmp:
+            npm = Path(tmp) / 'npm'; npm.mkdir()
+            (npm / 'paseo.cmd').write_text('@echo off', encoding='utf-8')
+            module = self.module_at(npm / 'node_modules')
+            self.assertEqual(hosts.npm_client_module(npm / 'paseo.cmd'), module)
+
+    def test_posix_prefix_layout_and_missing_install(self):
+        import hosts
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp); (prefix / 'bin').mkdir()
+            (prefix / 'bin/paseo').write_text('#!/bin/sh', encoding='utf-8')
+            self.assertIsNone(hosts.npm_client_module(prefix / 'bin/paseo'))
+            module = self.module_at(prefix / 'lib/node_modules')
+            self.assertEqual(hosts.npm_client_module(prefix / 'bin/paseo'), module)
+
+    def test_macos_checks_per_user_applications(self):
+        import hosts
+        found = hosts.app_resource_candidates(windows=False, home='/Users/me')
+        self.assertIn(Path('/Users/me/Applications/Paseo.app/Contents/Resources'), found)
+        self.assertIn(Path('/Applications/Paseo.app/Contents/Resources'), found)
+        win = hosts.app_resource_candidates(windows=True, env={'LOCALAPPDATA': 'C:/L'})
+        self.assertEqual(win, [Path('C:/L/Programs/Paseo/resources')])
 
 
 if __name__ == '__main__':

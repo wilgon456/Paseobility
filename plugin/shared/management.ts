@@ -5,7 +5,7 @@ import {
 } from "@getpaseo/plugin";
 import type { PluginText } from "@getpaseo/plugin";
 import { z } from "zod";
-export const PLUGIN_VERSION = "2.12.9";
+export const PLUGIN_VERSION = "2.12.10";
 const release = z.object({
   version: z.string(),
   sha: z.string(),

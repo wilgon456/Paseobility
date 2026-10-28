@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
-import { run, findBrowser } from './design-check.mjs';
+import { run, findBrowser, slugOf } from './design-check.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIX = path.join(HERE, 'fixtures');
@@ -169,6 +169,39 @@ try {
   check('baseline ratchet fails when a rule count grows', () => {
     assert.equal(r3.failing, true);
     assert.ok(r3.regressions.some((x) => x.includes('contrast')), r3.regressions.join('; '));
+  });
+  check('variants keep separate file names', () => {
+    const a = slugOf('http://127.0.0.1:5173/checkout?variant=A'), b2 = slugOf('http://127.0.0.1:5173/checkout?variant=B');
+    assert.notEqual(a, b2); assert.ok(a.endsWith('variant_A'), a); assert.ok(a.length <= 60);
+    assert.equal(slugOf('file:///C:/site/good.html'), 'C_-site-good');
+  });
+  const before = path.join(out, 'before'), after = path.join(out, 'after'), changed = path.join(out, 'changed');
+  const goodFile = path.join(FIX, 'good.html');
+  const first = await run([goodFile, '--out', before, '--widths', '375', '--no-sheet']);
+  const same = await run([goodFile, '--out', after, '--widths', '375', '--no-sheet', '--compare', before]);
+  check('compare: an unchanged page has no changed pixels and records how to rerun', () => {
+    const c = same.results[0].pages[0].compare;
+    assert.equal(c.changed, 0, JSON.stringify(c)); assert.equal(same.failing, first.failing);
+    assert.ok(fs.existsSync(c.diff));
+    const report = JSON.parse(fs.readFileSync(path.join(after, `${same.results[0].pages[0].clean.split(/[\\/]/).pop().replace(/-375\.png$/, '')}-report.json`), 'utf8'));
+    assert.ok(report.rerun.args.includes('--compare')); assert.ok(report.rerun.browser);
+  });
+  // Same last three path parts as fixtures/good.html, so the screenshot name matches the earlier run.
+  const twin = path.join(out, 'twin', 'scripts', 'fixtures', 'good.html');
+  fs.mkdirSync(path.dirname(twin), { recursive: true });
+  fs.writeFileSync(twin, fs.readFileSync(goodFile, 'utf8').replace(/<\/body>/i, '<div style="height:60px;background:#e11d48"></div></body>'));
+  const diff = await run([twin, '--out', changed, '--widths', '375', '--no-sheet', '--compare', before]);
+  check('compare: a changed page fails with a diff image', () => {
+    const c = diff.results[0].pages[0].compare;
+    assert.ok(c && !c.missing, JSON.stringify(c)); assert.ok(c.changed > 0, JSON.stringify(c));
+    assert.equal(diff.failing, true); assert.ok(fs.existsSync(c.diff));
+  });
+  const other = path.join(out, 'other.html');
+  fs.copyFileSync(goodFile, other);
+  const missing = await run([other, '--out', path.join(out, 'missing'), '--widths', '375', '--no-sheet', '--compare', before]);
+  check('compare: a screen absent from the earlier run is reported and fails', () => {
+    assert.ok(missing.results[0].pages[0].compare.missing);
+    assert.equal(missing.failing, true);
   });
 } finally {
   fs.rmSync(out, { recursive: true, force: true });

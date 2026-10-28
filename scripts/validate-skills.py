@@ -8,6 +8,9 @@ import sys
 import yaml
 
 
+MAX_DESCRIPTION_WORDS = 80
+
+
 def validate(root):
     root = Path(root)
     errors = []
@@ -43,6 +46,9 @@ def validate(root):
                 errors.append(name + ': frontmatter name mismatch')
             if not isinstance(data, dict) or not isinstance(data.get('description'), str) or not data['description'].strip():
                 errors.append(name + ': description missing')
+            elif len(data['description'].split()) > MAX_DESCRIPTION_WORDS:
+                # Every description is loaded into every session; keep triggers, not prose.
+                errors.append(f"{name}: description has {len(data['description'].split())} words (max {MAX_DESCRIPTION_WORDS})")
             if not text[match.end():].strip():
                 errors.append(name + ': instructions missing')
     except (OSError, ValueError, KeyError) as error:

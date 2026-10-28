@@ -127,7 +127,8 @@ function snapshotRuntime() {
   const resources = process.platform === "win32"
     ? [process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs/Paseo/resources"),
        process.env.ProgramFiles && path.join(process.env.ProgramFiles, "Paseo/resources")].filter(Boolean)
-    : ["/Applications/Paseo.app/Contents/Resources"];
+    : ["/Applications/Paseo.app/Contents/Resources",
+       path.join(require("node:os").homedir(), "Applications/Paseo.app/Contents/Resources")];
   for (const root of resources) {
     const command = process.platform === "win32" ? path.join(root, "..", "Paseo.exe")
       : path.join(root, "..", "Frameworks/Paseo Helper.app/Contents/MacOS/Paseo Helper");
@@ -141,13 +142,26 @@ function snapshotRuntime() {
   for (const dir of (process.env.PATH || "").split(path.delimiter)) {
     const executable = path.join(dir, process.platform === "win32" ? "paseo.cmd" : "paseo");
     if (!fs.existsSync(executable)) continue;
-    let parent = path.dirname(fs.realpathSync(executable));
-    for (let depth = 0; depth < 5; depth++, parent = path.dirname(parent)) {
-      const module = path.join(parent, "dist/utils/client.js");
-      if (fs.existsSync(module)) return {command: process.execPath, args: [], module};
-    }
+    const module = npmClientModule(executable);
+    if (module) return {command: process.execPath, args: [], module};
   }
   throw new Error("Installed Paseo client runtime not found; cleanup requires complete snapshots");
+}
+
+function npmClientModule(executable) {
+  // macOS/Linux: the launcher is a symlink into .../@getpaseo/cli/dist.
+  let parent = path.dirname(fs.realpathSync(executable));
+  for (let depth = 0; depth < 5; depth++, parent = path.dirname(parent)) {
+    const module = path.join(parent, "dist/utils/client.js");
+    if (fs.existsSync(module)) return module;
+  }
+  // Windows npm writes a paseo.cmd shim beside node_modules; a POSIX prefix keeps lib/node_modules.
+  const dir = path.dirname(executable);
+  for (const base of [path.join(dir, "node_modules"), path.join(dir, "..", "lib", "node_modules")]) {
+    const module = path.join(base, "@getpaseo/cli/dist/utils/client.js");
+    if (fs.existsSync(module)) return module;
+  }
+  return null;
 }
 
 function run(command, args, serverId) {
@@ -535,6 +549,7 @@ if (require.main === module) {
 
 module.exports = {
   ACTIVE_STATUS_PATTERN,
+  npmClientModule,
   DISPOSABLE_MARKER_PATTERN,
   archiveAcknowledgement,
   execute,
