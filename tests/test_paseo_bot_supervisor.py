@@ -119,6 +119,28 @@ class TaskTests(unittest.TestCase):
         self.assertNotEqual(a, b); self.assertTrue(a.startswith('Local\\PaseoBotSupervisor-'))
 
 
+class StatusTests(unittest.TestCase):
+    def test_status_survives_localized_tool_output(self):
+        # sc.exe/schtasks print in the console code page; bytes that are not UTF-8 must not break status.
+        fake = subprocess.CompletedProcess([], 0, stdout=supervisor.subprocess.run(
+            [sys.executable, '-c', 'import sys; sys.stdout.buffer.write(bytes([0xc1, 0xa4]) + b"  : 4  RUNNING")'],
+            capture_output=True, text=True, errors='replace').stdout, stderr='')
+        self.assertIn('RUNNING', fake.stdout)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(supervisor, 'quiet_run', return_value=fake):
+            args = type('A', (), dict(state=Path(tmp), task_name='T'))()
+            out = supervisor.status(args)
+        if os.name == 'nt':
+            self.assertEqual(out['guardian'], 'running')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows service tools')
+    def test_status_runs_against_the_real_service_tools(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run([sys.executable, '-X', 'utf8', str(Path(supervisor.__file__)), 'status', '--state', tmp],
+                               capture_output=True, text=True, encoding='utf-8', errors='replace')
+        out = json.loads(r.stdout)
+        self.assertTrue(out['ok'], r.stdout + r.stderr); self.assertIn(out['result']['guardian'], ('running', 'installed', 'absent'))
+
+
 class ServiceManagerTests(unittest.TestCase):
     def test_launchd_agent_keeps_the_supervisor_alive_and_lets_services_survive(self):
         plist = plistlib.loads(supervisor.launchd_plist('/usr/bin/python3', '/opt/P B/supervisor.py', '/Users/me/.config/paseo-bot',
