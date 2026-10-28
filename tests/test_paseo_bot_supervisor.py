@@ -141,6 +141,22 @@ class StatusTests(unittest.TestCase):
         self.assertTrue(out['ok'], r.stdout + r.stderr); self.assertIn(out['result']['guardian'], ('running', 'installed', 'absent'))
 
 
+class PrivateFileTests(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'POSIX permissions')
+    def test_status_log_and_lock_are_owner_only(self):
+        # The GUI refuses state files readable by others; a 0644 supervisor.json broke status on macOS.
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            old = state / 'supervisor.json'
+            old.write_text('{}'); old.chmod(0o644)  # left by an older version
+            supervisor.write_status(old, {'pid': 1})
+            supervisor.Log(state / 'supervisor.log')('line')
+            supervisor.Posix().own_lock(state)
+            for name in ('supervisor.json', 'supervisor.log', 'supervisor.lock'):
+                self.assertEqual((state / name).stat().st_mode & 0o777, 0o600, name)
+            self.assertEqual(json.loads(old.read_text()), {'pid': 1})
+
+
 class ServiceManagerTests(unittest.TestCase):
     def test_launchd_agent_keeps_the_supervisor_alive_and_lets_services_survive(self):
         plist = plistlib.loads(supervisor.launchd_plist('/usr/bin/python3', '/opt/P B/supervisor.py', '/Users/me/.config/paseo-bot',
@@ -247,6 +263,9 @@ class SupervisorRunTests(unittest.TestCase):
         (self.state / 'hang-paseo_bot').write_text('1')
         os.kill(third['paseo_bot'], 9) if os.name != 'nt' else subprocess.run(['taskkill', '/F', '/PID', str(third['paseo_bot'])], capture_output=True)
         self.wait(lambda: 'paseo_bot' in (self.status().get('alert') or {}) or None, seconds=60)
+        if os.name != 'nt':
+            for name in ('supervisor.json', 'supervisor.log', 'supervisor.lock'):
+                self.assertEqual((self.state / name).stat().st_mode & 0o077, 0, name)
 
 
 if __name__ == '__main__':

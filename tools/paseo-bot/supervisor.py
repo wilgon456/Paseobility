@@ -188,6 +188,15 @@ WantedBy=default.target
 '''
 
 
+def private_open(path, mode):
+    """Open a file in the private state directory as owner-only (0600) on macOS/Linux; the GUI rejects anything wider."""
+    flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if 'a' in mode else os.O_TRUNC)
+    fd = os.open(path, flags | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+    if os.name != 'nt':
+        os.fchmod(fd, 0o600)  # also narrows a file created by an older version
+    return os.fdopen(fd, mode, encoding='utf-8')
+
+
 def mutex_name(state):
     digest = hashlib.sha256(os.path.normcase(os.path.abspath(state)).encode()).hexdigest()[:16]
     return 'Local\\PaseoBotSupervisor-' + digest
@@ -201,7 +210,7 @@ class Log:
         try:
             if self.path.exists() and self.path.stat().st_size > LOG_LIMIT:
                 os.replace(self.path, self.path.with_name(self.path.name + '.1'))
-            with open(self.path, 'a', encoding='utf-8') as f:
+            with private_open(self.path, 'a') as f:
                 f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + text + '\n')
         except OSError:
             pass
@@ -363,7 +372,7 @@ class Posix:
 
     def own_lock(self, state):
         import fcntl
-        self.lock = open(Path(state) / 'supervisor.lock', 'a+')
+        self.lock = private_open(Path(state) / 'supervisor.lock', 'a')
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return True
@@ -526,7 +535,8 @@ class Service:
 
 def write_status(path, data):
     tmp = path.with_name(path.name + '.tmp')
-    tmp.write_text(json.dumps(data, sort_keys=True), encoding='utf-8')
+    with private_open(tmp, 'w') as f:
+        f.write(json.dumps(data, sort_keys=True))
     os.replace(tmp, path)
 
 
