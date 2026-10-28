@@ -1,19 +1,27 @@
 """Opt-in resident supervisor for the Windows bot runtime (dispatcher + GUI service).
 
-`run` stays resident and restarts `paseo_bot.py serve` / `gui_serve.py serve`
-about one second after either exits. Exits shortly after a start count as
-consecutive failures and back off (1, 2, 4 ... 300 s); a long healthy run resets
-the count. A service that is already running is adopted, never duplicated.
+`run` stays resident and keeps `paseo_bot.py serve` and `gui_serve.py serve` alive:
+
+- Exit: restarted about one second later. Exits shortly after a start count as
+  consecutive failures and back off (1, 2, 4 ... 300 s); a long healthy run
+  resets the count. A service that is already running is adopted, never duplicated.
+- Hang: once a service has proven it ticks, a heartbeat older than
+  `--stale-seconds` (default 900; longer than any single bot RPC) restarts it.
+- Stop: a restart first asks the service to stop through `<state>/<name>.stop`
+  and waits up to 30 s, so a write is never cut in half; only then is it killed.
+- Alert: five consecutive fast failures or a hang raise an alert in
+  `supervisor.json` (the GUI projection reports the host as unhealthy) and a
+  Windows notification.
 
 Run it with pythonw.exe: it has no console, and the services are console
 python.exe processes created with CREATE_NO_WINDOW, so their own children (node,
 git, the Paseo CLI) inherit an invisible console. Nothing flashes on screen even
 when Windows Terminal is the default terminal.
 
-`install` prints the logon task it would register and changes nothing unless
-`--apply` is given. Task Scheduler does not relaunch an action that exited
-abnormally, so the task also repeats every five minutes; with IgnoreNew that
-trigger starts nothing while the supervisor is alive and only revives a dead one.
+Keeping the supervisor itself alive is the job of the logon task (`install`) or,
+better, the PaseoBotGuardian Windows service (`guardian/`). Task Scheduler does not
+relaunch an action that exited abnormally, so the task also repeats every minute;
+with IgnoreNew that trigger starts nothing while the supervisor is alive.
 macOS and Linux should use launchd KeepAlive or systemd Restart=on-failure.
 """
 import argparse
@@ -21,6 +29,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import sys
 import time
@@ -30,8 +39,14 @@ SERVICES = ('paseo_bot', 'gui_serve')
 HEALTHY_SECONDS = 300
 MAX_DELAY = 300
 POLL_SECONDS = 1.0
+STALE_SECONDS = 900
+HEARTBEAT_CHECK_SECONDS = 30
+STOP_GRACE_SECONDS = 30
+ALERT_FAILURES = 5
+STATUS_REFRESH_SECONDS = 60
 LOG_LIMIT = 1_000_000
 TASK_NAME = 'PaseoBotSupervisor'
+RESTART_REQUEST = 'supervisor.restart'
 CREATE_NO_WINDOW = 0x08000000
 SYNCHRONIZE, QUERY_LIMITED, TERMINATE = 0x00100000, 0x1000, 0x0001
 ERROR_ALREADY_EXISTS = 183
@@ -50,13 +65,20 @@ class Backoff:
     def start(self, now):
         self.started = now
 
-    def exited(self, now):
+    def exited(self, now, counts=True):
         """Record an exit and return the delay before the next start."""
-        if self.started is not None and now - self.started >= HEALTHY_SECONDS:
+        if not counts or (self.started is not None and now - self.started >= HEALTHY_SECONDS):
             self.failures = 0
         self.started = None
+        if not counts:
+            return 1
         self.failures += 1
         return next_delay(self.failures)
+
+
+def hung(now, started, last_tick, limit=STALE_SECONDS):
+    """A service is hung only after it proved it ticks (a heartbeat since its start) and then went quiet."""
+    return last_tick is not None and last_tick >= started and now - last_tick > limit
 
 
 def default_paths():
@@ -73,7 +95,7 @@ def task_xml(user, pythonw, script, state, tool, start_boundary):
     return f'''<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Paseo bot resident supervisor (no console). Restarts the dispatcher and GUI service within seconds with crash-loop backoff. The repeating trigger starts nothing while the supervisor runs. Remove with: paseo-bot.ps1 supervise uninstall -Apply</Description>
+    <Description>Paseo bot resident supervisor (no console). Restarts the dispatcher and GUI service within seconds with crash-loop backoff and hang detection. The repeating trigger starts nothing while the supervisor runs. Remove with: paseo-bot.ps1 supervise uninstall -Apply</Description>
   </RegistrationInfo>
   <Principals>
     <Principal id="Author">
@@ -95,7 +117,7 @@ def task_xml(user, pythonw, script, state, tool, start_boundary):
     <TimeTrigger>
       <StartBoundary>{escape(start_boundary)}</StartBoundary>
       <Repetition>
-        <Interval>PT5M</Interval>
+        <Interval>PT1M</Interval>
         <StopAtDurationEnd>false</StopAtDurationEnd>
       </Repetition>
     </TimeTrigger>
@@ -130,6 +152,50 @@ class Log:
             pass
 
 
+def read_json(path, default):
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return default
+
+
+def heartbeat(state, name, pid):
+    """Last tick time written by the running service, or None when unknown."""
+    if name == 'paseo_bot':
+        health = read_json(state / 'health.json', {})
+        return health.get('lastTickAt') if health.get('pid') == pid else None
+    try:
+        db = sqlite3.connect(f'file:{state / "queue.sqlite3"}?mode=ro', uri=True, timeout=2)
+        try:
+            row = db.execute("SELECT value FROM gui_meta WHERE key='heartbeat'").fetchone()
+        finally:
+            db.close()
+        return json.loads(row[0]).get('lastTickAt') if row else None
+    except (sqlite3.Error, ValueError, TypeError):
+        return None
+
+
+TOAST = r'''
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+$n = $t.GetElementsByTagName('text')
+$n.Item(0).AppendChild($t.CreateTextNode($env:PASEO_BOT_TOAST_TITLE)) > $null
+$n.Item(1).AppendChild($t.CreateTextNode($env:PASEO_BOT_TOAST_BODY)) > $null
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($t))
+'''
+
+
+def notify(title, body):
+    """Best-effort Windows notification; never blocks supervision."""
+    try:
+        subprocess.Popen(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', TOAST],
+                         env=dict(os.environ, PASEO_BOT_TOAST_TITLE=title, PASEO_BOT_TOAST_BODY=body),
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=CREATE_NO_WINDOW)
+    except OSError:
+        pass
+
+
 class Win32:
     """Minimal process access through kernel32/ntdll; Windows only."""
 
@@ -159,8 +225,8 @@ class Win32:
     def open(self, pid, access=SYNCHRONIZE | QUERY_LIMITED):
         return self.k32.OpenProcess(access, False, pid)
 
-    def exited(self, handle):
-        return self.k32.WaitForSingleObject(handle, 0) == 0
+    def exited(self, handle, wait_ms=0):
+        return self.k32.WaitForSingleObject(handle, wait_ms) == 0
 
     def exit_code(self, handle):
         code = self.w.DWORD()
@@ -208,13 +274,17 @@ class Win32:
 
 
 class Service:
-    def __init__(self, name, args, win, log):
-        self.name, self.args, self.win, self.log = name, args, win, log
+    def __init__(self, name, args, win, log, alert):
+        self.name, self.args, self.win, self.log, self.alert = name, args, win, log, alert
         self.script = args.tool / (name + '.py')
         self.pid = self.handle = self.proc = None
         self.backoff = Backoff()
         self.next_start = 0.0
+        self.started_wall = 0.0
+        self.next_check = 0.0
         self.last_exit = None
+        self.restarts = 0
+        self.alerted = False
 
     def ensure(self, now):
         if self.handle is not None or now < self.next_start:
@@ -222,10 +292,11 @@ class Service:
         found = self.win.find(self.script)
         if found:
             self.pid, self.handle = found
-            self.backoff.start(now)
+            self.mark_started(now)
             self.log(f'{self.name}: adopted running pid {self.pid}')
             return
         state = self.args.state
+        (state / (self.name + '.stop')).unlink(missing_ok=True)
         try:
             with open(state / (self.name + '.out.log'), 'ab') as out, open(state / (self.name + '.err.log'), 'ab') as err:
                 self.proc = subprocess.Popen(
@@ -237,30 +308,73 @@ class Service:
             return
         self.pid = self.proc.pid
         self.handle = self.win.open(self.pid)
-        self.backoff.start(now)
+        self.mark_started(now)
         self.log(f'{self.name}: started pid {self.pid}')
 
+    def mark_started(self, now):
+        self.backoff.start(now)
+        self.started_wall = time.time()
+        self.next_check = now + HEARTBEAT_CHECK_SECONDS
+
     def check(self, now):
-        if self.handle is None or not self.win.exited(self.handle):
+        if self.handle is None:
             return
-        code = self.win.exit_code(self.handle)
+        if not self.win.exited(self.handle):
+            if self.alerted and self.backoff.started is not None and now - self.backoff.started >= HEALTHY_SECONDS:
+                self.alerted = False
+                self.alert(self.name, None)
+                self.log(f'{self.name}: healthy again; alert cleared')
+            if now >= self.next_check:
+                self.next_check = now + HEARTBEAT_CHECK_SECONDS
+                last = heartbeat(self.args.state, self.name, self.pid)
+                if hung(time.time(), self.started_wall, last, self.args.stale_seconds):
+                    reason = f'no heartbeat for {round(time.time() - last)}s'
+                    self.log(f'{self.name}: pid {self.pid} looks hung ({reason}); restarting')
+                    self.raise_alert(f'{self.name} stopped responding ({reason}) and was restarted.')
+                    self.stop(now, 'hung: ' + reason, counts=True)
+            return
+        self.reap(now, f'pid {self.pid} exited with code {self.win.exit_code(self.handle)}', counts=True)
+
+    def stop(self, now, why, counts):
+        """Ask the service to stop, wait for it, kill it only if it does not comply."""
+        if self.handle is None:
+            return
+        try:
+            (self.args.state / (self.name + '.stop')).write_text(str(self.pid), encoding='utf-8')
+        except OSError:
+            pass
+        if not self.win.exited(self.handle, STOP_GRACE_SECONDS * 1000):
+            self.log(f'{self.name}: pid {self.pid} ignored the stop request; terminating')
+            self.win.terminate(self.pid)
+            self.win.exited(self.handle, 5000)
+        self.reap(time.monotonic(), why, counts)
+
+    def reap(self, now, why, counts):
         self.win.close(self.handle)
         self.handle = None
         if self.proc is not None:
             self.proc.poll()
             self.proc = None
-        self.exited(now, f'pid {self.pid} exited with code {code}')
+        (self.args.state / (self.name + '.stop')).unlink(missing_ok=True)
+        self.exited(now, why, counts)
 
-    def exited(self, now, why):
-        delay = self.backoff.exited(now)
+    def exited(self, now, why, counts=True):
+        delay = self.backoff.exited(now, counts)
         self.next_start = now + delay
         self.last_exit = dict(at=time.time(), reason=why)
+        self.restarts += 1
         self.log(f'{self.name}: {why}; restart in {delay}s (consecutive failures {self.backoff.failures})')
+        if self.backoff.failures >= ALERT_FAILURES and not self.alerted:
+            self.raise_alert(f'{self.name} keeps exiting ({self.backoff.failures} times in a row). See supervisor.log and {self.name}.err.log.')
+
+    def raise_alert(self, text):
+        self.alerted = True
+        self.alert(self.name, text)
 
     def snapshot(self, now):
         return dict(pid=self.pid if self.handle is not None else None,
                     state='running' if self.handle is not None else 'waiting',
-                    failures=self.backoff.failures,
+                    failures=self.backoff.failures, restarts=self.restarts,
                     restartInSeconds=0 if self.handle is not None else max(0, round(self.next_start - now)),
                     lastExit=self.last_exit)
 
@@ -277,22 +391,38 @@ def run(args):
     if not win.own_mutex(mutex_name(args.state)):
         log('another supervisor owns this state directory; exiting')
         return 0
-    services = [Service(name, args, win, log) for name in SERVICES]
+    alerts = {}
+
+    def alert(name, text):
+        if text is None:
+            alerts.pop(name, None)
+            return
+        alerts[name] = dict(text=text, at=time.time())
+        log(f'{name}: ALERT {text}')
+        notify('Paseo 봇 확인 필요', text)
+
+    services = [Service(name, args, win, log, alert) for name in SERVICES]
     log(f'supervisor started pid {os.getpid()}')
-    last = None
+    last, written = None, 0.0
     while True:
         now = time.monotonic()
+        request = args.state / RESTART_REQUEST
+        if request.exists():
+            request.unlink(missing_ok=True)
+            log('restart requested; stopping services at this idle boundary')
+            for service in services:
+                service.stop(now, 'restart requested', counts=False)
         for service in services:
             try:
                 service.check(now)
                 service.ensure(now)
             except Exception as e:  # keep supervising the other service
-                log(f'{service.name}: supervisor error {type(e).__name__}')
-        status = dict(pid=os.getpid(), services={s.name: s.snapshot(now) for s in services})
-        if status != last:
+                log(f'{service.name}: supervisor error {type(e).__name__}: {e}')
+        status = dict(pid=os.getpid(), alert=dict(alerts) or None, services={s.name: s.snapshot(now) for s in services})
+        if status != last or now - written >= STATUS_REFRESH_SECONDS:
             try:
                 write_status(args.state / 'supervisor.json', dict(status, updatedAt=time.time()))
-                last = status
+                last, written = status, now
             except OSError:
                 pass
         time.sleep(POLL_SECONDS)
@@ -309,7 +439,7 @@ def install(args):
     xml = task_xml(current_user(), args.pythonw, Path(__file__).resolve(), args.state, args.tool,
                    time.strftime('%Y-%m-%dT%H:%M:%S'))
     plan = dict(taskName=args.task_name, action=f'{args.pythonw} -X utf8 {Path(__file__).resolve()} run',
-                triggers=['at logon', 'every 5 minutes (starts nothing while the supervisor runs)'],
+                triggers=['at logon', 'every minute (starts nothing while the supervisor runs)'],
                 files=[str(args.state / 'supervisor.log'), str(args.state / 'supervisor.json')],
                 applied=False)
     if not args.apply:
@@ -339,17 +469,13 @@ def uninstall(args):
     return dict(plan, applied=True)
 
 
-def read_json(path, default):
-    try:
-        return json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return default
-
-
 def status(args):
     registered = subprocess.run(['schtasks', '/Query', '/TN', args.task_name], capture_output=True,
                                 creationflags=CREATE_NO_WINDOW).returncode == 0
+    guardian = subprocess.run(['sc.exe', 'query', 'PaseoBotGuardian'], capture_output=True, text=True,
+                              creationflags=CREATE_NO_WINDOW)
     return dict(taskName=args.task_name, registered=registered,
+                guardian='running' if 'RUNNING' in guardian.stdout else 'installed' if guardian.returncode == 0 else 'absent',
                 supervisor=read_json(args.state / 'supervisor.json', None))
 
 
@@ -358,7 +484,6 @@ def idle(state):
     health = read_json(state / 'health.json', {})
     if health.get('activeTasks') or health.get('activeTask'):
         return False
-    import sqlite3
     db = sqlite3.connect(f'file:{state / "queue.sqlite3"}?mode=ro', uri=True)
     try:
         return not db.execute("SELECT 1 FROM gui_jobs WHERE state IN ('prepared','waiting') LIMIT 1").fetchone()
@@ -369,22 +494,24 @@ def idle(state):
 
 
 def restart(args):
-    """Stop both services at an idle boundary; the resident supervisor starts the new code."""
-    sup = read_json(args.state / 'supervisor.json', None)
-    if not sup:
+    """Ask the resident supervisor to restart both services at an idle boundary (e.g. after a code update)."""
+    before = read_json(args.state / 'supervisor.json', None)
+    if not before:
         raise ValueError('Supervisor status unavailable')
     deadline = time.time() + args.timeout
     while not idle(args.state):
         if time.time() > deadline:
             return dict(restarted=False, reason='busy')
         time.sleep(5)
-    win = Win32()
-    stopped = []
-    for name, service in sup['services'].items():
-        if service.get('pid'):
-            win.terminate(service['pid'])
-            stopped.append(name)
-    return dict(restarted=True, services=stopped)
+    (args.state / RESTART_REQUEST).write_text('1', encoding='utf-8')
+    old = {n: s.get('pid') for n, s in before['services'].items()}
+    deadline = time.time() + STOP_GRACE_SECONDS * 2 + 30
+    while time.time() < deadline:
+        now = read_json(args.state / 'supervisor.json', {}).get('services', {})
+        if now and all(s.get('pid') and s.get('pid') != old.get(n) for n, s in now.items()):
+            return dict(restarted=True, pids={n: s['pid'] for n, s in now.items()})
+        time.sleep(1)
+    return dict(restarted=False, reason='supervisor did not confirm new processes')
 
 
 def main():
@@ -396,6 +523,7 @@ def main():
     p.add_argument('--python', type=Path, default=paths['python'], help='console python.exe for the services')
     p.add_argument('--pythonw', type=Path, default=paths['pythonw'], help='windowless interpreter for the task')
     p.add_argument('--task-name', default=TASK_NAME)
+    p.add_argument('--stale-seconds', type=int, default=STALE_SECONDS, help='run: heartbeat age that counts as hung')
     p.add_argument('--apply', action='store_true', help='install/uninstall: actually change Task Scheduler')
     p.add_argument('--timeout', type=int, default=1800, help='restart: seconds to wait for an idle boundary')
     args = p.parse_args()
@@ -408,7 +536,7 @@ def main():
         out = dict(install=install, uninstall=uninstall, status=status, restart=restart)[args.command](args)
         print(json.dumps({'ok': True, 'result': out}, ensure_ascii=False))
         return 0
-    except (OSError, ValueError, subprocess.SubprocessError) as e:
+    except (OSError, ValueError, subprocess.SubprocessError, sqlite3.Error) as e:
         print(json.dumps({'ok': False, 'error': 'Supervisor ' + args.command + ' failed: ' + type(e).__name__}))
         return 1
 

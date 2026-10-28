@@ -14,6 +14,20 @@ def safe_pr(value):
     return value if isinstance(value, str) and re.fullmatch(r'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*', value) else ''
 
 
+def apply_supervisor(out, home, read_json):
+    """Opt-in Windows supervisor: an alert (crash loop or hang) marks the host as needing attention."""
+    out['supervisor'] = None
+    sup = read_json(home / 'supervisor.json', {})
+    if not sup or time.time() - sup.get('updatedAt', 0) >= 180:
+        return out  # absent, or the supervisor is no longer running
+    alert = sup.get('alert') or {}
+    out['supervisor'] = dict(alert=[a.get('text', '') for a in alert.values()],
+                             restarts={n: s.get('restarts', 0) for n, s in sup.get('services', {}).items()})
+    if alert:
+        out['healthy'] = False
+    return out
+
+
 def snapshot(db, home, request, writable, read_json):
     tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     origin = 'o.context' if 'task_origins' in tables else "'{}'"
@@ -76,6 +90,7 @@ def snapshot(db, home, request, writable, read_json):
                queue=counts, tasks=tasks, total=sum(counts.values()), filtered=filtered, offset=offset,
                projects=project_list(config), conversations=[], messages=[], plans=[], configured=False,
                managerHealthy=False, deliveryState='', stuck='', lastSyncAt=time.time())
+    apply_supervisor(out, home, read_json)
     if 'gui_conversations' in tables:
         out['configured'] = True
         out['conversations'] = [dict(zip(['id', 'title', 'agentId', 'status', 'createdAt'], r)) for r in db.execute('SELECT * FROM gui_conversations ORDER BY created DESC LIMIT 50')]

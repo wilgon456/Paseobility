@@ -22,7 +22,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.12.3.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
+**현재 패키지: v2.12.4.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 11개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
 
 ## 한 줄 요약
 
@@ -57,6 +57,18 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
 기존 버전·플랫폼 검증 기록은 당시 범위를 유지합니다.
+
+## 2026-10-28 · Paseo 봇 보호 서비스와 멈춤 감지 (v2.12.4)
+
+Windows 봇 감독기는 이제 종료된 서비스뿐 아니라 응답하지 않는 서비스도 다시
+띄웁니다. 서비스가 한 번이라도 심장박동을 남긴 뒤 15분 넘게 조용하면 재시작합니다.
+재시작할 때는 먼저 안전한 지점에서 멈추라고 요청하고, 30초 안에 따르지 않을 때만
+강제로 종료합니다. 계속 죽거나 멈추면 Windows 알림을 띄우고 GUI 상태를 "확인 필요"로
+바꿉니다. `supervise restart`는 작업이 없을 때 새 코드를 다시 읽으며, 실패로 세지
+않습니다. 새로 추가한 선택형 Windows 서비스 `PaseoBotGuardian`
+(`supervise install-service -Apply`, UAC 승인 한 번)은 서비스 관리자의 재시작 정책으로
+감독기 자체를 지킵니다. 사용자 세션과 사용자 권한으로 띄우며, 비밀번호를 저장하지 않고
+콘솔 창도 띄우지 않습니다. [Paseo 봇](docs/paseo-bot.md#resident-supervisor-windows-opt-in).
 
 ## 2026-10-28 · Paseo 업데이트 중에도 멈추지 않는 Paseo 봇 (v2.12.3)
 

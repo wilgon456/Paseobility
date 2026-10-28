@@ -38,6 +38,18 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(self.bot.db.execute('SELECT count(*) FROM tasks').fetchone()[0], 1)
         with self.assertRaises(ValueError): gui.handle(self.home, dict(action='submit', task=dict(self.task, title='changed')), True)
 
+    def test_supervisor_alert_marks_host_unhealthy_and_stale_status_is_ignored(self):
+        self.assertIsNone(gui.handle(self.home, dict(action='status'), True)['supervisor'])
+        status = {'pid': 1, 'updatedAt': time.time(), 'alert': {'paseo_bot': {'text': 'paseo_bot keeps exiting', 'at': 0}},
+                  'services': {'paseo_bot': {'restarts': 6}, 'gui_serve': {'restarts': 0}}}
+        write_json(self.home / 'supervisor.json', status)
+        out = gui.handle(self.home, dict(action='status'), True)
+        self.assertFalse(out['healthy'])
+        self.assertEqual(out['supervisor'], {'alert': ['paseo_bot keeps exiting'], 'restarts': {'paseo_bot': 6, 'gui_serve': 0}})
+        write_json(self.home / 'supervisor.json', dict(status, updatedAt=time.time() - 3600))  # supervisor gone
+        out = gui.handle(self.home, dict(action='status'), True)
+        self.assertTrue(out['healthy']); self.assertIsNone(out['supervisor'])
+
     def test_status_does_not_mutate_database_or_expose_policy(self):
         self.bot.submit(self.task)
         db = self.home / 'queue.sqlite3'
