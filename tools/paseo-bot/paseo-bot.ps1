@@ -71,10 +71,26 @@ end {
       if ($Id -eq 'uninstall-service') { $common += '-Uninstall' }
       if ($Apply) {
         $resultFile = [IO.Path]::GetTempFileName()
-        $elevated = Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait -PassThru `
-          -ArgumentList ((($common + @('-Apply','-ResultFile',$resultFile)) | ForEach-Object { Quote-NativeArgument $_ }) -join ' ')
-        $output = [IO.File]::ReadAllText($resultFile); Remove-Item $resultFile
-        $code = $elevated.ExitCode
+        try {
+          # Process.Start keeps the Win32 error code that Start-Process -Verb RunAs discards.
+          $elevate = New-Object Diagnostics.ProcessStartInfo
+          $elevate.FileName = 'powershell.exe'
+          $elevate.Arguments = (($common + @('-Apply','-ResultFile',$resultFile)) | ForEach-Object { Quote-NativeArgument $_ }) -join ' '
+          $elevate.Verb = 'runas'
+          $elevate.UseShellExecute = $true
+          $elevate.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
+          $elevated = [Diagnostics.Process]::Start($elevate)
+          $elevated.WaitForExit()
+          $output = [IO.File]::ReadAllText($resultFile)
+          $code = $elevated.ExitCode
+        } catch {
+          # ERROR_CANCELLED (1223): the UAC prompt was declined or closed before any change.
+          $cause = $_.Exception; while ($cause -and $cause -isnot [ComponentModel.Win32Exception]) { $cause = $cause.InnerException }
+          $declined = $cause -and $cause.NativeErrorCode -eq 1223
+          $output = if ($declined) { '{"ok":false,"error":"Administrator consent was declined or the prompt was closed; nothing was changed. Run the command again and choose Yes."}' }
+                    else { '{"ok":false,"error":"The elevated installer could not be started; nothing was changed."}' }
+          $code = 1
+        } finally { Remove-Item $resultFile -ErrorAction SilentlyContinue }
       } else {
         $output = (& powershell.exe @common) -join [Environment]::NewLine; $code = $LASTEXITCODE
       }
