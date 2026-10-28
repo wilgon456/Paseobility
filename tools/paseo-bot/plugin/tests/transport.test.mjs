@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { connectionSchema, requestBridge, sshArgs, SAFE_ERROR } from '../server/transport.ts';
+import { connectionSchema, launchCommand, requestBridge, sshArgs, SAFE_ERROR } from '../server/transport.ts';
 const config = {host:'100.108.51.25', user:'fixture_user', bridge:'C:\\fixture\\gui-bridge.ps1', expectedHost:'VAXPORT', allowSubmit:true};
 function runner(response, code=0, inspect=()=>{}) {
   return (file, args, options) => {
@@ -29,6 +29,27 @@ test('host key verification and noninteractive SSH are mandatory',()=>{
   assert.ok(args.includes('--')); assert.ok(args.at(-1).includes(' -AllowSubmit'));
   assert.throws(()=>sshArgs({...config,allowSubmit:false},true));
   assert.ok(!sshArgs({...config,allowSubmit:false},false).at(-1).includes(' -AllowSubmit'));
+});
+test('macOS and Linux bridges: literal shell path over SSH, or local without SSH',()=>{
+  const mac={host:'mac-mini.tail123.ts.net', user:'me', bridge:'/Users/me/Paseobility/tools/paseo-bot/gui-bridge.sh', expectedHost:'Mac-mini', allowSubmit:true};
+  assert.equal(connectionSchema.safeParse(mac).success,true);
+  for(const bridge of ["/tmp/x';whoami;'.sh","/tmp/$(whoami).sh",'relative/gui-bridge.sh','/tmp/gui-bridge.py']) assert.equal(connectionSchema.safeParse({...mac,bridge}).success,false);
+  assert.equal(sshArgs(mac,true).at(-1),"/bin/sh '/Users/me/Paseobility/tools/paseo-bot/gui-bridge.sh' --allow-submit");
+  assert.equal(connectionSchema.safeParse({...mac,user:undefined}).success,false); // SSH needs a user
+  const local={host:'local', bridge:mac.bridge, expectedHost:'Mac-mini', allowSubmit:false};
+  assert.equal(connectionSchema.safeParse(local).success,true);
+  assert.deepEqual(launchCommand(connectionSchema.parse(local),false),['/bin/sh',[mac.bridge]]);
+  assert.throws(()=>launchCommand(connectionSchema.parse(local),true));
+  const [file,args]=launchCommand(connectionSchema.parse({...local,bridge:'C:\\Paseobility\\tools\\paseo-bot\\gui-bridge.ps1',allowSubmit:true}),true);
+  assert.equal(file,'powershell.exe'); assert.deepEqual(args.slice(-2),['C:\\Paseobility\\tools\\paseo-bot\\gui-bridge.ps1','-AllowSubmit']);
+});
+test('local bridge runs without SSH and keeps the same reply checks',async()=>{
+  const local={host:'local', bridge:'/opt/paseo/gui-bridge.sh', expectedHost:'Mac-mini', allowSubmit:false};
+  const out=await requestBridge({action:'status'},local,runner({ok:true,result:{host:'Mac-mini'}},0,(file,args,options)=>{
+    assert.equal(file,'/bin/sh'); assert.deepEqual(args,['/opt/paseo/gui-bridge.sh']); assert.equal(options.shell,false);
+  }));
+  assert.equal(out.host,'Mac-mini');
+  await assert.rejects(requestBridge({action:'status'},local,runner({ok:true,result:{host:'OTHER'}})),e=>e.message===SAFE_ERROR);
 });
 test('task text remains stdin data, never shell arguments',async()=>{
   const request={action:'submit',task:{prompt:'$(whoami); " & 한글'}};

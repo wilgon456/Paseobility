@@ -188,7 +188,7 @@ export function Console(p: Props) {
       )}
       {p.data && !p.data.configured && (
         <Notice title="봇을 준비하고 있어요">
-          VAXPORT 연결을 확인해 주세요.
+          봇 호스트 연결을 확인해 주세요.
         </Notice>
       )}
       <View
@@ -303,7 +303,7 @@ export function Console(p: Props) {
               );})}
             </View>
             <Text style={t.small}>
-              VAXPORT · {p.data?.healthy ? "정상" : "확인 필요"} · 마지막 응답{" "}
+              {p.data?.host || "봇 호스트"} · {p.data?.healthy ? "정상" : "확인 필요"} · 마지막 응답{" "}
               {relativeTime(p.data?.lastTickAt ?? 0, now)}
             </Text>
             <Board

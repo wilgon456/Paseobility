@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.5.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.6.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -58,6 +58,16 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
 
+## 2026-10-28 · Paseo bot on any controller: macOS, Linux and Windows (v2.12.6)
+
+The bot no longer assumes a Windows controller. The resident supervisor runs on
+macOS and Linux too, with the same exit restart, hang detection, graceful stop
+and alerts; `supervisor.py install --apply` registers a launchd agent or a
+systemd user service, no admin rights needed. The GUI plugin connects to a Mac
+or Linux controller through the new `gui-bridge.sh`, or without SSH when the
+plugin runs on the controller (`"host": "local"`), and shows the controller's
+real host name. See [Paseo bot](docs/paseo-bot.md#resident-supervisor-opt-in-macos-linux-and-windows).
+
 ## 2026-10-28 · Guardian install feedback (v2.12.5)
 
 `supervise install-service -Apply` now says plainly when the UAC prompt was
@@ -76,7 +86,7 @@ new code at an idle boundary without counting as a failure. The new opt-in
 `PaseoBotGuardian` Windows service (`supervise install-service -Apply`, one UAC
 consent) keeps the supervisor itself alive with the Service Control Manager's
 restart policy, in the user's own session and identity, with no stored password
-and no console window. See [Paseo bot](docs/paseo-bot.md#resident-supervisor-windows-opt-in).
+and no console window. See [Paseo bot](docs/paseo-bot.md#resident-supervisor-opt-in-macos-linux-and-windows).
 
 ## 2026-10-28 · Paseo bot survives Paseo updates (v2.12.3)
 
