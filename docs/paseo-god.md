@@ -8,6 +8,10 @@ The initial scope follows the reviewed
 [Paseo God design](https://app.notion.com/p/paseo-god-3f8f13d4d4f081a9a416d0bf093562fc).
 The debugging, review and spike references are original concise procedures;
 this package does not vendor the Hermes skill catalog or its tool adapters.
+The playbooks and the 2026-10-28 debugging and review revisions adapt ideas from
+[pstack](https://github.com/cursor/plugins/tree/main/pstack) (Lauren Tan, MIT)
+and [mattpocock/skills](https://github.com/mattpocock/skills) (Matt Pocock, MIT),
+rewritten rather than copied.
 
 ## Install and invoke
 
@@ -172,6 +176,26 @@ workflow, a distributed execution guarantee or general task success rates.
   prove a Windows/Linux run, provider skill discovery or that the workflow
   improves an agent's end-to-end task outcome. Those remain separate checks.
 
+## Playbooks, debugging loop and two-axis review — 2026-10-28
+
+- [Playbooks](../skills/paseo-god/references/playbooks.md) give investigation,
+  bug fix, change and ship tasks a starting TODO. Ship covers PR, CI,
+  independent verification before merge, deploy or release, a check on the
+  real target, and cleanup; it stops before irreversible steps nobody asked for.
+- [Debugging](../skills/paseo-god/references/debugging.md) now starts by
+  building one command that fails on the bug, on the surface where it appeared,
+  with a ladder of ways to build it and a completion criterion. When two fixes
+  share a failed premise, the premise is tested before a third fix.
+- [Review](../skills/paseo-god/references/review.md) pins a fixed point and
+  checks the request and the repository's standards as separate axes, keeping
+  only findings shown by a run or concrete trace.
+- `SKILL.md` adds a rule for explaining a measured number before acting on it.
+
+These came from comparing the skill with the two reference repositories after a
+day of Paseo bot work: a macOS-only permission bug surfaced only on a real Mac,
+and a regular expression was fixed twice on the same wrong premise. The skill
+grew by seven lines; the rest lives in references read only when needed.
+
 ## 한국어 요약
 
 `/paseo-god`를 명시 호출하면 완료 조건을 정하고 필요한 디버깅·리뷰·실험
@@ -180,5 +204,10 @@ workflow, a distributed execution guarantee or general task success rates.
 등급을 한 번 정해 필요한 검사만 기록하고, 필수 문서는 실행당 한 번 읽어 적용
 제약을 기록에 남기며, 느린 검사는 묶음당 한 번만 돌립니다. 실제 실행·완료 판단은 에이전트가 근거로 수행합니다.
 학습 내용은 저장 후보이며 기존 메모리·스킬을 자동으로 수정하지 않습니다.
+2026-10-28부터 조사·버그 수정·변경·배포 작업은 정해진 절차에서 TODO를 시작합니다.
+버그는 실패를 바로 재현하는 명령부터 만들고, 같은 전제로 두 번 실패하면 전제부터
+시험합니다. 검토는 "요청대로 했는가"와 "저장소 규칙을 지켰는가"를 나눠 보며,
+실제로 돌려 확인한 지적만 남깁니다. pstack과 mattpocock/skills(둘 다 MIT)의
+방식을 참고해 새로 썼습니다.
 로컬 검사와 임시 설치는 검증했으며, Windows/Linux·각 제공자의 실제 호출과
 작업 성과는 별도 검증 대상입니다.
