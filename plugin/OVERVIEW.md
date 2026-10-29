@@ -1,6 +1,6 @@
 # Paseobility
 
-Paseobility brings eleven reusable workflows to Paseo, with a searchable skill picker and a screen for installed skills, versions and updates on the selected computer.
+Paseobility brings twelve reusable workflows to Paseo, with a searchable skill picker and a screen for installed skills, versions and updates on the selected computer.
 
 Open **Paseobility** above an existing conversation's input, search for a skill and select it to append its slash reference to your draft. Your text and attachments stay in place; you send the message yourself. On native mobile clients and new-agent drafts, use **+ → Attach Paseobility** to add a skill reference. The sidebar and Command Center open the version screen.
 
@@ -9,11 +9,11 @@ Open **Paseobility** above an existing conversation's input, search for a skill 
 - **Design and task execution:** `paseo-design` starts from a brief, reviews the visual result and checks phone, tablet and desktop layouts. Explicit `paseo-god` requests start with a plan and TODO list, track verification evidence and preserve a resume or handoff point when work remains.
 - **Browser and desktop work:** `paseo-browser` reuses an Ego Lite task space or a selected Chrome tab. `paseo-cua` operates native apps through the separately installed Cua Driver.
 - **Projects and computers:** `paseo-project` prepares repository briefs or environments, `paseo-multi` operates configured computers, and `paseo-orchestration` coordinates agents when explicitly requested.
-- **Sharing and checks:** `paseo-share` shares files through a private Git repository, `paseo-spyware-check` inspects repository code without executing it, and `paseo-agent-cleanup` previews disposable sessions for archiving, and `paseo-research` answers how, why and compatibility questions from primary sources with a cited report. `paseo-toss` wraps the official Apps-in-Toss Harness workflows.
+- **Research, sharing and checks:** `paseo-research` answers how, why and compatibility questions from code, history and official docs with a cited report. `paseo-share` shares files through a private Git repository, `paseo-spyware-check` inspects repository code without executing it, and `paseo-agent-cleanup` previews disposable sessions for archiving. `paseo-toss` wraps the official Apps-in-Toss Harness workflows.
 
 ## Setup and updates
 
-The plugin supports Paseo **0.12.x and 0.13.x**. Labels follow the app language in English or Korean on 0.13; 0.12 uses Korean. Screenshots show the skill picker in the Paseo web app. Native mobile behavior has not been visually verified.
+The plugin supports Paseo **0.12.x and 0.13.x**. The interface is in English, or in Korean when the app language is Korean (on 0.12, the device language). Screenshots show the skill picker in the Paseo web app. Native mobile behavior has not been visually verified.
 
 Installing the plugin and installing the skill files are separate steps; the repository README explains skill setup. An existing agent may need a new session to discover newly installed skills. Some workflows need their own tools or connections: design checks require Node.js 20+ and a Chromium-family browser, native app control requires Cua Driver and OS permissions, and multi-host operation requires configured hosts.
 

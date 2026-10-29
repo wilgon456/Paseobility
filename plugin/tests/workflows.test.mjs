@@ -287,6 +287,16 @@ for (const mode of ["success", "failure", "uncertain"])
             ? "interrupted"
             : "failed",
       );
+      const { MESSAGES, fill } = await import("../shared/messages.ts");
+      assert.equal(
+        job.code,
+        mode === "success"
+          ? "jobComplete"
+          : mode === "uncertain"
+            ? "jobUncertain"
+            : "jobFailed",
+      );
+      assert.equal(job.message, fill(MESSAGES.en[job.code], job.values ?? {}));
       assert.equal(
         await readFile(target, "utf8"),
         mode === "failure" ? "old" : "new",
@@ -610,6 +620,58 @@ test("visible component text comes from shared messages, not hardcoded Korean", 
     const text = await readFile(new URL("../" + file, import.meta.url), "utf8");
     assert.doesNotMatch(text, /[\uAC00-\uD7A3]/, `${file} contains Hangul`);
   }
+});
+
+test("server and update text is English with a Korean message for each code", async () => {
+  for (const file of [
+    "client/web.ts",
+    "server/management.ts",
+    "server/update-worker.mjs",
+    "server/update-core.mjs",
+  ]) {
+    const text = await readFile(new URL("../" + file, import.meta.url), "utf8");
+    assert.doesNotMatch(text, /[가-힣]/, `${file} contains Hangul`);
+  }
+  // The worker runs standalone and repeats the English text; keep it in sync.
+  const { MESSAGES } = await import("../shared/messages.ts");
+  const worker = await readFile(
+    new URL("../server/update-worker.mjs", import.meta.url),
+    "utf8",
+  );
+  const calls = [
+    ...worker.matchAll(/"(job\w+)",\s*(?:"((?:[^"\\]|\\.)*)"|`([^`]*)`)/g),
+  ];
+  assert.equal(calls.length, 7);
+  for (const [, code, plain, template] of calls) {
+    const text = plain ?? template.replace(/\$\{(\w+)\}/g, "{$1}");
+    assert.equal(text, MESSAGES.en[code], code);
+  }
+});
+
+test("server text and update progress follow the chosen language", async () => {
+  const { MESSAGES, localizeServerText, jobText } = await import(
+    "../shared/messages.ts"
+  );
+  const wrapped = `RPC failed: ${MESSAGES.en.errReleaseChanged}`;
+  assert.equal(localizeServerText(wrapped, "en"), wrapped);
+  assert.equal(
+    localizeServerText(wrapped, "ko"),
+    `RPC failed: ${MESSAGES.ko.errReleaseChanged}`,
+  );
+  assert.equal(localizeServerText("ENOENT: other", "ko"), "ENOENT: other");
+  const job = {
+    code: "jobComplete",
+    values: { version: "2.13.0" },
+    message: "Updated to v2.13.0. New conversations use the updated skills.",
+  };
+  assert.equal(jobText(job, "en"), job.message);
+  assert.match(jobText(job, "ko"), /^v2\.13\.0으로 업데이트했습니다/);
+  // Jobs written by older workers have no code; show their text unchanged.
+  assert.equal(jobText({ message: "업데이트 중" }, "en"), "업데이트 중");
+  assert.equal(
+    jobText({ message: MESSAGES.en.jobStalled }, "ko"),
+    MESSAGES.ko.jobStalled,
+  );
 });
 
 // Minimal local check for the comparators used by requirements.paseo.

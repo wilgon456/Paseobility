@@ -62,7 +62,7 @@ export function VersionScreen(props: PluginScreenProps) {
   return <Management key={props.host.id} {...props} />;
 }
 function Management({ theme, layout, host }: PluginScreenProps) {
-  const { t, locale } = useText();
+  const { t, locale, server, job } = useText();
   const read = useRpc(versionRpc),
     update = useRpc(updateRpc);
   const fetchSkills = useRpc(skillStatusRpc);
@@ -112,7 +112,7 @@ function Management({ theme, layout, host }: PluginScreenProps) {
       });
       setMessage(t("updateStarted"));
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : t("updateUnconfirmed"));
+      setMessage(e instanceof Error ? server(e.message) : t("updateUnconfirmed"));
     } finally {
       pending.current = false;
       setBusy(false);
@@ -287,7 +287,7 @@ function Management({ theme, layout, host }: PluginScreenProps) {
             </SettingsRow>
             <SettingsRow
               label={t("rowLatest")}
-              hint={data.error || t("rowLatestHint")}
+              hint={data.error ? server(data.error) : t("rowLatestHint")}
             >
               {data.latest
                 ? value(`v${data.latest.version}`, false)
@@ -311,7 +311,7 @@ function Management({ theme, layout, host }: PluginScreenProps) {
         {data?.job && (
           <SettingsCard>
             <SettingsRow
-              label={data.job.message}
+              label={job(data.job)}
               hint={
                 data.job.backup
                   ? `${t("backup")}: ${data.job.backup}`

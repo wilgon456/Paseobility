@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as fs from "node:fs/promises";
 import { PLUGIN_VERSION } from "../shared/management";
+import { MESSAGES } from "../shared/messages";
 import { resolvePaseoCli } from "./cli-path";
 import { treeDigest, run } from "./update-core.mjs";
 const home = homedir();
@@ -13,7 +14,7 @@ async function command(args: string[]) {
 async function identity(hostId: string) {
   const status = await command(["daemon", "status", "--json"]);
   if (status.serverId !== hostId || status.connectedDaemon !== "reachable")
-    throw Error("선택한 컴퓨터의 Paseo 연결을 확인하지 못했습니다.");
+    throw Error(MESSAGES.en.errHostUnreachable);
   return status;
 }
 async function json(path: string) {
@@ -45,7 +46,7 @@ async function latest(force = false) {
     } finally {
       clearTimeout(timer);
     }
-    if (!r.ok) throw Error("GitHub에서 최신 버전을 확인하지 못했습니다.");
+    if (!r.ok) throw Error(MESSAGES.en.errLatestFetch);
     return r.json();
   };
   const release = await get("releases/latest");
@@ -54,10 +55,10 @@ async function latest(force = false) {
     release.prerelease ||
     !/^v\d+\.\d+\.\d+$/.test(release.tag_name)
   )
-    throw Error("정식 릴리스 정보를 확인하지 못했습니다.");
+    throw Error(MESSAGES.en.errReleaseInfo);
   const commit = await get("commits/" + release.tag_name);
   if (!/^[0-9a-f]{40}$/.test(commit.sha))
-    throw Error("릴리스 커밋을 확인하지 못했습니다.");
+    throw Error(MESSAGES.en.errReleaseCommit);
   const value = {
     version: release.tag_name.slice(1),
     sha: commit.sha,
@@ -93,7 +94,7 @@ export async function packageStatus({ hostId }: { hostId: string }) {
   try {
     release = await latest();
   } catch (e) {
-    error = e instanceof Error ? e.message : "버전 확인 실패";
+    error = e instanceof Error ? e.message : MESSAGES.en.errVersionCheck;
   }
   let job = await json(join(stateDir, "job.json"));
   if (job?.phase === "running") {
@@ -106,8 +107,8 @@ export async function packageStatus({ hostId }: { hostId: string }) {
       job = {
         ...job,
         phase: "interrupted",
-        message:
-          "업데이트 작업이 중단되었습니다. 백업을 확인한 뒤 복구가 필요합니다.",
+        code: "jobStalled",
+        message: MESSAGES.en.jobStalled,
       };
     }
   }
@@ -121,9 +122,9 @@ export async function startUpdate(input: {
   const daemon = await identity(input.hostId),
     release = await latest(true);
   if (input.version !== release.version || input.sha !== release.sha)
-    throw Error("최신 릴리스가 바뀌었습니다. 버전을 새로고침해주세요.");
+    throw Error(MESSAGES.en.errReleaseChanged);
   if (!newer(release.version, PLUGIN_VERSION))
-    throw Error("현재 버전 이하로 업데이트하지 않습니다.");
+    throw Error(MESSAGES.en.errNotNewer);
   const plugins = await command([
     "plugin",
     "ls",
@@ -132,7 +133,7 @@ export async function startUpdate(input: {
     "--json",
   ]);
   const plugin = plugins.find((x: { id: string }) => x.id === "paseobility");
-  if (!plugin?.path) throw Error("현재 플러그인 경로를 확인하지 못했습니다.");
+  if (!plugin?.path) throw Error(MESSAGES.en.errPluginPath);
   // Read the reviewed worker from this installed bundle, not the downloaded release.
   const core = await fs.readFile(
     join(plugin.path, "server", "update-core.mjs"),
@@ -146,9 +147,7 @@ export async function startUpdate(input: {
   try {
     file = await fs.open(lock, "wx");
   } catch {
-    throw Error(
-      "업데이트가 이미 진행 중이거나 중단된 기록이 있습니다. 상태를 확인해주세요.",
-    );
+    throw Error(MESSAGES.en.errUpdateLocked);
   }
   await file.close();
   try {
@@ -168,7 +167,8 @@ export async function startUpdate(input: {
       join(stateDir, "job.json"),
       JSON.stringify({
         phase: "running",
-        message: "업데이트를 시작하고 있습니다.",
+        code: "jobStarting",
+        message: MESSAGES.en.jobStarting,
       }),
     );
     const child = spawn(
@@ -200,7 +200,8 @@ export async function startUpdate(input: {
       join(stateDir, "job.json"),
       JSON.stringify({
         phase: "failed",
-        message: "업데이트 작업을 시작하지 못했습니다.",
+        code: "jobStartFailed",
+        message: MESSAGES.en.jobStartFailed,
       }),
     );
     await fs.rm(lock, { force: true });

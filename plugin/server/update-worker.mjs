@@ -16,18 +16,21 @@ export async function updatePackage(options, execute = run) {
     "skills-backups",
     `Paseobility-${version}-${Date.now()}`,
   );
-  const state = async (phase, message) => {
+  // English text plus a message code; the screen shows the code in the app
+  // language. This file runs standalone, so it cannot import shared/messages.ts;
+  // a test keeps each text equal to MESSAGES.en[code].
+  const state = async (phase, code, message, values) => {
     const tmp = statePath + ".tmp";
     await fs.writeFile(
       tmp,
-      JSON.stringify({ phase, message, backup, pid: process.pid }),
+      JSON.stringify({ phase, code, values, message, backup, pid: process.pid }),
     );
     await fs.rename(tmp, statePath);
   };
   try {
     if (!/^\d+\.\d+\.\d+$/.test(version) || !/^([0-9a-f]{40})$/.test(sha))
       throw Error("Invalid release.");
-    await state("running", `v${version} 다운로드 및 검증 중`);
+    await state("running", "jobDownloading", `Downloading and verifying v${version}…`, { version });
     const source = await fs.mkdtemp(join(stateDir, "release-"));
     await execute("git", ["init", "--quiet", source]);
     await execute("git", [
@@ -60,9 +63,13 @@ export async function updatePackage(options, execute = run) {
       .sort();
     if (!ids.length) throw Error("No skills in release.");
     await treeDigest(join(source, "skills"));
-    await state("running", "기존 스킬을 백업하고 새 버전을 설치하고 있습니다.");
+    await state(
+      "running",
+      "jobInstalling",
+      "Backing up the current skills and installing the new version…",
+    );
     changes = await installSkills(source, home, backup, ids);
-    await state("running", "플러그인을 새 버전으로 다시 연결하고 있습니다.");
+    await state("running", "jobReconnecting", "Switching the plugin to the new version…");
     pluginAttempted = true;
     await execute(cli, [
       "plugin",
@@ -96,14 +103,17 @@ export async function updatePackage(options, execute = run) {
     );
     await state(
       "complete",
-      `v${version} 업데이트 완료. 새 대화에서 갱신된 스킬을 사용할 수 있습니다.`,
+      "jobComplete",
+      `Updated to v${version}. New conversations use the updated skills.`,
+      { version },
     );
   } catch (error) {
     if (pluginAttempted && error.uncertain) {
       uncertain = true;
       await state(
         "interrupted",
-        "플러그인 교체 결과를 확인하지 못했습니다. 자동 재시도하지 않으며 백업과 설치 상태 확인이 필요합니다.",
+        "jobUncertain",
+        "Couldn't confirm the plugin switch. Nothing is retried automatically; check the backup and installation.",
       );
       return;
     }
@@ -120,15 +130,18 @@ export async function updatePackage(options, execute = run) {
           "--json",
         ]);
       await rollback(changes);
+      const detail = String(error.message);
       await state(
         "failed",
-        "업데이트 실패. 백업과 설치 상태를 확인해주세요. " +
-          String(error.message),
+        "jobFailed",
+        `Update failed. Check the backup and installation. ${detail}`,
+        { detail },
       );
     } catch {
       await state(
         "failed",
-        "업데이트가 중단되어 자동 복구하지 못했습니다. 백업 경로를 확인해주세요.",
+        "jobUnrecovered",
+        "The update stopped and couldn't roll back automatically. Check the backup folder.",
       );
     }
   } finally {
