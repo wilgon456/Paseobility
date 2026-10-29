@@ -46,7 +46,7 @@ function matches(skill: (typeof WORKFLOWS)[number], query: string) {
 }
 export function SkillPicker(props: PluginButtonContentProps) {
   const { theme, host, close } = props;
-  const { t, locale } = useText();
+  const { t, locale, server } = useText();
   const agentId = props.context === "agent" ? props.agentId : "";
   const provider = useAgent(agentId, (agent) => agent.provider);
   const marker = markerId(host.id, agentId);
@@ -107,7 +107,7 @@ export function SkillPicker(props: PluginButtonContentProps) {
       attachSkill(marker, editor, id);
       close();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("addFailed"));
+      setError(e instanceof Error ? server(e.message) : t("addFailed"));
     }
   };
   const searchInputStyle: TextStyle = {

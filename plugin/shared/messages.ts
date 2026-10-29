@@ -1,5 +1,6 @@
 // UI text in English and Korean. Paseo 0.13 picks by app language through
-// PluginText/useTranslation; Paseo 0.12 has no translation runtime and uses Korean.
+// PluginText/useTranslation; Paseo 0.12 has no translation runtime, so the
+// device language decides (Korean for ko, English otherwise).
 // "{name}" placeholders are filled by the caller with fill(); they are not i18n syntax.
 export const MESSAGES = {
   en: {
@@ -48,6 +49,33 @@ export const MESSAGES = {
     editorUnavailable:
       "This window's composer can't be edited directly. Use + → Paseobility instead.",
     addFailed: "Couldn't add the skill.",
+    // Server and update-worker text. The server sends the English text; the
+    // screen swaps it for the app language with localizeServerText().
+    errHostUnreachable: "Couldn't confirm Paseo on the selected computer.",
+    errLatestFetch: "Couldn't check the latest version on GitHub.",
+    errReleaseInfo: "Couldn't verify the official release.",
+    errReleaseCommit: "Couldn't verify the release commit.",
+    errVersionCheck: "Version check failed.",
+    errReleaseChanged: "The latest release changed. Refresh the versions.",
+    errNotNewer: "Updates never go to the current or an older version.",
+    errPluginPath: "Couldn't find the installed plugin's folder.",
+    errUpdateLocked:
+      "An update is running or an earlier one was interrupted. Check its status.",
+    errEditorMissing:
+      "Can't find the composer. Reopen the conversation or use + → Paseobility.",
+    errEditorUnsupported: "This Paseo version can't add text to the composer.",
+    jobStarting: "Starting the update.",
+    jobStartFailed: "Couldn't start the update.",
+    jobStalled: "The update stopped. Check the backup before recovering.",
+    jobDownloading: "Downloading and verifying v{version}…",
+    jobInstalling: "Backing up the current skills and installing the new version…",
+    jobReconnecting: "Switching the plugin to the new version…",
+    jobComplete: "Updated to v{version}. New conversations use the updated skills.",
+    jobUncertain:
+      "Couldn't confirm the plugin switch. Nothing is retried automatically; check the backup and installation.",
+    jobFailed: "Update failed. Check the backup and installation. {detail}",
+    jobUnrecovered:
+      "The update stopped and couldn't roll back automatically. Check the backup folder.",
   },
   ko: {
     attachmentTitle: "Paseobility",
@@ -95,6 +123,31 @@ export const MESSAGES = {
     editorUnavailable:
       "이 창의 입력창을 직접 편집할 수 없습니다. + → Paseobility를 이용해주세요.",
     addFailed: "스킬을 추가하지 못했습니다.",
+    errHostUnreachable: "선택한 컴퓨터의 Paseo 연결을 확인하지 못했습니다.",
+    errLatestFetch: "GitHub에서 최신 버전을 확인하지 못했습니다.",
+    errReleaseInfo: "정식 릴리스 정보를 확인하지 못했습니다.",
+    errReleaseCommit: "릴리스 커밋을 확인하지 못했습니다.",
+    errVersionCheck: "버전을 확인하지 못했습니다.",
+    errReleaseChanged: "최신 릴리스가 바뀌었습니다. 버전을 새로고침해주세요.",
+    errNotNewer: "현재 버전 이하로는 업데이트하지 않습니다.",
+    errPluginPath: "설치된 플러그인 폴더를 찾지 못했습니다.",
+    errUpdateLocked:
+      "업데이트가 진행 중이거나 이전 업데이트가 중단되었습니다. 상태를 확인해주세요.",
+    errEditorMissing:
+      "입력창을 찾지 못했습니다. 대화를 다시 열거나 + → Paseobility를 이용해주세요.",
+    errEditorUnsupported: "이 Paseo 버전에서는 입력창에 내용을 추가할 수 없습니다.",
+    jobStarting: "업데이트를 시작하고 있습니다.",
+    jobStartFailed: "업데이트를 시작하지 못했습니다.",
+    jobStalled: "업데이트가 중단되었습니다. 복구하기 전에 백업을 확인해주세요.",
+    jobDownloading: "v{version}을 내려받아 검증하고 있습니다…",
+    jobInstalling: "기존 스킬을 백업하고 새 버전을 설치하고 있습니다…",
+    jobReconnecting: "플러그인을 새 버전으로 바꾸고 있습니다…",
+    jobComplete: "v{version}으로 업데이트했습니다. 새 대화부터 갱신된 스킬을 사용합니다.",
+    jobUncertain:
+      "플러그인 교체 결과를 확인하지 못했습니다. 자동으로 다시 시도하지 않으니 백업과 설치 상태를 확인해주세요.",
+    jobFailed: "업데이트하지 못했습니다. 백업과 설치 상태를 확인해주세요. {detail}",
+    jobUnrecovered:
+      "업데이트가 중단되었고 자동으로 되돌리지 못했습니다. 백업 폴더를 확인해주세요.",
   },
 } as const;
 
@@ -113,4 +166,35 @@ export function fill(
   return text.replace(/\{(\w+)\}/g, (whole, name: string) =>
     name in values ? String(values[name]) : whole,
   );
+}
+
+/** Keys whose English text the server sends verbatim (no placeholders). */
+const SERVER_KEYS = (Object.keys(MESSAGES.en) as MessageKey[]).filter(
+  (key) => /^(err|job)/.test(key) && !/\{\w+\}/.test(MESSAGES.en[key]),
+);
+
+/**
+ * Server errors arrive as English text, possibly wrapped by the RPC layer.
+ * Swap each known sentence for the chosen language and keep the rest as is.
+ */
+export function localizeServerText(text: string, locale: Locale): string {
+  if (locale === "en") return text;
+  let out = text;
+  for (const key of SERVER_KEYS)
+    out = out.split(MESSAGES.en[key]).join(MESSAGES[locale][key]);
+  return out;
+}
+
+export interface JobState {
+  message: string;
+  code?: string;
+  values?: Readonly<Record<string, string | number>>;
+}
+
+/** Update progress: the worker's message code when known, else its text. */
+export function jobText(job: JobState, locale: Locale): string {
+  const code = job.code;
+  if (code && code in MESSAGES.en)
+    return fill(MESSAGES[locale][code as MessageKey], job.values ?? {});
+  return localizeServerText(job.message, locale);
 }

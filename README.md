@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.10.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all eleven skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.11.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all twelve skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -57,6 +57,17 @@ rewritten. The optional Node helper creates/resumes records, not autonomous jobs
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
 limits. Existing version and platform reports retain their original scope.
+
+## 2026-10-29 · Plugin screens in English for everyone outside Korea (v2.12.11)
+
+The Paseobility plugin is listed worldwide on paseo.sh, but parts of it still
+spoke only Korean. Update progress, update errors and composer errors now come
+in English, or in Korean when the app language is Korean. On Paseo 0.12, which
+has no app language for plugins, the device language decides instead of
+always Korean. The paseo.sh listing images were recaptured from the English app
+with all twelve skills, a few English hints were shortened so they no longer
+cut off in the picker, and an old screenshot that showed a personal computer
+name was removed from the package.
 
 ## 2026-10-28 · Research skill, design comparisons and Windows/macOS fixes (v2.12.10)
 

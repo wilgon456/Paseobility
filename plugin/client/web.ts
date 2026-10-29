@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { MESSAGES } from "../shared/messages";
 import { appendSkill } from "../shared/workflows";
 // Paseo 0.12 web adapter. No React internals; use the browser's textarea input event.
 // The marker belongs to this exact host/agent pill, including in split panes.
@@ -60,8 +61,8 @@ export function resolveEditor(marker: string): Editor | null {
   }
   return null;
 }
-export const EDITOR_UNAVAILABLE =
-  "입력창을 확인할 수 없습니다. 대화를 다시 열거나 + 메뉴의 Paseobility 스킬을 이용해주세요.";
+// English source text; the picker shows it in the app language.
+export const EDITOR_UNAVAILABLE = MESSAGES.en.errEditorMissing;
 export function attachSkill(
   marker: string,
   expected: Editor | null,
@@ -76,7 +77,7 @@ export function attachSkill(
     "value",
   )?.set;
   if (!setter)
-    throw new Error("이 Paseo 버전에서는 입력 연결을 사용할 수 없습니다.");
+    throw new Error(MESSAGES.en.errEditorUnsupported);
   setter.call(expected, next);
   expected.dispatchEvent(new window.Event("input", { bubbles: true }));
   expected.focus();

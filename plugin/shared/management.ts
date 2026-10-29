@@ -5,7 +5,7 @@ import {
 } from "@getpaseo/plugin";
 import type { PluginText } from "@getpaseo/plugin";
 import { z } from "zod";
-export const PLUGIN_VERSION = "2.12.10";
+export const PLUGIN_VERSION = "2.12.11";
 const release = z.object({
   version: z.string(),
   sha: z.string(),
@@ -14,6 +14,9 @@ const release = z.object({
 const job = z.object({
   phase: z.string(),
   message: z.string(),
+  // Message code from shared/messages.ts; older workers send only message.
+  code: z.string().optional(),
+  values: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   backup: z.string().optional(),
 });
 export const versionRpc = defineRpc({

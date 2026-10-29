@@ -62,3 +62,26 @@ that was reverted).
 
 Not verified: the native mobile app, the Electron desktop shell itself (the
 same web bundle runs inside it), and a real update install.
+
+## English listing media (v2.12.11)
+
+Goal: the plugin is listed worldwide on paseo.sh, so its listing images and
+every message it shows must read in English unless the app is in Korean.
+
+- Server errors and update progress were Korean-only strings. The server now
+  sends English text; the update worker also writes a message code and values,
+  and the screen shows the code in the app language. Jobs written by older
+  workers have no code and are shown as written. Tests keep the worker's English
+  equal to the shared table and reject Hangul in the server files.
+- Paseo 0.12 has no app language for plugins and used to fall back to Korean;
+  it now follows the device language (`navigator.language`, then `Intl`).
+- Captured on VAXPORT (Windows 11) from the installed Paseo 0.13.2 web bundle,
+  served locally, connected to a throwaway daemon on 127.0.0.1:6899 with its
+  own home. The user's daemon, app and settings were not touched. The picker was
+  opened above a real one-turn conversation; five English hints that
+  were cut off with an ellipsis were shortened and checked again on screen.
+- `screen.png` (Korean, with a personal host name) was removed from the package.
+
+Not verified: the native mobile app, and the 0.12 device-language fallback in a
+running 0.12 app.
+
