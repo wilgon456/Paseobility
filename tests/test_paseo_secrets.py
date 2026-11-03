@@ -176,4 +176,68 @@ class StoreCliTests(unittest.TestCase):
             self.assertEqual(json.loads(out.getvalue())['error'], 'secret-store-failed')
 
 
+class ReadCliTests(unittest.TestCase):
+    class Vault:
+        built = []
+
+        def __init__(self, config=None, name=None, kind='discord-bot'):
+            self.config, self.name, self.kind = config, name, kind
+            ReadCliTests.Vault.built.append(self)
+
+        def read(self):
+            return {'token': 'stored-token-value'}
+
+    class TTY(io.StringIO):
+        def isatty(self):
+            return True
+
+    def setUp(self):
+        ReadCliTests.Vault.built = []
+
+    def test_read_prints_the_validated_secret_json_to_a_pipe_and_nothing_else(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = store.main(['read'], None, self.Vault)
+        self.assertEqual(rc, 0)
+        self.assertEqual(json.loads(out.getvalue()), {'token': 'stored-token-value'})
+        self.assertEqual(out.getvalue().strip(), '{"token":"stored-token-value"}')
+        self.assertEqual(len(ReadCliTests.Vault.built), 1)
+
+    def test_read_honours_kind_name_and_config(self):
+        out = io.StringIO()
+        rc = store.main(['read', '--kind', 'discord-bot', '--name', 'custom-item', '--broker-config', '/public.toml'],
+                        None, self.Vault, out)
+        self.assertEqual(rc, 0)
+        vault = ReadCliTests.Vault.built[0]
+        self.assertEqual((vault.kind, vault.name, vault.config), ('discord-bot', 'custom-item', '/public.toml'))
+
+    def test_read_refuses_a_terminal_before_touching_the_vault(self):
+        out = self.TTY()
+        rc = store.main(['read'], None, self.Vault, out)
+        self.assertEqual(rc, 1)
+        self.assertEqual(json.loads(out.getvalue())['error'], 'secret-store-failed')
+        self.assertEqual(ReadCliTests.Vault.built, [])
+
+    def test_read_errors_are_generic_and_never_echo_values(self):
+        marker = 'sentinel-secret-value'
+
+        class Broken:
+            def __init__(self, *_, **__):
+                raise RuntimeError(marker)
+
+        class Empty:
+            def __init__(self, *_, **__):
+                pass
+
+            def read(self):
+                return {'token': marker + ' with spaces'}
+
+        for factory, expected in [(Broken, 'secret-store-failed'), (Empty, 'secret-store-failed')]:
+            out = io.StringIO()
+            rc = store.main(['read'], None, factory, out)
+            self.assertEqual(rc, 1)
+            self.assertNotIn(marker, out.getvalue())
+            self.assertEqual(json.loads(out.getvalue())['error'], expected)
+
+
 if __name__ == '__main__': unittest.main()

@@ -15,6 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/paseo-bot'))
 import gui_api as gui
+from gui_state import Conversations
 from paseo_bot import Bot, write_json
 
 
@@ -82,6 +83,28 @@ class GuiTests(unittest.TestCase):
         self.bot.save(dict(self.bot.submit(dict(self.task, id='fallback-1')), model='go'))
         rows = {row['id']: row['model'] for row in gui.handle(self.home, dict(action='sync'))['tasks']}
         self.assertEqual(rows, {'hard-1': 'claude', 'legacy-1': 'sol', 'fallback-1': 'go'})
+
+    def test_snapshot_syncs_a_conversation_older_than_the_newest_fifty(self):
+        conversations = Conversations(self.home)
+        conversations.migrate()
+        now = time.time()
+        try:
+            for index in range(55):
+                conversations.db.execute('INSERT INTO gui_conversations VALUES (?,?,NULL,?,?)',
+                                          (f'conv-{index}', f'대화 {index}', 'idle', now + index))
+            conversations.db.execute('INSERT INTO gui_messages VALUES (?,?,?,?,?,?)',
+                                     ('old-message', 'conv-0', 'assistant', '오래된 답변', now, '{}'))
+            conversations.db.commit()
+        finally:
+            conversations.db.close()
+        out = gui.handle(self.home, dict(action='sync', conversationId='conv-0'))
+        self.assertTrue(out['configured'])
+        self.assertEqual(len(out['conversations']), 50)
+        self.assertNotIn('conv-0', [item['id'] for item in out['conversations']])
+        self.assertEqual([message['id'] for message in out['messages']], ['old-message'])
+        for unknown in ['conv-unknown', 5]:
+            with self.assertRaises(ValueError):
+                gui.handle(self.home, dict(action='sync', conversationId=unknown))
 
     def test_missing_db_is_not_created(self):
         absent = self.home / 'missing'

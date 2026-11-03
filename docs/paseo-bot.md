@@ -9,13 +9,14 @@ authenticated Tailscale SSH without an HTTP listener.
 
 ## Architecture and contract
 
-Producers (CLI, GUI, Discord gateway — planned) → trusted CLI intake over
+Producers (CLI, GUI, [Discord gateway](paseo-bot-discord.md)) → trusted CLI intake over
 Tailscale SSH → SQLite inbox → resident Python loop → destination Paseo CLI
 `run` → JSON file outbox → producers read/poll results.
 No HTTP listener or Slack client is needed. File intake avoids adding an
 unauthenticated network surface. SSH authentication and the private OS account
 are the admission boundary: this is a trusted developer assistant, not a sandbox
-for arbitrary untrusted users or repositories.
+for arbitrary untrusted users or repositories. Discord is an optional chat front
+end for the same manager/plan flow: see [the Discord gateway](paseo-bot-discord.md).
 
 The resident runtime is a deterministic five-second ticker. Models run only for
 admitted tasks, in fresh Paseo agents. A visible manager agent can use
@@ -304,7 +305,8 @@ keeps the supervisor alive:
 | Linux | systemd user service `paseo-bot-supervisor` (`Restart=always`; `loginctl enable-linger` to run without a session) | no |
 | Windows | `PaseoBotGuardian` service (recommended) or a logon task | service: once |
 
-**Supervisor.** It starts `paseo_bot.py serve` and `gui_serve.py serve` in
+**Supervisor.** It starts `paseo_bot.py serve`, `gui_serve.py serve` and
+`discord_serve.py serve` in
 their own process session (macOS/Linux) or as `python.exe` children with
 `CREATE_NO_WINDOW` (Windows, so neither they nor the node/git/Paseo CLI
 processes they spawn open a window, even with Windows Terminal as the default
@@ -316,12 +318,13 @@ service is restarted when:
 - it hangs: once it has written a heartbeat since its start, a heartbeat older
   than `--stale-seconds` (default 900, longer than any single bot RPC) restarts
   it. The dispatcher's heartbeat is `health.json`, the GUI service's is
-  `gui_meta.heartbeat`;
+  `gui_meta.heartbeat`, the [Discord service](paseo-bot-discord.md)'s is
+  `discord-health.json`;
 - `supervise restart` asks for it after a code update, at an idle boundary.
   This does not count as a failure.
 
-A restart first writes `<state>/<service>.stop` with the service's PID; both
-services finish the current step and exit. Only a service that ignores it for
+A restart first writes `<state>/<service>.stop` with the service's PID; every
+service finishes the current step and exits. Only a service that ignores it for
 30 seconds is terminated. Five consecutive fast failures, or any hang, raise an
 alert: a desktop notification (Notification Center on macOS, `notify-send` on
 Linux, a toast on Windows), `alert` in `supervisor.json`, and `healthy: false`
@@ -408,7 +411,7 @@ they do not certify every project's gates, deployment, or remote coding provider
   Independent gate `python3 verify.py` passed; only `answer.txt` changed 41→42.
   Controller rechecked the actual gate, HEAD, unchanged source/test and matching
   reviewed/final SHA256. Earlier blocked development receipts remain retained.
-- Discord gateway transport wiring (planned), every project's gates, and remote
+- The Discord gateway's live end-to-end evidence ([setup](paseo-bot-discord.md)), every project's gates, and remote
   coding E2E remain separate rollout work; see the private report/checklist.
 
 ## Windows PowerShell and owner handoff

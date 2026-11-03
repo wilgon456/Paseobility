@@ -59,6 +59,9 @@ jobs:
       - name: Paseo bot bridge contracts
         run: node --test tools/paseo-bot/bridge.test.mjs
 
+      - name: Paseo bot Discord core contracts
+        run: node --test tools/paseo-bot/discord_core.test.mjs
+
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py
 
@@ -182,6 +185,9 @@ jobs:
 
       - name: Paseo bot bridge contracts
         run: node --test tools/paseo-bot/bridge.test.mjs
+
+      - name: Paseo bot Discord core contracts
+        run: node --test tools/paseo-bot/discord_core.test.mjs
 
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py

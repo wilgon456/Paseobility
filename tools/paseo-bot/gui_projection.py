@@ -94,9 +94,15 @@ def snapshot(db, home, request, writable, read_json):
     if 'gui_conversations' in tables:
         out['configured'] = True
         out['conversations'] = [dict(zip(['id', 'title', 'agentId', 'status', 'createdAt'], r)) for r in db.execute('SELECT * FROM gui_conversations ORDER BY created DESC LIMIT 50')]
-        selected = request.get('conversationId') or (out['conversations'][0]['id'] if out['conversations'] else '')
-        if selected and selected not in [c['id'] for c in out['conversations']]:
-            raise ValueError('Conversation scope')
+        requested = request.get('conversationId')
+        if requested:
+            # The list above is the newest 50, but any existing conversation may be
+            # synced; only an unknown id is out of scope.
+            if not isinstance(requested, str) or not db.execute('SELECT 1 FROM gui_conversations WHERE id=?', (requested,)).fetchone():
+                raise ValueError('Conversation scope')
+            selected = requested
+        else:
+            selected = out['conversations'][0]['id'] if out['conversations'] else ''
         before = request.get('before', 1e20)
         if type(before) not in [int, float] or before < 0:
             raise ValueError('History cursor')
@@ -105,7 +111,8 @@ def snapshot(db, home, request, writable, read_json):
         out['plans'] = [dict(id=i, digest=d, state=s, **json.loads(b)) for i, b, d, s in db.execute('SELECT id,body,digest,state FROM gui_plans WHERE conversation=? ORDER BY created DESC LIMIT 10', (selected,))]
         job = db.execute("SELECT state FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid') ORDER BY created LIMIT 1", (selected,)).fetchone()
         out['deliveryState'] = job[0] if job else ''
-        status = next((c['status'] for c in out['conversations'] if c['id'] == selected), '')
+        row = db.execute('SELECT status FROM gui_conversations WHERE id=?', (selected,)).fetchone() if selected else None
+        status = row[0] if row else ''
         out['stuck'] = 'job-unknown' if out['deliveryState'] == 'unknown' else 'manager-missing' if status == 'missing' else ''
         meta = db.execute("SELECT value FROM gui_meta WHERE key='heartbeat'").fetchone()
         out['managerHealthy'] = bool(meta and time.time() - json.loads(meta[0]).get('lastTickAt', 0) < 120)

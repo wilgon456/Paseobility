@@ -1,0 +1,279 @@
+# Paseo 봇 × Discord 게이트웨이
+
+Paseo 봇을 Discord의 **owner 전용 채널 하나**에 연결하는 상주 서비스예요.
+채널의 최상위 메시지마다 쓰레드를 열고, 그 쓰레드를 GUI 관리자 대화 하나에
+묶어요. 관리자 답변, 계획 카드(접수/거절 버튼), 작업 단계 알림과 PR 링크가
+모두 그 쓰레드에 나타나요. 설계 배경은
+[Discord 통합 계획](paseo-bot-discord-plan.md)을 봐 주세요.
+
+구성은 세 부분이에요.
+
+```
+Discord  ──Gateway WebSocket + REST──  discord_gateway.mjs (Node 22+, 의존성 0)
+   ▲                                          │ HTTP 없음, stdin으로 토큰 1회
+   │                                          ▼
+   └── 쓰레드 · 버튼 · 슬래시 명령 ──  discord_serve.py (Python, supervisor 서비스)
+                                              │ 같은 기기의 로컬 호출
+                                              ▼
+                                     gui_api.py / gui_state.py (기존 관리자 대화)
+```
+
+브라우저나 인바운드 HTTP 수신기는 없어요. 게이트웨이가 Discord로 나가는
+WebSocket과 REST만 열고, Paseo 쪽으로는 `gui_api.py`를 자식 프로세스로
+실행해 요청을 전달해요.
+
+## 1. Discord 앱 준비
+
+1. Discord Developer Portal에서 봇을 만들고 **Bot** 탭에서 토큰을 확인해요.
+   토큰은 이 저장소나 설정 파일에 적지 않고 3절의 비밀 저장소에 넣어요.
+2. **Bot → Privileged Gateway Intents**에서 `MESSAGE CONTENT INTENT`를 켜요.
+   (Guilds와 Guild Messages는 기본 intent예요.)
+3. 봇을 서버에 초대할 때 아래 권한만 줘요.
+
+| 권한 | 비트 | 값 |
+|---|---|---|
+| View Channel | `1 << 10` | 1024 |
+| Send Messages | `1 << 11` | 2048 |
+| Read Message History | `1 << 16` | 65536 |
+| Create Public Threads | `1 << 35` | 34359738368 |
+| Send Messages in Threads | `1 << 38` | 274877906944 |
+
+합계 **309237713920**이에요. 관리자(Administrator) 권한은 필요 없고 주지
+마세요.
+
+권장 초대 URL 형태:
+
+```
+https://discord.com/oauth2/authorize?client_id=<APP_ID>&scope=bot&permissions=309237713920
+```
+
+intent 값은 `GUILDS(1) | GUILD_MESSAGES(512) | MESSAGE_CONTENT(32768)` =
+**33281**이고 게이트웨이가 고정으로 보내요.
+
+## 2. `discord.json`
+
+`<state>/discord.json`은 **소유자만 읽을 수 있는 파일(0600)** 이어야 해요.
+그보다 넓으면 서비스가 설정을 거부하고 자식을 시작하지 않아요.
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "guildId": "111111111111111111",
+  "channelId": "222222222222222222",
+  "ownerIds": ["333333333333333333"],
+  "python": "/home/me/.local/share/paseo-bot/sdk-venv/bin/python",
+  "secretName": "paseo-bot-discord-token",
+  "node": "node"
+}
+```
+
+| 필드 | 의미 |
+|---|---|
+| `version` | 항상 `1` |
+| `enabled` | `false`면 서비스는 계속 살아 있지만 아무 것도 시작하지 않아요 |
+| `guildId`, `channelId` | Discord snowflake(`^\d{16,22}$`) |
+| `ownerIds` | 명령과 메시지를 허용할 사용자 ID 목록. 비어 있으면 거부 |
+| `python` | **sdk-venv** 인터프리터. 비밀 저장소(`secret_store.py`)를 실행할 때만 써요 |
+| `secretName` | 선택. Bitwarden 항목 이름(기본 `paseo-bot-discord-token`) |
+| `node` | 선택. Node 실행 파일(기본 `node`) |
+
+`python`은 Paseo 봇의 주 인터프리터가 아니라 Bitwarden SDK가 설치된
+sdk-venv를 가리켜요. 게이트웨이가 `gui_api.py`를 부를 때는 서비스 자신의
+인터프리터(`PASEO_BOT_PYTHON`)를 써요.
+
+설정 파일에 모르는 필드가 있거나 ID 형식이 틀리면 **닫힌 상태(fail closed)** 로
+동작해요. 채널이나 서버가 바뀌면 파일을 고치고 게이트웨이 자식만 재시작하면
+돼요(서비스는 다음 tick에 새 설정을 읽어요).
+
+## 3. 토큰 저장
+
+토큰은 stdin으로만 들어가요. 셸 기록에 남기지 않으려면 비밀 파일에서
+파이프로 넘겨 주세요.
+
+```bash
+# 1회 준비: 소유자만 읽을 수 있는 임시 파일 (예: Bitwarden CLI로 내려받은 값)
+#    {"token":"<BOT TOKEN>"} 형식의 JSON 한 줄
+chmod 600 /secure/path/discord-token.json
+
+# 저장 (값은 argv·환경 변수·로그에 남지 않아요)
+python -X utf8 tools/paseo-bot/secret_store.py store --kind discord-bot < /secure/path/discord-token.json
+
+# 확인 (성공 여부만 출력하고 값은 절대 출력하지 않아요)
+python -X utf8 tools/paseo-bot/secret_store.py verify --kind discord-bot
+
+# 자식 프로세스용 읽기: stdout이 파이프일 때만 값 JSON을 출력해요
+python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
+```
+
+`read`는 stdout이 터미널이면 값을 출력하지 않고
+`{"ok":false,"error":"secret-store-failed"}`와 종료 코드 1을 돌려줘요.
+터미널 스크롤백이나 셸 기록으로 토큰이 새는 것을 막기 위해서예요.
+
+## 4. 서비스 동작
+
+`discord_serve.py --state <dir> serve`는 supervisor의 세 번째 서비스예요
+(`paseo_bot`, `gui_serve`, `discord_serve`). 하나의 상태 디렉터리에 하나만
+돌아요(`discord.lock`).
+
+- 설정이 없거나 `enabled`가 `false`면 **종료하지 않고** 유휴 상태로
+  하트비트만 계속 써요. supervisor는 서비스가 종료되면 실패로 보기 때문이에요.
+- 활성 상태면 sdk-venv의 `secret_store.py read`로 토큰을 읽고, stdout 파이프로만
+  받아요. 그 다음 `node discord_gateway.mjs --state <dir>`를 자식으로 띄우고
+  토큰을 **stdin에 JSON 한 줄로** 써서 닫아요. 토큰은 argv, 환경 변수, 파일,
+  로그 어디에도 남지 않아요.
+- `<state>/discord-health.json`에
+  `{version,pid,lastTickAt,enabled,gateway,childPid}`를 10초 이내 간격으로 써요.
+  `gateway` 값은 자식이 쓰는 `<state>/discord-gateway.json`에서 읽어요.
+- 자식이 종료되면 5초에서 시작해 최대 60초까지 지수 백오프로 다시 띄워요.
+  자식 하트비트가 120초보다 오래되면 종료시키고 재시작해요.
+- 300초 이상 건강하게 돌던 자식이 죽으면 백오프 횟수를 초기화해요.
+
+`discord_serve.py --state <dir> check`는 설정, sdk-venv 경로, Node 실행 파일,
+비밀 읽기 가능 여부를 확인하고 `{"ok":true|false,...}`만 출력해요. 값은 절대
+출력하지 않아요.
+
+게이트웨이 자식의 상태 파일:
+
+| 파일 | 내용 |
+|---|---|
+| `discord-state.json` | 쓰레드↔대화 매핑, 쓰레드별 마지막 활동 시각·폴링 시각·연속 실패 수·dormant 표시, 대화별 전달한 메시지 ID(각 500개), 카드로 보낸 계획 ID와 메시지 ID, 처리한 Discord 메시지/상호작용 ID(각 5000개, FIFO), RESUME용 세션 |
+| `discord-gateway.json` | 자식 하트비트 `{pid,lastTickAt,status,lastEventAt}` |
+| `discord-health.json` | 서비스 하트비트(위) |
+
+모두 임시 파일 + rename으로 원자적으로 쓰고 0600으로 만들어요.
+
+## 5. 대화 흐름
+
+- **최상위 메시지**: 허용된 채널에 owner가 쓴 최상위 메시지마다 그 메시지에서
+  쓰레드를 열어요(이름은 앞 80자). `gui_api.py start`에
+  `requestId = messageId = "d-<메시지 ID>"`로 전달하고, 쓰레드→대화 매핑을
+  저장해요.
+- **쓰레드 메시지**: 이 서비스가 만든 쓰레드에서만 `gui_api.py send`로 같은
+  대화에 이어 붙여요. 매핑에 없는 쓰레드는 조용히 무시해요.
+- **바쁜 관리자**: 관리자가 답하는 중에 온 메시지는 그냥 대기열에 쌓여요.
+  중단(interrupt)은 없어요.
+- **답변과 알림**: 활동 등급에 따라 대화별 `gui_api.py sync`를 호출해 아직
+  전달하지 않은 `assistant` 답변과 `system` 단계 알림을 쓰레드에 올려요.
+  `system`은 `• ` 접두사를 붙이고, `payload.prUrl`이 있으면 링크를 덧붙여요.
+  2000자를 넘으면 줄 경계에서 나눠요. 사용자가 쓴 메시지는 되돌려 게시하지
+  않아요.
+- **첨부**: `text/*`이거나 `.md .txt .json .log .csv .py .ts .js`이고
+  100 KiB 이하일 때만 `cdn.discordapp.com` 또는 `media.discordapp.net`에서
+  받아 `\n\n[첨부 <파일명>]\n<내용>`으로 붙여요. 전체가 12000자를 넘거나
+  조건에 맞지 않으면 `\n[첨부 생략: <파일명>, <크기>]`만 남겨요.
+
+### 5.1 활동 등급과 폴링 예산
+
+쓰레드마다 마지막 활동 시각(`lastActivityAt`)을 `discord-state.json`에
+저장해요. 수락한 메시지, 전달한 답변, 카드 게시·수정이 모두 활동이에요.
+
+| 등급 | 조건 | `sync` 주기 |
+|---|---|---|
+| hot | 대기 중인 계획 카드, `deliveryState` 존재, 이 대화에 끝나지 않은 작업(`passed, failed, blocked, unknown, closed`가 아님), 또는 30분 이내 활동 | 3초 |
+| warm | 7일 이내 활동 | 60초 |
+| dormant | 그 밖 | 호출하지 않음 |
+
+- 3초 tick마다 최대 **8번**만 `sync`를 호출해요. hot을 먼저, warm은 마지막
+  호출이 오래된 순으로 채우고 남은 대화는 다음 tick으로 미뤄요.
+- 쓰레드에 새 메시지가 오면 dormant였다면 다시 hot이 돼요.
+- `sync`가 3번 연속 실패하면 그 쓰레드를 dormant로 바꾸고 로그를 한 번 남긴
+  뒤 아래 안내를 한 번 올려요.
+  `이 대화의 상태를 가져오지 못해 자동 갱신을 멈췄어요. 새 메시지를 보내면 다시 시도해요.`
+- `sync`에는 `scope=<conversationId>`를 함께 보내 `tasks`를 그 대화 작업으로
+  한정해요.
+
+## 6. 슬래시 명령
+
+길드 명령으로 시작할 때 등록해요(같은 내용을 다시 `PUT`하므로 멱등).
+
+| 명령 | 동작 |
+|---|---|
+| `/task text:<필수> [project] [model] [effort] [workflow]` | 채널에 시작 메시지를 남기고 그 메시지에서 쓰레드를 열어 계획을 요청해요. `project`는 활성 프로젝트 자동완성, `model`은 `auto/sol/claude/go`, `effort`는 `auto/low/medium/high`, `workflow`는 `daily/verified` |
+| `/status` | 관리자 상태(건강, 작업 접수 가능 여부, 대기열, 진행 중 작업 수)를 **본인에게만** 보여 줘요 |
+| `/resolve` | 추적 중인 쓰레드 안에서만 동작해요. 그 대화의 확인 대기(`needs-review`)를 풀고 쓰레드를 다시 hot으로 만들어요. 확인 대기 중에 버려진 메시지는 다시 보내지 않아요 |
+
+`/task`의 `project`가 `auto`가 아니면 시작 메시지와 쓰레드를 만들기 **전에**
+활성 프로젝트 캐시와 대조해요. 캐시가 비었거나 60초보다 오래됐으면 그 자리에서
+새로 읽어요(상호작용은 이미 defer된 상태). 없거나 비활성 프로젝트면
+`프로젝트를 찾지 못했어요: <id>. 비슷한 프로젝트: <접두사/부분 일치 최대 5개>`
+만 답하고 아무 것도 만들지 않아요.
+
+일반 메시지의 기본 선택은
+`{project:"auto", model:"auto", effort:"auto", workflow:"daily"}`이고 실제
+강제는 `gui_state.py`가 해요.
+
+## 7. 계획 카드와 버튼
+
+관리자가 계획을 제안하면(`state: pending`) 쓰레드에 요약 카드를 올려요.
+프로젝트, 기기(있으면), 모델 별칭, 워크플로, `modelReason`을 보여 주고 버튼
+두 개를 붙여요.
+
+각 작업 아래에는 실행할 요청 미리보기(`요청: ` + 앞 300자, 줄바꿈은 공백으로
+접음, 잘리면 `…`)와 선행 작업 순번(`선행: 1, 2`, 1부터 시작)을 붙여요. 카드
+전체가 2000자를 넘으면 미리보기를 비례해서 줄이고(작업마다 최소 80자) 끝에
+`(일부 생략)`을 붙여요.
+
+| 버튼 | `custom_id` | 스타일 | 동작 |
+|---|---|---|---|
+| 접수 | `pb:approve:<planId>` | SUCCESS(3) | 최신 계획의 `digest`로 `gui_api.py approve` |
+| 거절 | `pb:reject:<planId>` | DANGER(4) | `gui_api.py reject` |
+
+- 버튼은 3초 안에 type 6(DEFERRED_UPDATE_MESSAGE)으로 확인 응답하고, 실제
+  처리는 그 뒤에 해요.
+- 계획이 `pending`을 벗어나면(approved/cancelled/superseded) 카드에서 버튼을
+  없애고 결과 문구로 바꿔요.
+- 버튼을 누른 사람이 owner가 아니거나, 다른 길드/채널/쓰레드면 아무 것도
+  하지 않고 "권한이 없어요"를 본인에게만 보여 줘요.
+
+## 8. 보안 모델
+
+- **입장 경계**: `guildId`, `channelId`, `ownerIds` allowlist, 그리고 비밀
+  저장소의 봇 토큰이에요. 설정이 하나라도 틀리면 아무 것도 받지 않아요.
+- **소유자만**: 메시지와 상호작용 모두 owner ID, 봇 아님, 웹훅 아님, 시스템
+  메시지 아님을 확인해요. 이 서비스가 만든 쓰레드가 아니면 무시해요.
+- **수신기 없음**: 인바운드 HTTP 리스너가 없어요. Discord WebSocket과 REST는
+  모두 **나가는** 연결이고, Paseo 쪽은 로컬 `gui_api.py` 호출이에요. 게이트웨이가
+  받아들일 수 있는 동작은 `start/send/approve/reject/status/sync`로 제한돼요.
+- **멘션 금지**: 모든 게시와 수정에 `allowed_mentions: {parse: []}`를 붙여요.
+- **멱등성**: 처리한 Discord 메시지/상호작용 ID를 저장하고, 작업과 대화 ID는
+  Discord 메시지 ID에서 만들어요(`d-<id>`). 재시작해도 같은 요청을 다시
+  보내거나 다시 게시하지 않아요. `gui_api.py send`도 같은
+  `(대화, 메시지 ID, 내용, 선택)`을 중복으로 인정해요.
+- **재시도 금지**: 전송에 실패한 요청은 `needs-review`로 표시하고 그 쓰레드에
+  짧은 안내를 한 번만 남겨요. 성공 여부가 불확실한 요청을 맹목적으로 다시
+  보내지 않아요.
+- **확인 대기 표시**: 확인 대기 중인 대화의 쓰레드에 메시지가 오면 버리되,
+  hold마다 한 번만 `이 대화는 확인이 필요해서 멈춰 있어요. /resolve 로 다시 열거나 채널에 새 메시지로 시작해 주세요.`
+  를 답해요. `/resolve`는 그 hold와 안내 플래그를 지우고 쓰레드를 다시 hot으로
+  만들 뿐, 버려진 메시지를 다시 보내지는 않아요.
+- **비밀**: 토큰은 자식의 stdin으로 한 번만 전달하고, 로그에는 토큰·인증
+  헤더·200자를 넘는 메시지 본문을 남기지 않아요.
+
+## 9. 문제 해결
+
+| 증상 | 확인 |
+|---|---|
+| 자식이 바로 종료 | `discord_serve.err.log`의 `config-invalid`, `token-invalid`, `state-invalid` |
+| `gateway: "error"` | 설정 오류, 비밀 읽기 실패, 또는 자식 종료 직후 |
+| 답변이 안 올라옴 | `PASEO_BOT_PYTHON`이 설정됐는지, `gui_api.py sync`가 성공하는지 |
+| 카드가 안 생김 | `plans`의 `state`가 `pending`인지, 계획 ID가 안전한 형식인지 |
+| 쓰레드가 조용함 | `discord-state.json`의 `review`에 대화가 들어갔는지 확인하고, 그 쓰레드에서 `/resolve`를 써 보세요. `dormant: true`면 새 메시지를 보내면 다시 시도해요 |
+
+**치명적 close code**: `4004`(인증 실패), `4010`(잘못된 shard),
+`4011`(sharding 필요), `4012`(잘못된 API 버전), `4013`(잘못된 intent),
+`4014`(허용되지 않은 intent)는 다시 연결해도 해결되지 않아요. 게이트웨이는
+이 코드에서 재시도를 멈추고 하트비트를 `error`로 쓴 뒤 스스로 종료해요
+(종료 코드 3). 토큰, intent, shard 설정을 고친 뒤 서비스를 재시작해 주세요.
+그 밖의 close code는 백오프로 다시 연결하고, `session_id`/`seq`가 있으면
+RESUME을 먼저 시도해요.
+
+기타 주의:
+
+- `429`는 `retry_after`/`X-RateLimit-Reset-After`/`Retry-After`를 읽어
+  기다리고, 전역 제한은 모든 요청에 적용해요.
+- 좀비 연결(HEARTBEAT_ACK 없음)은 스스로 닫고 재연결해요.
+- `discord.json`의 권한이 넓으면(예: 0644) 서비스가 설정을 거부해요.
+  `chmod 600`으로 고쳐 주세요.
+- 서비스는 Paseo 데몬을 재시작하지 않아요. 코드를 바꾼 뒤에는 supervisor의
+  일반 재시작 절차를 써 주세요.

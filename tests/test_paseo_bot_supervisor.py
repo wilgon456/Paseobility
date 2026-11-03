@@ -45,6 +45,9 @@ class BackoffTests(unittest.TestCase):
 
 
 class LivenessTests(unittest.TestCase):
+    def test_every_service_including_discord_is_supervised(self):
+        self.assertEqual(supervisor.SERVICES, ('paseo_bot', 'gui_serve', 'discord_serve'))
+
     def test_hung_only_after_a_heartbeat_since_start(self):
         limit = supervisor.STALE_SECONDS
         self.assertFalse(supervisor.hung(10_000, 100, None))            # never ticked: unknown, not hung
@@ -65,6 +68,16 @@ class LivenessTests(unittest.TestCase):
             db.execute("INSERT INTO gui_meta VALUES ('heartbeat', ?)", (json.dumps({'lastTickAt': 77.5}),))
             db.commit(); db.close()
             self.assertEqual(supervisor.heartbeat(state, 'gui_serve', 1), 77.5)
+
+    def test_discord_heartbeat_matches_the_service_pid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            (state / 'discord-health.json').write_text(json.dumps(
+                {'version': 1, 'pid': 7, 'lastTickAt': 99.0, 'enabled': True, 'gateway': 'connected', 'childPid': 8}))
+            self.assertEqual(supervisor.heartbeat(state, 'discord_serve', 7), 99.0)
+            self.assertIsNone(supervisor.heartbeat(state, 'discord_serve', 8))
+            self.assertIsNone(supervisor.heartbeat(state, 'discord_serve', 9))
+            self.assertIsNone(supervisor.heartbeat(state, 'discord_serve', None))
 
     def test_services_obey_their_own_stop_request_only(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/paseo-bot'))
