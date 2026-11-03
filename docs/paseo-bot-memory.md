@@ -50,14 +50,23 @@ store is the private file `<state>/memory.sqlite3`.
 - Only **important** items need owner approval (Discord buttons). Importance is decided by **deterministic rules in code**, never by the model alone.
 - Memory is data, never instructions: it is injected with a clear "verify before relying" wrapper, and nothing from untrusted sources (web pages, third-party text, tool output) becomes memory.
 
-Importance rules, verbatim from the implementation contract:
+Importance rules (2026-11-04, after live use):
 
-> an op is `important` if ANY: scope is `owner`; kind is `convention`; text matches deploy/release/publish/secret/token/credential/password/permission/approve/production/merge/force/delete/database keywords (Korean equivalents too: 배포, 출시, 비밀, 토큰, 인증, 권한, 운영, 병합, 삭제, 데이터베이스); it updates/retires an item whose evidence is `owner` or whose stored `importance` is already `important`; it would retire > 3 items in one job. Otherwise `routine`.
+> an op is `important` if ANY: scope is `owner`; kind is `convention`; it updates/retires an item whose evidence is `owner` or whose stored `importance` is already `important`; it would retire > 3 items in one job. Otherwise `routine`.
 
-The keyword rule is checked against the new text **and** the old text of an
-update, so an update can never quietly launder an important item into a routine
-one. Approving an important item sets `importance='important'` permanently; the
+There is deliberately **no keyword rule**. A first version also flagged any text
+mentioning deploy/release/production (배포·운영·인증 …); in Korean project facts
+those words appear in ordinary descriptions ("이 설정만으로 배포 반영을 확인할 수
+없다"), so the owner was asked to approve plain facts. Facts, commands and
+cautions are data: wrong ones are quarantined by outcomes and go stale. Only
+items that change how agents behave, or that touch what the owner confirmed,
+need a click. Approving an item sets `importance='important'` permanently; the
 stored column, not history, decides later updates. Importance never decays.
+
+The curator keeps only reusable project facts (commands, file locations,
+structure, configuration, recurring pitfalls), never the conclusion of one
+investigation or the answer to a one-off question, and proposes at most three
+operations per job (extra ones are ignored).
 
 Routine operations apply immediately (`active`/`retired`) and append history
 `{at, op, by:'curator', job, model}`. Important operations become `pending`
