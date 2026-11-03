@@ -80,7 +80,7 @@ class MemoryTestCase(unittest.TestCase):
         self.fake = FakeCuratorRpc()
         self.notes = []
         self.curator = memory.MemoryCurator(
-            self.store, dict(RUNTIME, curator=CURATOR), rpc=self.fake, db=self.bot.db,
+            self.store, dict(RUNTIME, curator=CURATOR, curateTasks=True), rpc=self.fake, db=self.bot.db,
             notify=lambda conversation, role, text, payload: self.notes.append(
                 {'conversation': conversation, 'role': role, 'text': text, 'payload': payload}),
             projects=['fixture'], clock=lambda: self.now[0])
@@ -542,10 +542,15 @@ class CuratorTests(MemoryTestCase):
         prompt, job_id = self.send_next()
         self.assertEqual(self.store.job(job_id)['kind'], 'conversation')
         self.complete(prompt, job_id, [
-            {'op': 'add', 'scope': 'owner', 'project': '', 'kind': 'preference', 'text': 'Owner likes short replies'}])
+            {'op': 'add', 'scope': 'owner', 'project': '', 'kind': 'preference', 'text': 'Owner likes short replies'},
+            {'op': 'add', 'scope': 'owner', 'project': '', 'kind': 'preference', 'text': '답변은 짧게 원한다',
+             'quote': 'owner message 2'}])
         owner = self.store.items(scope='owner')
-        self.assertEqual(len(owner), 1)
+        # Only the quoted one is kept, saved at once (no approval) with owner evidence.
+        self.assertEqual([item['text'] for item in owner], ['답변은 짧게 원한다'])
         self.assertEqual(owner[0]['evidence'], 'owner')
+        self.assertEqual(owner[0]['status'], 'active')
+        self.assertEqual(owner[0]['importance'], 'important')  # protected: AI cannot drop it without the owner's words
 
     def test_conversation_project_items_are_owner_evidence_only_when_restated(self):
         self.task('t1', conversation='conversation-1')
@@ -558,12 +563,16 @@ class CuratorTests(MemoryTestCase):
         self.assertEqual(self.store.job(job_id)['kind'], 'conversation')
         self.complete(prompt, job_id, [
             {'op': 'add', 'scope': 'project', 'project': 'fixture', 'kind': 'fact',
-             'text': 'The gate is python3 -m unittest'},
+             'text': 'The gate is python3 -m unittest', 'quote': 'we run python3 -m unittest for the gate'},
             {'op': 'add', 'scope': 'project', 'project': 'fixture', 'kind': 'fact',
-             'text': 'The build directory is ignored by git'}])
+             'text': 'The build directory is ignored by git'},
+            {'op': 'add', 'scope': 'project', 'project': 'fixture', 'kind': 'command',
+             'text': 'Run npm test', 'quote': 'keep the gate cheap'}])
         items = {item['text']: item for item in self.store.items(scope='project')}
         self.assertEqual(items['The gate is python3 -m unittest']['evidence'], 'owner')
-        self.assertEqual(items['The build directory is ignored by git']['evidence'], 'daily')
+        self.assertEqual(items['The gate is python3 -m unittest']['status'], 'active')
+        self.assertNotIn('The build directory is ignored by git', items)  # no owner quote
+        self.assertNotIn('Run npm test', items)  # dev commands are not remembered
 
     def test_curator_permission_requests_are_denied(self):
         self.task()
@@ -586,7 +595,7 @@ class CuratorTests(MemoryTestCase):
         self.assertEqual([call for call in self.fake.calls if call in ('permits', 'permit')], [])
 
     def test_absent_curator_config_disables_only_the_model_turn(self):
-        curator = memory.MemoryCurator(self.store, dict(RUNTIME), rpc=self.fake, db=self.bot.db,
+        curator = memory.MemoryCurator(self.store, dict(RUNTIME, curateTasks=True), rpc=self.fake, db=self.bot.db,
                                        projects=['fixture'], clock=lambda: self.now[0])
         self.task()
         with patch.object(memory, 'log_event') as logged:
@@ -597,13 +606,12 @@ class CuratorTests(MemoryTestCase):
         self.assertEqual(len(disabled), 1)
         self.assertEqual(self.store.job('task-t1')['state'], 'queued')
 
-    def test_conversation_trigger_needs_four_owner_messages_and_idle_time(self):
-        for index in range(3):
-            self.message(index)
+    def test_conversation_trigger_needs_two_owner_messages_and_idle_time(self):
+        self.message(0)
         self.curator.tick()
         self.assertEqual(self.store.db.execute(
             "SELECT count(*) FROM curation_jobs WHERE kind='conversation'").fetchone()[0], 0)
-        self.message(3)
+        self.message(1)
         self.curator.tick()
         self.assertEqual(self.store.db.execute(
             "SELECT count(*) FROM curation_jobs WHERE kind='conversation'").fetchone()[0], 1)
@@ -612,6 +620,7 @@ class CuratorTests(MemoryTestCase):
             "SELECT count(*) FROM curation_jobs WHERE kind='conversation'").fetchone()[0], 1)
         # A recent message keeps the conversation out of the idle trigger.
         self.message(4, text='new message', at=self.now[0])
+        self.message(5, text='another new message', at=self.now[0])
         self.store.db.execute("DELETE FROM curation_jobs")
         self.store.db.commit()
         self.curator.tick()
@@ -1184,5 +1193,6 @@ class CuratorScopeTests(unittest.TestCase):
     def test_curator_is_told_to_skip_one_off_conclusions_and_cap_three(self):
         import inspect, memory
         prompt = inspect.getsource(memory.MemoryCurator.role_prompt) + inspect.getsource(memory.MemoryCurator.envelope)
-        self.assertIn('Do NOT store conclusions of one investigation', prompt)
+        self.assertIn('Remember the OWNER, not the code', prompt)
+        self.assertIn('"quote"', prompt)
         self.assertIn('At most 3 ops', prompt)

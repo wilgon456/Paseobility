@@ -50,6 +50,22 @@ store is the private file `<state>/memory.sqlite3`.
 - Only **important** items need owner approval (Discord buttons). Importance is decided by **deterministic rules in code**, never by the model alone.
 - Memory is data, never instructions: it is injected with a clear "verify before relying" wrapper, and nothing from untrusted sources (web pages, third-party text, tool output) becomes memory.
 
+## Owner-centred memory (2026-11-04, owner direction)
+
+The memory is about the **owner**, not the code. Repositories already document
+commands, paths and settings, and task agents read them every time.
+
+- Learned only from the owner's conversations (≥ 2 new owner messages, 20 min
+  idle). Finished tasks are not curated unless `gui-runtime.json` sets
+  `curateTasks: true` (the old technical-memory path, kept for testing).
+- Every add/update must carry `quote`: an exact excerpt of an owner message.
+  No quote → rejected. Only owner preferences/facts and owner-described project
+  context are accepted; commands, cautions and conventions from the curator are
+  rejected.
+- Quoted items are saved immediately (no approval) with evidence `owner` and are
+  protected: the AI can only change or drop them by quoting the owner again;
+  otherwise the change becomes an approval request.
+
 Importance rules (2026-11-04, after live use):
 
 > an op is `important` if ANY: scope is `owner`; kind is `convention`; it updates/retires an item whose evidence is `owner` or whose stored `importance` is already `important`; it would retire > 3 items in one job. Otherwise `routine`.
