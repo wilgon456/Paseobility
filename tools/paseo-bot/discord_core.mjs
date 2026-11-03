@@ -111,6 +111,8 @@ export function formatCustomId(action, planId) {
 
 export function parseCustomId(value) {
   if (typeof value !== 'string' || value.length > 120) return null;
+  const memory = parseMemoryId(value);
+  if (memory) return memory;
   const permit = parsePermitId(value);
   if (permit) return permit;
   const confirm = parseConfirmId(value);
@@ -161,6 +163,51 @@ export function permissionEdit(content, decision) {
 export function permissionResolvedEdit(content, notice) {
   const text = typeof content === 'string' ? content : '';
   const label = typeof notice === 'string' && notice.trim() ? notice.trim() : '권한 요청이 처리됐어요.';
+  return {content: `${text}\n\n${label}`.slice(0, MAX_MESSAGE), components: [], allowed_mentions: {parse: []}};
+}
+
+// ---- curated-memory approval buttons: pb:ma:<key> (approve) / pb:mr:<key> (reject) ----
+
+// The memory-review conversation is mapped to the channel itself, not a thread.
+export const MEMORY_REVIEW = 'memory-review';
+export const MEMORY_KEY = /^[a-z0-9]{12}$/;
+
+export function isMemoryReview(conversationId) {
+  return conversationId === MEMORY_REVIEW;
+}
+
+export function formatMemoryId(action, key) {
+  if (!['approve', 'reject'].includes(action)) throw new Error('memory action');
+  if (typeof key !== 'string' || !MEMORY_KEY.test(key)) throw new Error('memory key');
+  return `pb:${action === 'approve' ? 'ma' : 'mr'}:${key}`;
+}
+
+export function parseMemoryId(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^pb:(ma|mr):([a-z0-9]{12})$/.exec(value);
+  if (!match) return null;
+  return {action: match[1] === 'ma' ? 'memory-approve' : 'memory-reject', key: match[2]};
+}
+
+export function memoryComponents(approval) {
+  const value = approval && typeof approval === 'object' && approval.memoryApproval
+    ? approval.memoryApproval
+    : approval;
+  if (!value || typeof value !== 'object') return null;
+  const {key} = value;
+  if (typeof key !== 'string' || !MEMORY_KEY.test(key)) return null;
+  return [{
+    type: 1,
+    components: [
+      {type: 2, style: 3, label: '승인', custom_id: formatMemoryId('approve', key)},
+      {type: 2, style: 4, label: '거절', custom_id: formatMemoryId('reject', key)},
+    ],
+  }];
+}
+
+export function memoryEdit(content, decision) {
+  const text = typeof content === 'string' ? content : '';
+  const label = decision === 'approve' ? '기억 변경을 승인했어요.' : '기억 변경을 거절했어요.';
   return {content: `${text}\n\n${label}`.slice(0, MAX_MESSAGE), components: [], allowed_mentions: {parse: []}};
 }
 

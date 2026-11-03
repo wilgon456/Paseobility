@@ -460,3 +460,50 @@ test('peek formatting fences the newest lines under the reply cap', () => {
   assert.equal(c.peekBlock(''), '```\n\n```');
   assert.equal(c.peekBlock(null), '```\n\n```');
 });
+
+test('memory approval custom ids round-trip and reject malformed keys', () => {
+  const key = 'abc123def456';
+  assert.equal(c.formatMemoryId('approve', key), `pb:ma:${key}`);
+  assert.equal(c.formatMemoryId('reject', key), `pb:mr:${key}`);
+  assert.deepEqual(c.parseCustomId(`pb:ma:${key}`), {action: 'memory-approve', key});
+  assert.deepEqual(c.parseCustomId(`pb:mr:${key}`), {action: 'memory-reject', key});
+  assert.deepEqual(c.parseMemoryId(`pb:ma:${key}`), {action: 'memory-approve', key});
+  for (const bad of [`pb:ma:short`, `pb:mx:${key}`, `pb:ma:${key}x`, `pb:ma:${key.toUpperCase()}`,
+    'pb:ma:', '', null, 5, `pb:ma:${key}${key}`]) {
+    assert.equal(c.parseMemoryId(bad), null, String(bad));
+  }
+  for (const [action, keyValue] of [['delete', key], ['approve', 'short'], ['approve', null]]) {
+    assert.throws(() => c.formatMemoryId(action, keyValue));
+  }
+});
+
+test('memory approval buttons are approve/reject and edits clear them', () => {
+  const key = 'abc123def456';
+  assert.deepEqual(c.memoryComponents({key}), [{type: 1, components: [
+    {type: 2, style: 3, label: '승인', custom_id: `pb:ma:${key}`},
+    {type: 2, style: 4, label: '거절', custom_id: `pb:mr:${key}`},
+  ]}]);
+  assert.equal(c.memoryComponents({key: 'short'}), null);
+  assert.equal(c.memoryComponents({}), null);
+  assert.equal(c.memoryComponents(null), null);
+  assert.deepEqual(c.memoryComponents({memoryApproval: {key}}), c.memoryComponents({key}));
+  assert.deepEqual(c.memoryEdit('• 기억 변경 승인 요청 (fixture): 추가', 'approve'), {
+    content: '• 기억 변경 승인 요청 (fixture): 추가\n\n기억 변경을 승인했어요.',
+    components: [], allowed_mentions: {parse: []},
+  });
+  assert.ok(c.memoryEdit('x', 'reject').content.endsWith('기억 변경을 거절했어요.'));
+  assert.ok(c.memoryEdit('x'.repeat(3000), 'approve').content.length <= c.MAX_MESSAGE);
+});
+
+test('memory-review maps to the channel itself, not a thread', () => {
+  const cfg = config();
+  assert.equal(c.isMemoryReview(c.MEMORY_REVIEW), true);
+  assert.equal(c.isMemoryReview('d-444444444444444444'), false);
+  const threads = {[CHANNEL]: {conversationId: c.MEMORY_REVIEW, parentId: CHANNEL}};
+  assert.equal(c.trackedThread(cfg, threads, CHANNEL).conversationId, c.MEMORY_REVIEW);
+  assert.equal(c.inScopeChannel(cfg, threads, CHANNEL), true);
+  assert.equal(c.inScopeChannel(cfg, threads, THREAD), false);
+  // A normal thread is still tracked and remains distinct from the review channel.
+  assert.equal(c.trackedThread(cfg, THREADS, THREAD).conversationId, 'd-' + MESSAGE);
+  assert.equal(c.isMemoryReview(c.trackedThread(cfg, THREADS, THREAD).conversationId), false);
+});

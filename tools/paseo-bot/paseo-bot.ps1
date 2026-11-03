@@ -1,14 +1,18 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory=$true,Position=0)]
-  [ValidateSet('submit','status','result','health','list','serve','discover','tick','close','cancel','pause','resume','permit-allow','permit-deny','peek','supervise')]
+  [ValidateSet('submit','status','result','health','list','serve','discover','tick','close','cancel','pause','resume','permit-allow','permit-deny','peek','memory','supervise')]
   [string]$Command,
   [Parameter(Position=1)][string]$Id,
+  [Parameter(Position=2)][string]$Value,
   [string]$File,
   [string]$State = (Join-Path $env:USERPROFILE '.config\paseo-bot'),
   [string]$Python,
   [string]$Reason,
   [string]$PermissionKey,
+  [string]$Project,
+  [string]$Status,
+  [string]$Query,
   [int]$Tail,
   [switch]$Apply,
   [ValidateSet('cli','discord')][string]$Producer = 'cli',
@@ -45,6 +49,12 @@ end {
       if ($Id) { $argv += $Id }
     }
     if ($File) { $argv += @('--file',$File) }
+    if ($Command -eq 'memory') {
+      if ($Value) { $argv += $Value }
+      if ($Project) { $argv += @('--project',$Project) }
+      if ($Status) { $argv += @('--status',$Status) }
+      if ($Query) { $argv += @('--query',$Query) }
+    }
     if ($Command -in @('close','cancel','pause','resume','permit-allow','permit-deny') -and $Reason) { $argv += @('--reason',$Reason) }
     if ($Command -in @('permit-allow','permit-deny')) {
       if (!$PermissionKey) { throw 'permit-allow and permit-deny need -PermissionKey' }

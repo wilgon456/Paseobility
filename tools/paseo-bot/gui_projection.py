@@ -94,7 +94,7 @@ def snapshot(db, home, request, writable, read_json):
     apply_supervisor(out, home, read_json)
     if 'gui_conversations' in tables:
         out['configured'] = True
-        out['conversations'] = [dict(zip(['id', 'title', 'agentId', 'status', 'createdAt'], r)) for r in db.execute('SELECT * FROM gui_conversations ORDER BY created DESC LIMIT 50')]
+        out['conversations'] = [dict(zip(['id', 'title', 'agentId', 'status', 'createdAt'], r)) for r in db.execute("SELECT * FROM gui_conversations WHERE id<>'memory-review' ORDER BY created DESC LIMIT 50")]
         requested = request.get('conversationId')
         if requested:
             # The list above is the newest 50, but any existing conversation may be

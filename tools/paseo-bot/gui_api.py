@@ -2,6 +2,7 @@
 """One authenticated SSH request on stdin; no listener, shell or credentials."""
 import argparse
 import json
+import re
 import socket
 import sqlite3
 import sys
@@ -20,6 +21,60 @@ def read_json(path, default):
     return json.loads(path.read_text(encoding='utf-8-sig'))
 
 
+MEMORY_KEYS = {
+    'list': {'action', 'op', 'project', 'status'},
+    'search': {'action', 'op', 'query', 'project'},
+    'approve': {'action', 'op', 'key', 'requestId'},
+    'reject': {'action', 'op', 'key', 'requestId'},
+    'forget': {'action', 'op', 'id', 'requestId'},
+}
+MEMORY_KEY = re.compile(r'[a-z0-9]{12}\Z')
+
+
+def memory_request(home, request, allow_submit):
+    """Read/write curated memory through the same bridge as every other action."""
+    import memory
+    op = request.get('op')
+    if op not in MEMORY_KEYS or set(request) - MEMORY_KEYS[op]:
+        raise ValueError('Unsupported memory request')
+    if op in ('approve', 'reject', 'forget') and not allow_submit:
+        raise ValueError('Read-only bridge')
+    if not (home / memory.DB_NAME).exists():
+        raise ValueError('Memory is not configured')
+    store = memory.MemoryStore(home)
+    try:
+        if op == 'list':
+            status = request.get('status')
+            if status is not None and status not in memory.STATUSES:
+                raise ValueError('Invalid memory status')
+            project = request.get('project')
+            if project is not None and (not isinstance(project, str) or not ID.fullmatch(project)):
+                raise ValueError('Invalid project')
+            return store.list_items(project, status)
+        if op == 'search':
+            query = request.get('query')
+            if not isinstance(query, str) or not query.strip() or len(query) > 300:
+                raise ValueError('Invalid memory query')
+            project = request.get('project')
+            if project is not None and (not isinstance(project, str) or not ID.fullmatch(project)):
+                raise ValueError('Invalid project')
+            return store.search(query, project, 20)
+        if op in ('approve', 'reject'):
+            key = request.get('key')
+            if not isinstance(key, str) or not MEMORY_KEY.fullmatch(key):
+                raise ValueError('Invalid memory approval key')
+            item = store.approve(key) if op == 'approve' else store.reject(key)
+            return {'accepted': True, 'op': op, 'key': key,
+                    'id': item['id'] if isinstance(item, dict) and 'id' in item else '',
+                    'state': (item.get('status') or item.get('state')) if isinstance(item, dict) else 'rejected'}
+        item_id = request.get('id')
+        if not isinstance(item_id, str) or not ID.fullmatch(item_id):
+            raise ValueError('Invalid memory id')
+        return {'accepted': True, 'id': item_id, 'state': store.forget(item_id)['status']}
+    finally:
+        store.close()
+
+
 def handle(home, request, allow_submit=False):
     if not isinstance(request, dict):
         raise ValueError('Invalid request')
@@ -32,10 +87,13 @@ def handle(home, request, allow_submit=False):
                'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf', 'selection'},
                'start': {'action', 'requestId', 'messageId', 'text', 'selection'},
                'approve': {'action', 'conversationId', 'planId', 'digest'}, 'reject': {'action', 'conversationId', 'planId'},
-               'remember': {'action', 'conversationId', 'messageId', 'project'}, 'resolve': {'action', 'conversationId'}}
+               'remember': {'action', 'conversationId', 'messageId', 'project'}, 'resolve': {'action', 'conversationId'},
+               'memory': {'action', 'op', 'key', 'requestId', 'id', 'project', 'status', 'query'}}
     if action not in allowed or set(request) - allowed[action]:
         raise ValueError('Unsupported request')
     home = Path(home)
+    if action == 'memory':
+        return memory_request(home, request, allow_submit)
     if action in ['create', 'start', 'send', 'approve', 'reject', 'remember', 'resolve']:
         if not allow_submit:
             raise ValueError('Read-only bridge')

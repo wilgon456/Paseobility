@@ -259,6 +259,17 @@ Restart resumes recorded agents and phases. Unknown receipt, identity drift,
 permission wait, invalid JSON, incomplete gates or deadlines never becomes pass.
 Timeout leaves agents/worktrees intact; nothing automatically kills them.
 
+### Curated memory
+
+Project and owner memory is AI-written, evidence-tracked and self-pruning in
+the private `memory.sqlite3` store. Routine items apply immediately; only
+important items (owner scope, conventions, deploy/secret/permission wording, or
+changes to previously approved items) need one Discord approval. Memory is
+injected only as clearly-labelled data, never as instructions, and is never
+taken from web pages or raw tool output. See
+[paseo-bot-memory.md](paseo-bot-memory.md) for the store schema, evidence gate,
+outcome/quarantine rules, approval buttons, export repository and configuration.
+
 ### Task control (cancel, pause, resume, peek)
 
 Owners can control a non-terminal task without racing the runner. The GUI bridge

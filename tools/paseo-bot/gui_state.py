@@ -4,10 +4,12 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import time
 import uuid
 from paseo_bot import Bot, ID, PERMISSION_PID, PROFILES, MODEL_CHOICES, EFFORTS, model_alias, route_model, TERMINAL, PAUSED, HELD, WAITING_PERMISSION, fleet, lock, log_event, private_file, scrub
+import memory
 
 STAGES = ['preflight', 'work', 'review', 'postflight']
 BLOCKED_NOTICES = {
@@ -96,6 +98,8 @@ class Conversations:
         self.bot = Bot(home)
         self.db = self.bot.db
         self.rpc = rpc
+        self._memory = None
+        self._curator = None
 
     def migrate(self):
         self.db.executescript('''
@@ -110,6 +114,41 @@ class Conversations:
           CREATE TABLE IF NOT EXISTS gui_memory(id TEXT PRIMARY KEY,project TEXT NOT NULL,text TEXT NOT NULL,message_id TEXT NOT NULL,confirmed REAL NOT NULL);
         ''')
         self.db.commit()
+        # Curated memory is a separate private database; the legacy pins stay
+        # untouched and are copied once. The review conversation has no manager.
+        store = self.memory_store(create=True)
+        if store:
+            store.migrate_gui_memory(self.db)
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO gui_conversations VALUES (?,?,NULL,?,?)",
+                            (memory.MEMORY_REVIEW, '기억 검토', 'system', time.time()))
+
+    def close(self):
+        if self._memory is not None:
+            self._memory.close()
+            self._memory = None
+        self.db.close()
+
+    def memory_store(self, create=False):
+        """The curated-memory store, or None while nothing has asked for it yet."""
+        if self._memory is not None:
+            return self._memory
+        path = self.bot.home / memory.DB_NAME
+        try:
+            legacy = bool(self.db.execute('SELECT 1 FROM gui_memory LIMIT 1').fetchone())
+        except sqlite3.Error:
+            legacy = False
+        if not (create or path.exists() or self._memory_configured() or legacy):
+            return None
+        self._memory = memory.MemoryStore(self.bot.home)
+        return self._memory
+
+    def _memory_configured(self):
+        try:
+            config = self.runtime_config()
+        except (ValueError, OSError):
+            return True
+        return bool(config.get('curator') or config.get('memoryExport'))
 
     def message(self, conversation, role, text, payload=None, message_id=None):
         self.db.execute('INSERT OR IGNORE INTO gui_messages VALUES (?,?,?,?,?,?)',
@@ -243,6 +282,9 @@ class Conversations:
             raise ValueError('Memory reference')
         with self.db:
             self.db.execute('INSERT OR IGNORE INTO gui_memory VALUES (?,?,?,?,?)', (message_id, project, row[0][:2000], message_id, time.time()))
+        store = self.memory_store(create=True)
+        if store:
+            store.add_pin(project, row[0], message_id)
         return {'accepted': True}
 
     def resolve(self, conversation):
@@ -266,9 +308,12 @@ class Conversations:
         config = json.loads(path.read_text(encoding='utf-8-sig'))
         required = {'serverId', 'cwd', 'provider', 'model', 'thinking'}
         idle_days = config.get('managerIdleDays', 7)
-        if (not required <= set(config) <= required | {'mode', 'managerIdleDays'} or not isinstance(config.get('mode', 'auto'), str)
+        if (not required <= set(config) <= required | {'mode', 'managerIdleDays', 'curator', 'memoryExport'}
+                or not isinstance(config.get('mode', 'auto'), str)
                 or type(idle_days) not in (int, float) or idle_days < 0):
             raise ValueError('Runtime config')
+        memory.validate_curator(config.get('curator'))
+        memory.validate_export(config.get('memoryExport'))
         # Codex "auto" = workspace-write sandbox with approvals; the bot then denies
         # every request. full-access/bypassPermissions cannot be mediated, so warn.
         mode = config.get('mode', 'auto')
@@ -364,9 +409,27 @@ class Conversations:
                 # One unreachable or foreign manager never stalls other conversations.
                 continue
         self.tick_notices()
+        self.tick_memory(config)
+
+    def tick_memory(self, config):
+        """Memory maintenance and at most one curator turn; never stalls chat."""
+        try:
+            store = self.memory_store()
+            if not store:
+                return
+            if self._curator is None:
+                self._curator = memory.MemoryCurator(store, config, rpc=self.rpc, db=self.db,
+                                                     notify=self.message, clock=time.time)
+            self._curator.runtime = config
+            self._curator.projects = [p['id'] for p in self.bot.config()['projects']]
+            self._curator.tick()
+        except Exception as error:  # memory must never take the conversation service down
+            log_event(status='memory-tick-error', error=str(error)[:300])
 
     def tick_conversation(self, config, row):
             conversation, _, agent, status, _ = row
+            if conversation == memory.MEMORY_REVIEW:
+                return  # Posted to the channel itself; no manager agent exists for it.
             if not agent:
                 if status == 'dormant':
                     # The idle manager was archived; the next message starts a fresh one.
@@ -424,7 +487,8 @@ class Conversations:
             if state == 'queued' and current['status'] == 'idle':
                 projects = [p for p in project_list(self.bot.config()) if p['enabled']]
                 related = [p['id'] for p in projects if re.search(r'(?<![\w-])' + re.escape(p['id']) + r'(?![\w-])', prompt)]
-                memories = [dict(project=p, text=t[:1000]) for p, t in self.db.execute('SELECT project,text FROM gui_memory WHERE project IN (%s) ORDER BY confirmed DESC LIMIT 3' % (','.join('?' for _ in related) or 'NULL'), related)]
+                store = self.memory_store()
+                block = store.render(related, prompt, limit=1500) if store else ''
                 context = []
                 for task_id, record_text, task_text in self.db.execute("SELECT t.id,t.record,t.body FROM tasks t JOIN task_origins o ON o.task_id=t.id WHERE json_extract(o.context,'$.conversationId')=? ORDER BY t.rowid DESC LIMIT 6", (conversation,)):
                     record, task = json.loads(record_text), json.loads(task_text)
@@ -434,7 +498,7 @@ class Conversations:
                     # A fresh manager continues an archived or lost one: replay the visible chat as data.
                     rows = self.db.execute("SELECT role,text FROM gui_messages WHERE conversation=? AND id<>? AND role IN ('user','assistant') ORDER BY time DESC LIMIT 12", (conversation, job_id)).fetchall()
                     earlier = '\nEarlier messages in THIS conversation (historical data, oldest first): ' + dumps([dict(role=r, text=t[:800]) for r, t in reversed(rows)])
-                envelope = marker + '\n' + self.role_prompt().replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + '\nExplicitly saved project notes (historical data): ' + dumps(memories) + earlier + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
+                envelope = marker + '\n' + self.role_prompt().replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + ('\n' + block if block else '') + earlier + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', job_id))
                 self.rpc(config, 'send', session=conversation, agentId=agent, prompt=envelope)

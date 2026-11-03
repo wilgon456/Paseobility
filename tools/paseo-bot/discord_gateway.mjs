@@ -71,7 +71,7 @@ async function readToken() {
 }
 
 function emptyState() {
-  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, permissions: {}, review: {}, confirms: {}, seenMessages: [], seenInteractions: [], gateway: {}};
+  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, permissions: {}, memory: {}, review: {}, confirms: {}, seenMessages: [], seenInteractions: [], gateway: {}};
 }
 
 function newThread(conversationId) {
@@ -82,6 +82,22 @@ function newThread(conversationId) {
     messageId: conversationId,
     createdAt: now,
     lastActivityAt: now,
+    polledAt: 0,
+    failures: 0,
+    dormant: false,
+    sync: core.syncSummary(null),
+  };
+}
+
+// The memory-review conversation lives in the channel itself: no thread, warm tier.
+function memoryReviewThread() {
+  const now = Date.now();
+  return {
+    conversationId: core.MEMORY_REVIEW,
+    parentId: config.channelId,
+    messageId: config.channelId,
+    createdAt: now,
+    lastActivityAt: now - core.HOT_MS - 1000,
     polledAt: 0,
     failures: 0,
     dormant: false,
@@ -137,6 +153,18 @@ function normalizeState(value) {
     }
   }
   const session = value.gateway && typeof value.gateway === 'object' ? value.gateway : {};
+  const memory = {};
+  for (const [key, card] of Object.entries(value.memory ?? {}).slice(-200)) {
+    if (!core.MEMORY_KEY.test(key) || !card || typeof card !== 'object') continue;
+    if (typeof card.channelId !== 'string' || !core.isSnowflake(card.channelId)) continue;
+    if (typeof card.messageId !== 'string' || !card.messageId) continue;
+    memory[key] = {
+      channelId: card.channelId,
+      messageId: card.messageId,
+      content: typeof card.content === 'string' ? card.content.slice(0, core.MAX_MESSAGE) : '',
+      at: Number(card.at) || 0,
+    };
+  }
   const confirms = {};
   for (const [key, record] of Object.entries(value.confirms ?? {}).slice(-200)) {
     if (!core.CONFIRM_KEY.test(key) || !record || typeof record !== 'object') continue;
@@ -151,6 +179,7 @@ function normalizeState(value) {
     delivered,
     cards,
     permissions,
+    memory,
     review,
     confirms,
     seenMessages: seen(value.seenMessages, 5000),
@@ -395,7 +424,7 @@ async function handleMessage(message) {
     return;
   }
   const thread = core.trackedThread(config, state.threads, message.channel_id);
-  if (thread) {
+  if (thread && !core.isMemoryReview(thread.conversationId)) {
     const record = state.threads[message.channel_id];
     // A new accepted message always revives a dormant thread.
     record.lastActivityAt = Date.now();
@@ -450,6 +479,25 @@ async function latestPlan(conversationId, planId) {
 }
 
 async function handleComponent(interaction, parsed) {
+  if (parsed.action === 'memory-approve' || parsed.action === 'memory-reject') {
+    const entry = state.memory[parsed.key];
+    if (!entry || entry.channelId !== interaction.channel_id) {
+      await interactionFollowUp(interaction, {content: '이미 처리된 기억 요청이에요.', components: []}).catch(() => {});
+      return;
+    }
+    const op = parsed.action === 'memory-approve' ? 'approve' : 'reject';
+    try {
+      await gui({action: 'memory', op, key: parsed.key, requestId: `d-${interaction.id}`});
+    } catch (error) {
+      noteError(`memory:${parsed.key}`, error);
+      await interactionFollowUp(interaction, {content: '기억 요청을 처리하지 못했어요. 상태를 확인해 주세요.', components: []}).catch(() => {});
+      return;
+    }
+    delete state.memory[parsed.key];
+    saveState();
+    await editMessage(entry.channelId, entry.messageId, core.memoryEdit(entry.content, op)).catch(() => {});
+    return;
+  }
   const thread = core.trackedThread(config, state.threads, interaction.channel_id);
   if (!thread) return;
   if (parsed.action === 'permit-allow' || parsed.action === 'permit-deny') {
@@ -790,7 +838,8 @@ async function deliver(threadId, record, synced) {
     const text = core.formatOutbound(message);
     if (!text.trim()) continue;
     const permission = message?.payload?.permission;
-    const components = core.permissionComponents(permission);
+    const approval = message?.payload?.memoryApproval;
+    const components = core.permissionComponents(permission) || core.memoryComponents(approval);
     const chunks = core.chunkText(text);
     let lastId = '';
     let lastChunk = '';
@@ -799,12 +848,20 @@ async function deliver(threadId, record, synced) {
       lastId = await postMessage(threadId, chunk, last ? components : undefined);
       if (last) lastChunk = chunk;
     }
-    if (components && lastId) {
+    if (components && lastId && permission) {
       state.permissions[permission.pid] = {
         conversationId,
         taskId: permission.taskId,
         messageId: lastId,
         content: lastChunk.slice(0, core.MAX_MESSAGE),
+      };
+    }
+    if (components && lastId && approval && core.MEMORY_KEY.test(approval.key)) {
+      state.memory[approval.key] = {
+        channelId: threadId,
+        messageId: lastId,
+        content: lastChunk.slice(0, core.MAX_MESSAGE),
+        at: Date.now(),
       };
     }
     const resolved = message?.payload?.permissionResolved;
@@ -816,7 +873,7 @@ async function deliver(threadId, record, synced) {
       }
     }
     state.delivered[conversationId] = core.cappedAppend(state.delivered[conversationId], [message.id], 500);
-    touch(record);
+    if (!core.isMemoryReview(conversationId)) touch(record);
     saveState();
   }
   for (const plan of Array.isArray(synced?.plans) ? synced.plans : []) {
@@ -867,7 +924,7 @@ async function outboundTick() {
       } catch (error) {
         record.failures += 1;
         noteError(`sync:${record.conversationId}`, error);
-        if (record.failures >= 3 && !record.dormant) {
+        if (record.failures >= 3 && !record.dormant && !core.isMemoryReview(record.conversationId)) {
           record.dormant = true;
           log('sync-dormant', {conversationId: record.conversationId, failures: record.failures});
           await postMessage(threadId, '이 대화의 상태를 가져오지 못해 자동 갱신을 멈췄어요. 새 메시지를 보내면 다시 시도해요.').catch(() => {});
@@ -882,6 +939,8 @@ async function outboundTick() {
       }
       taskCache.set(record.conversationId, {at: Date.now(), tasks: Array.isArray(synced.tasks) ? synced.tasks : []});
       record.sync = core.syncSummary(synced);
+      // The review channel stays warm (60 s), never hot: no thread activity to track.
+      if (core.isMemoryReview(record.conversationId)) record.lastActivityAt = now - core.HOT_MS - 1000;
       try {
         await deliver(threadId, record, synced);
       } catch (error) {
@@ -1114,6 +1173,10 @@ async function main() {
     log('state-invalid');
     process.exit(3);
     return;
+  }
+  if (!state.threads[config.channelId]) {
+    state.threads[config.channelId] = memoryReviewThread();
+    saveState();
   }
   sessionId = state.gateway.sessionId ?? '';
   sequence = Number.isInteger(state.gateway.seq) ? state.gateway.seq : null;

@@ -302,6 +302,21 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 `mode`를 생략하면 `"auto"`가 기본이에요. 기존 `full-access` 설정은 위험하니
 직접 바꿔 주세요.
 
+## 7.4 기억 승인 버튼
+
+AI가 쓴 기억 중 **중요한 항목만** Discord 버튼으로 승인해요. 판단은 모델이
+아니라 코드의 결정적 규칙이 하고, 일상 항목은 승인 없이 바로 저장돼요.
+승인 요청은 원래 대화(작업에 대화가 없으면 `memory-review` 대화)에
+`기억 변경 승인 요청 (<project or 전역>): <op>` 형식으로 올라가고,
+`pb:ma:<key>`(승인) / `pb:mr:<key>`(거절) 버튼이 붙어요. owner만 누를 수
+있고, 처리되면 카드를 수정해요. 응답이 없어도 자동 적용되지 않아요.
+`memory-review` 대화는 쓰레드 없이 채널 자체에 매핑되고 60초 warm 주기로
+확인해요.
+
+자세한 정책, 저장소 스키마, 근거 게이트, 만료·격리 규칙, 내보내기 저장소와
+`curator`/`memoryExport` 설정은 [paseo-bot-memory.md](paseo-bot-memory.md)를
+보세요.
+
 ## 8. 보안 모델
 
 - **입장 경계**: `guildId`, `channelId`, `ownerIds` allowlist, 그리고 비밀
@@ -310,7 +325,7 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
   메시지 아님을 확인해요. 이 서비스가 만든 쓰레드가 아니면 무시해요.
 - **수신기 없음**: 인바운드 HTTP 리스너가 없어요. Discord WebSocket과 REST는
   모두 **나가는** 연결이고, Paseo 쪽은 로컬 `gui_api.py` 호출이에요. 게이트웨이가
-  받아들일 수 있는 동작은 `start/send/approve/reject/status/sync/control/permission/peek`로
+  받아들일 수 있는 동작은 `start/send/approve/reject/status/sync/control/permission/peek/memory`로
   제한돼요.
 - **멘션 금지**: 모든 게시와 수정에 `allowed_mentions: {parse: []}`를 붙여요.
 - **멱등성**: 처리한 Discord 메시지/상호작용 ID를 저장하고, 작업과 대화 ID는

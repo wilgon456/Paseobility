@@ -1013,7 +1013,30 @@ class Bot:
         else:
             instruction = ('Read-only final git verification. Verify the branch is the requested bot branch, repo is this worktree, '
                            'and HEAD equals the reviewer head. Inspect status, diff, changed paths and gate evidence. Return pass only if consistent. Do not change files in this verification phase.')
-        return common + '\n' + instruction + '\nTask data: ' + json.dumps(details, ensure_ascii=False)
+        prompt = common + '\n' + instruction + '\nTask data: ' + json.dumps(details, ensure_ascii=False)
+        if stage in ('work', 'review'):
+            block = self.memory_block_for(body)
+            if block:
+                prompt += '\n' + block
+        return prompt
+
+    def memory_block_for(self, body):
+        """Project memory for a worker stage; no store file means no block."""
+        path = self.home / 'memory.sqlite3'
+        if not path.exists():
+            return ''
+        try:
+            import memory
+            store = memory.MemoryStore(self.home)
+            try:
+                return store.render([body.get('project', '')],
+                                    str(body.get('title', '')) + '\n' + str(body.get('prompt', '')),
+                                    limit=1000, include_owner=False, task_id=body.get('id') or None)
+            finally:
+                store.close()
+        except Exception as error:
+            log_event(status='memory-block-unavailable', error=describe(error))
+            return ''
 
     def validate_evidence(self, e, record, stage):
         if not isinstance(e, dict) or e.get('verdict') not in ['pass', 'fail', 'blocked']:
@@ -1461,6 +1484,12 @@ def main():
     peek = sub.add_parser('peek')
     peek.add_argument('id')
     peek.add_argument('--tail', type=int, default=40)
+    memory_parser = sub.add_parser('memory')
+    memory_parser.add_argument('op', choices=['list', 'search', 'forget', 'approve', 'reject'])
+    memory_parser.add_argument('value', nargs='?')
+    memory_parser.add_argument('--project')
+    memory_parser.add_argument('--status')
+    memory_parser.add_argument('--query')
     sub.add_parser('list')
     sub.add_parser('tick')
     sub.add_parser('serve')
@@ -1490,6 +1519,20 @@ def main():
             out = bot.control(args.id, args.command, 'cli-' + uuid.uuid4().hex[:20], payload)
         elif args.command == 'peek':
             out = bot.peek(args.id, args.tail)
+        elif args.command == 'memory':
+            from gui_api import handle as gui_handle
+            request = {'action': 'memory', 'op': args.op}
+            if args.op in ('approve', 'reject'):
+                request['key'] = args.value
+            elif args.op == 'forget':
+                request['id'] = args.value
+            elif args.op == 'search':
+                request['query'] = args.query or args.value or ''
+            if args.project:
+                request['project'] = args.project
+            if args.status:
+                request['status'] = args.status
+            out = gui_handle(bot.home, request, True)
         elif args.command == 'list':
             out = [{'id': i, 'state': s} for i, s in bot.db.execute('SELECT id,state FROM tasks ORDER BY rowid')]
         elif args.command == 'health':

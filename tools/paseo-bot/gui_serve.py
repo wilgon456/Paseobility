@@ -39,7 +39,7 @@ def main():
                         break
                     time.sleep(.1)
     finally:
-        c.db.close()
+        c.close()
 
 
 if __name__ == '__main__':
