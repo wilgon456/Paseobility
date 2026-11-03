@@ -1144,3 +1144,20 @@ class FakeManager:
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NormalizeOpTests(unittest.TestCase):
+    def test_common_model_spellings_become_canonical_ops(self):
+        from memory import normalize_op
+        canonical = {'op': 'add', 'scope': 'project', 'project': 'p', 'kind': 'command', 'text': 'npm test'}
+        self.assertEqual(normalize_op(canonical), canonical)
+        self.assertEqual(normalize_op({'add': {'scope': 'project', 'project': 'p', 'kind': 'command', 'text': 'npm test'}}), canonical)
+        self.assertEqual(normalize_op({'type': 'add', 'scope': 'project', 'project': 'p', 'kind': 'command', 'text': 'npm test'}), canonical)
+        self.assertEqual(normalize_op({'action': 'retire', 'id': 'x', 'reason': 'old'}), {'op': 'retire', 'id': 'x', 'reason': 'old'})
+        self.assertEqual(normalize_op({'delete': {'id': 'x'}}), {'delete': {'id': 'x'}})  # unknown stays unknown
+
+    def test_curator_envelope_shows_the_exact_op_shape(self):
+        import inspect, memory
+        src = inspect.getsource(memory.MemoryCurator.envelope)
+        self.assertIn('"op":"add"', src)
+        self.assertIn('Example: PASEO_MEMORY_RESPONSE=', src)
