@@ -198,17 +198,16 @@ class StoreTests(MemoryTestCase):
         for item in important:
             self.assertEqual(self.store.item(item['id'])['status'], 'active')
 
-    def test_capacity_rejects_an_owner_write_when_only_important_items_remain(self):
+    def test_full_owner_memory_never_evicts_on_its_own(self):
         for index in range(memory.OWNER_ITEMS):
             self.add('owner preference %d' % index, kind='preference', scope='owner', project='',
                      evidence='owner', importance_='important')
-        with patch.object(memory, 'log_event') as logged:
-            incoming = self.add('owner preference overflow', kind='preference', scope='owner', project='',
-                                evidence='owner', importance_='important')
-        self.assertEqual(incoming['status'], 'retired')
-        self.assertEqual(incoming['history'][-1]['reason'], 'capacity-rejected')
-        rejected = [call for call in logged.call_args_list if call.kwargs.get('status') == 'memory-capacity-rejected']
-        self.assertEqual(len(rejected), 1)
+        incoming = self.add('owner preference overflow', kind='preference', scope='owner', project='',
+                            evidence='owner', importance_='important')
+        incoming = self.store.item(incoming['id'])
+        # Not dropped silently, not evicting anything: one replace question for the owner.
+        self.assertEqual(incoming['status'], 'pending')
+        self.assertEqual(incoming['approval']['op'], 'replace')
         self.assertEqual(len(self.store.items(scope='owner', status='active')), memory.OWNER_ITEMS)
 
     def test_approving_an_item_never_pushes_out_important_items(self):
@@ -1196,3 +1195,40 @@ class CuratorScopeTests(unittest.TestCase):
         self.assertIn('Remember the OWNER, not the code', prompt)
         self.assertIn('"quote"', prompt)
         self.assertIn('At most 3 ops', prompt)
+
+
+class OwnerCapacityTests(MemoryTestCase):
+    def fill(self):
+        for index in range(memory.OWNER_ITEMS):
+            self.add('선호 %d: 짧게 답하기 %d' % (index, index), kind='preference', scope='owner', project='', evidence='owner')
+        return self.store.items(scope='owner', status='active')
+
+    def test_full_owner_memory_asks_to_replace_instead_of_dropping(self):
+        existing = self.fill()
+        self.assertEqual(len(existing), memory.OWNER_ITEMS)
+        new = self.add('새 선호: 배포는 직접 말할 때만', kind='preference', scope='owner', project='', evidence='owner')
+        new = self.store.item(new['id'])
+        self.assertEqual(new['status'], 'pending')
+        self.assertEqual(new['approval']['op'], 'replace')
+        victim = new['approval']['replaces']
+        self.assertIn(victim, [item['id'] for item in existing])
+        self.store.approve(new['approval']['key'])
+        self.assertEqual(self.store.item(new['id'])['status'], 'active')
+        self.assertEqual(self.store.item(victim)['status'], 'retired')
+        self.assertEqual(len(self.store.items(scope='owner', status='active')), memory.OWNER_ITEMS)
+
+    def test_rejecting_a_replacement_keeps_existing_memory(self):
+        existing = self.fill()
+        new = self.add('새 선호: 표는 쓰지 말기', kind='preference', scope='owner', project='', evidence='owner')
+        key = self.store.item(new['id'])['approval']['key']
+        self.store.reject(key)
+        self.assertEqual(self.store.item(new['id'])['status'], 'retired')
+        self.assertEqual(sorted(i['id'] for i in self.store.items(scope='owner', status='active')),
+                         sorted(i['id'] for i in existing))
+
+    def test_curator_is_told_to_merge_when_nearly_full(self):
+        for index in range(memory.OWNER_ITEMS - 2):
+            self.add('선호 %d: 요점만 %d' % (index, index), kind='preference', scope='owner', project='', evidence='owner')
+        self.message(0); self.message(1)
+        prompt, _ = self.send_next()
+        self.assertIn('nearly full', prompt)

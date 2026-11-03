@@ -62,6 +62,10 @@ commands, paths and settings, and task agents read them every time.
   No quote → rejected. Only owner preferences/facts and owner-described project
   context are accepted; commands, cautions and conventions from the curator are
   rejected.
+- Capacity: at most 15 owner items (2 000 chars). From 12 items on the curator is
+  told to merge related items instead of adding. When full, a new preference is
+  never dropped silently and nothing is evicted automatically: the owner gets one
+  "replace?" card (new item vs. the least-used, longest-unconfirmed one).
 - Quoted items are saved immediately (no approval) with evidence `owner` and are
   protected: the AI can only change or drop them by quoting the owner again;
   otherwise the change becomes an approval request.
