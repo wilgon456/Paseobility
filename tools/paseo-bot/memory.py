@@ -86,8 +86,16 @@ INJECTION_PATTERNS = (
     r'다음 (?:명령|도구|코드)을? ?(?:실행|호출)',
 )
 IMPORTANT_WORDS = re.compile(
-    r'(?i)deploy|release|publish|secret|token|credential|password|permission|approve|production|merge|force|delete|database'
+    # Whole English words only (not "enforce" or "tokenizer"); Korean stems as substrings.
+    r'(?i)\b(?:deploy\w*|releas\w*|publish\w*|secrets?|tokens?|credentials?|passwords?|permissions?|approv\w*'
+    r'|production|merg\w*|force[ds]?|delet\w*|databases?)\b'
     r'|배포|출시|비밀|토큰|인증|권한|운영|병합|삭제|데이터베이스')
+# Paths and file names (docs/RELEASE.md, scripts/deploy.sh) describe files, not risky actions.
+PATHLIKE = re.compile(r'[\w.~-]*[/\\][\w./\\~-]*|\b[\w-]+\.(?:md|txt|json|ya?ml|toml|ts|tsx|js|mjs|py|sh|ps1|lock)\b', re.I)
+
+
+def important_words(text):
+    return bool(IMPORTANT_WORDS.search(PATHLIKE.sub(' ', text or '')))
 TOKEN = re.compile(r'[0-9A-Za-z가-힣_./-]{2,}')
 # Schema is created once per process, not once per prompt build.
 _SCHEMA_READY = {}
@@ -221,7 +229,7 @@ def importance(op, item=None, retire_count=0):
         return 'important'
     if kind == 'convention':
         return 'important'
-    if any(IMPORTANT_WORDS.search(text) for text in texts if text):
+    if any(important_words(text) for text in texts if text):
         return 'important'
     # The stored column is authoritative: approval never decays.
     if item and (item.get('importance') == 'important' or item.get('evidence') == 'owner'):

@@ -1175,3 +1175,17 @@ class NormalizeOpTests(unittest.TestCase):
         src = inspect.getsource(memory.MemoryCurator.envelope)
         self.assertIn('"op":"add"', src)
         self.assertIn('Example: PASEO_MEMORY_RESPONSE=', src)
+
+
+class ImportantWordTests(unittest.TestCase):
+    def test_file_names_and_partial_words_do_not_make_items_important(self):
+        from memory import important_words
+        for text in ['docs/RELEASE.md documents Node 24', 'scripts/deploy.sh exists', 'see CHANGELOG.md and release-notes.md',
+                     'lint rules enforce semicolons', 'the tokenizer splits words', 'README.md mentions npm ci']:
+            self.assertFalse(important_words(text), text)
+
+    def test_real_risky_actions_still_need_approval(self):
+        from memory import important_words
+        for text in ['Deploy with npm run deploy after tagging', 'Never force push main', 'The API token lives in Bitwarden',
+                     'Releases are published from CI', '배포 전에 버전을 올린다', 'merge requires two approvals', 'drop the database first']:
+            self.assertTrue(important_words(text), text)
