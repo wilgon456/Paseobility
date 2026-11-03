@@ -540,3 +540,22 @@ class KoreanReasonTests(unittest.TestCase):
         self.assertEqual(korean_reason({'reason': 'Some new internal failure text'}), '자세한 내용은 /peek 으로 볼 수 있어요.')
         self.assertEqual(korean_reason({'reason': '테스트 명령을 찾지 못했어요.'}), '테스트 명령을 찾지 못했어요.')
         self.assertEqual(korean_reason({}), '')
+
+
+class HousekeepingNoticeTests(unittest.TestCase):
+    def test_auto_closed_task_posts_no_notice_and_memory_review_sync_is_empty(self):
+        import tempfile as _t
+        from gui_api import handle as _handle
+        tmp = _t.TemporaryDirectory()
+        try:
+            home = Path(tmp.name) / 'state'
+            c = Conversations(home, FakeManager())
+            c.migrate()
+            write_json(home / 'owner.json', {'version': 1, 'host': socket.gethostname().casefold(), 'mode': 'active'})
+            out = _handle(home, dict(action='sync', conversationId='memory-review'), True)
+            self.assertEqual(out['messages'], [])
+            with self.assertRaises(ValueError):
+                _handle(home, dict(action='sync', conversationId='no-such-conversation'), True)
+            c.db.close()
+        finally:
+            tmp.cleanup()

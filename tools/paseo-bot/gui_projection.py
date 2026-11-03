@@ -99,6 +99,10 @@ def snapshot(db, home, request, writable, read_json):
         if requested:
             # The list above is the newest 50, but any existing conversation may be
             # synced; only an unknown id is out of scope.
+            if requested == 'memory-review' and not db.execute('SELECT 1 FROM gui_conversations WHERE id=?', (requested,)).fetchone():
+                # The memory review feed exists only after its first approval notice: empty, not an error.
+                out['configured'] = True
+                return scrub(out)
             if not isinstance(requested, str) or not db.execute('SELECT 1 FROM gui_conversations WHERE id=?', (requested,)).fetchone():
                 raise ValueError('Conversation scope')
             selected = requested

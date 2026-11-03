@@ -750,12 +750,14 @@ class Conversations:
                         text = BLOCKED_NOTICES.get(record.get('blockedKind'), '작업이 멈췄어요.')
                     elif record['state'] == 'closed' and record.get('closedFrom') == 'cancelled':
                         text = BLOCKED_NOTICES['cancelled']
+                    elif record['state'] == 'closed':
+                        text = ''  # closing an already-reported task is housekeeping, not news
                     elif record['state'] == 'running' and is_resume(record):
                         text = '작업을 다시 시작했어요.'
                     else:
                         text = {'passed':'작업과 확인을 마쳤어요.', 'failed':'작업에 실패했어요.', 'unknown':'진행 상태를 확인하지 못했어요. 중복으로 실행하지 않을게요.'}.get(
                             record['state'], labels.get(record['state']) or labels.get(record.get('stage'), ''))
-                    if record['state'] in TERMINAL:
+                    if record['state'] in TERMINAL and text:
                         if record['state'] == 'passed':
                             detail = str(record.get('summary') or '')[:3500]
                         else:
