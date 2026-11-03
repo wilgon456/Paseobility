@@ -2,6 +2,14 @@
   "version": 1,
   "phaseTimeoutSeconds": 7200,
   "transientGraceSeconds": 900,
+  "permissionTimeoutSeconds": 300,
+  "resumeGraceSeconds": 45,
+  "safety": {
+    "extraRules": [
+      {"name": "kubectl-prod", "pattern": "kubectl\\s+delete\\s+namespace\\s+prod"}
+    ],
+    "disabledRules": []
+  },
   "projects": [
     {
       "id": "paseo_slash",

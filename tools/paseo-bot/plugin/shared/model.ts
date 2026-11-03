@@ -4,6 +4,7 @@ export const stateLabels: Record<string, string> = {
   ready: "준비",
   dispatching: "배정 중",
   running: "실행 중",
+  "waiting-permission": "권한 확인",
   paused: "일시 정지",
   repairing: "응답 확인 중",
   passed: "검증 통과",
@@ -22,6 +23,7 @@ export const blockedKindLabels: Record<string, string> = {
   verdict: "진행 불가",
   cancelled: "취소됨",
   transient: "연결 문제",
+  safety: "안전 차단",
 };
 export const blockedKindLabel = (kind: string) => blockedKindLabels[kind] ?? "";
 export const makeTaskId = () =>
@@ -60,6 +62,7 @@ export function laneOf(state: string) {
         ready: "waiting",
         dispatching: "running",
         running: "running",
+        "waiting-permission": "running",
         paused: "running",
         repairing: "running",
         passed: "success",

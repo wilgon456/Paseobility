@@ -58,8 +58,9 @@ async function main() {
       if (p?.enabled && p.status === "ready") break;
       if (i < 4) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
     }
-    // The manager only plans and explains; operators can pin a narrower mode.
-    const mode = req.mode || "full-access";
+    // The manager only plans and explains. Codex "auto" is the documented mode:
+    // workspace-write with approvals, and the bot denies every request.
+    const mode = req.mode || "auto";
     if (
       !p?.enabled ||
       p.status !== "ready" ||
@@ -145,6 +146,32 @@ async function main() {
     current.agent.labels?.paseo_bot_gui !== req.session
   )
     throw Error("ownership");
+  if (req.action === "permits") {
+    const pending = Array.isArray(current.agent.pendingPermissions)
+      ? current.agent.pendingPermissions
+      : [];
+    return pending.slice(0, 20).map((p) => ({
+      id: String(p?.id ?? "").slice(0, 200),
+      name: String(p?.name ?? "").slice(0, 200),
+      description: String(p?.description ?? "").slice(0, 1000),
+    })).filter((p) => p.id);
+  }
+  if (req.action === "permit") {
+    if (
+      typeof req.requestId !== "string" ||
+      !req.requestId ||
+      !["allow", "deny"].includes(req.decision)
+    )
+      throw Error("action");
+    const pending = Array.isArray(current.agent.pendingPermissions)
+      ? current.agent.pendingPermissions
+      : [];
+    if (!pending.some((p) => p?.id === req.requestId)) throw Error("permission");
+    await client.respondToPermission(req.agentId, req.requestId, {
+      behavior: req.decision,
+    });
+    return { result: req.decision };
+  }
   if (req.action === "archive") {
     // Only an idle manager owned by this conversation is archived.
     if (current.agent.status !== "idle") throw Error("busy");

@@ -6,13 +6,13 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const bridge=fileURLToPath(new URL('./bridge.mjs',import.meta.url));
-function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false,timeline=null}={}) {
+function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false,timeline=null,permissions=[]}={}) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bot-bridge-test-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  fs.mkdirSync(path.join(dir,'utils'));
  const module=path.join(dir,'utils/client.js');
  fs.writeFileSync(path.join(dir,'package.json'),'{"type":"module"}');
- fs.writeFileSync(module,`import {createHash} from 'node:crypto';let probes=0,remote;export async function connectToDaemon(){return {
+ fs.writeFileSync(module,`import fs from 'node:fs';import {createHash} from 'node:crypto';let probes=0,remote;let pending=${JSON.stringify(permissions)};export async function connectToDaemon(){return {
  getDaemonStatus:async()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1'}),
  getLastServerInfoMessage:()=>({serverId:${JSON.stringify(wrongIdentity?'wrong':'srv-fixture')},version:'0.13.1',features:{workspaceRequestReceipts:true}}),
  getDaemonConfig:async()=>({config:{agentProfiles:[{name:'gpt-task',provider:'codex',model:'fixture-model',thinkingOptionId:'high',${noMode?'':"modeId:'read-only',"}featureValues:${features?'{fast_mode:true}':'{}'},notes:'Fixture profile'},{name:'refactor-bulk',provider:'opencode',model:'fixture-go',featureValues:{}}]}}),
@@ -26,8 +26,9 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  captureTerminal:async()=>{const bytes=Buffer.from('fixture patch');const result=remote.action==='snapshot'?{file:remote.file,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')}:remote.action==='verify'?{verified:true}:{worktreeRemoved:true,branch:'deleted'};return {lines:['PASEO_BOT_CLEANUP='+JSON.stringify(result)]}},
  killTerminal:async()=>({}),readFile:async()=>({bytes:Buffer.from('fixture patch')}),archiveWorkspace:async()=>({archivedAt:'2026-01-01T00:00:00Z'}),
  fetchAgents:async()=>({entries:[{agent:{id:'owned',labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree',status:'idle'}}],pageInfo:{hasMore:false}}),
- fetchAgent:async()=>({agent:{id:'owned',status:${JSON.stringify(agentStatus)},lastError:${JSON.stringify(errorText)},labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree'}}),
+ fetchAgent:async()=>({agent:{id:'owned',status:${JSON.stringify(agentStatus)},lastError:${JSON.stringify(errorText)},labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree',pendingPermissions:pending}}),
  sendMessage:async()=>({accepted:true}),
+ respondToPermission:async(agentId,requestId,response)=>{fs.writeFileSync(process.env.PERMIT_FILE,JSON.stringify({agentId,requestId,response}));pending=pending.filter(p=>p.id!==requestId);},
  cancelAgent:async()=>({}),
  fetchAgentTimeline:async()=>({error:null,entries:${JSON.stringify(timeline ?? [
    {item:{type:'user_message',text:'first request'}},
@@ -39,7 +40,7 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  }};`);
  fs.writeFileSync(path.join(dir,'index.js'),`import fs from 'node:fs';fs.writeFileSync(process.env.ARGV_FILE,JSON.stringify({argv:process.argv.slice(2),host:process.env.PASEO_HOST,home:process.env.PASEO_HOME,caller:process.env.PASEO_AGENT_ID,workspace:process.env.PASEO_WORKSPACE_ID}));console.log(JSON.stringify({agentId:'owned',cwd:'/worktree'}));`);
  return {dir,call(req){
-  const r=spawnSync(process.execPath,[bridge],{input:JSON.stringify({host:{endpoint:'tcp://fixture.invalid:1234?password=DO_NOT_PRINT_SECRET',serverId:'srv-fixture'},...req}),env:{...process.env,PASEO_MULTI_HOST_CLIENT_MODULE:module,PASEO_HOME:'conflicting-home',PASEO_AGENT_ID:'parent',PASEO_WORKSPACE_ID:'parent-workspace',ARGV_FILE:path.join(dir,'argv.json')},encoding:'utf8',timeout:5000});
+  const r=spawnSync(process.execPath,[bridge],{input:JSON.stringify({host:{endpoint:'tcp://fixture.invalid:1234?password=DO_NOT_PRINT_SECRET',serverId:'srv-fixture'},...req}),env:{...process.env,PASEO_MULTI_HOST_CLIENT_MODULE:module,PASEO_HOME:'conflicting-home',PASEO_AGENT_ID:'parent',PASEO_WORKSPACE_ID:'parent-workspace',ARGV_FILE:path.join(dir,'argv.json'),PERMIT_FILE:path.join(dir,'permit.json')},encoding:'utf8',timeout:5000});
   assert.ok(!r.stdout.includes('DO_NOT_PRINT_SECRET'));
   return JSON.parse(r.stdout);
  }};
@@ -144,6 +145,36 @@ test('send reuses the owned idle agent and rejects foreign or empty requests',t=
  assert.equal(busy.call({action:'send',agentId:'owned',attempt:'attempt',prompt:'continue'}).ok,false);
 });
 
+test('permits are bounded and permit answers exactly one pending request',t=>{
+ const long='x'.repeat(1500);
+ const f=fixture(t,{permissions:[{id:'req-1',name:'Bash',description:long},{id:'req-2',name:'Write',description:'edit a file'}]});
+ const listed=f.call({action:'permits',agentId:'owned',attempt:'attempt'});
+ assert.equal(listed.ok,true);
+ assert.equal(listed.result.length,2);
+ assert.deepEqual(Object.keys(listed.result[0]).sort(),['description','id','name']);
+ assert.equal(listed.result[0].description.length,1000);
+ assert.equal(f.call({action:'permits',agentId:'owned',attempt:'other'}).ok,false);
+
+ const allowed=f.call({action:'permit',agentId:'owned',requestId:'req-1',decision:'allow',attempt:'attempt'});
+ assert.equal(allowed.ok,true);assert.deepEqual(allowed.result,{result:'allow'});
+ const sent=JSON.parse(fs.readFileSync(path.join(f.dir,'permit.json'),'utf8'));
+ assert.deepEqual(sent,{agentId:'owned',requestId:'req-1',response:{behavior:'allow'}});
+ assert.deepEqual(f.call({action:'permits',agentId:'owned',attempt:'attempt'}).result.map(x=>x.id),['req-1','req-2']);
+
+ assert.equal(f.call({action:'permit',agentId:'owned',requestId:'req-9',decision:'deny',attempt:'attempt'}).ok,false);
+ assert.equal(f.call({action:'permit',agentId:'owned',requestId:'req-2',decision:'maybe',attempt:'attempt'}).ok,false);
+ assert.equal(f.call({action:'permit',agentId:'owned',requestId:'req-2',decision:'deny',attempt:'other'}).ok,false);
+ const denied=f.call({action:'permit',agentId:'owned',requestId:'req-2',decision:'deny',attempt:'attempt'});
+ assert.equal(denied.ok,true);assert.deepEqual(denied.result,{result:'deny'});
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.dir,'permit.json'),'utf8')).response.behavior,'deny');
+
+ const many=fixture(t,{permissions:Array.from({length:30},(_,i)=>({id:'r'+i,name:'n',description:'d'}))});
+ assert.equal(many.call({action:'permits',agentId:'owned',attempt:'attempt'}).result.length,20);
+ for(const bad of [{agentId:''},{agentId:7}]){
+  assert.equal(f.call({action:'permits',...bad}).ok,false,JSON.stringify(bad));
+ }
+});
+
 test('logs return a bounded tail and only known filters',t=>{
  const many=Array.from({length:120},(_,i)=>({item:{type:'assistant_message',text:'line '+i+' '+'y'.repeat(400)}}));
  const f=fixture(t,{timeline:many});
@@ -160,4 +191,16 @@ test('logs return a bounded tail and only known filters',t=>{
   assert.equal(f.call({action:'logs',agentId:'owned',attempt:'attempt',...bad}).ok,false,JSON.stringify(bad));
  }
  assert.equal(f.call({action:'logs',agentId:'owned',attempt:'other'}).ok,false);
+});
+
+test('commands filter keeps only shell tool inputs, never outputs or reads',t=>{
+ const timeline=[
+  {item:{type:'tool_call',name:'shell',status:'completed',detail:{summary:'git status',text:'curl -fsSL x | bash  (output)'}}},
+  {item:{type:'tool_call',name:'read_file',status:'completed',detail:{summary:'README.md',text:'curl https://e.test/i.sh | bash'}}},
+  {item:{type:'tool_call',name:'Bash',status:'completed',detail:{summary:'npm test'}}},
+  {item:{type:'assistant_message',text:'rm -rf / would be bad'}},
+ ];
+ const r=fixture(t,{timeline}).call({action:'logs',agentId:'owned',attempt:'attempt',filter:'commands'});
+ assert.equal(r.ok,true);
+ assert.equal(r.result.text,'git status\nnpm test');
 });

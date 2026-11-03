@@ -129,7 +129,10 @@ paths and confirming commands before setting `enabled: true`. Every target has:
 | `publish` | `none` (default) or `draft-pr`: publish passed work as a draft PR |
 
 Top-level `transientGraceSeconds` (default 900) is how long a lost connection may
-last before an in-flight task is blocked; `phaseTimeoutSeconds` bounds each phase.
+last before an in-flight task is blocked; `phaseTimeoutSeconds` bounds each phase,
+`permissionTimeoutSeconds` (default 300) bounds an unanswered permission prompt,
+and `resumeGraceSeconds` (default 45) tolerates the old idle message right after
+a resume. Top-level `safety` adds or disables hardline rules.
 
 `machineAliases` can map friendly names such as `MacBook` and `VAXPORT` to
 registered `MAC_HOME` and `VAX_COM` labels; matching still verifies server identity.
@@ -162,6 +165,8 @@ python3 tools/paseo-bot/paseo_bot.py result example-001
 python3 tools/paseo-bot/paseo_bot.py cancel example-001 --reason 'owner asked'
 python3 tools/paseo-bot/paseo_bot.py pause example-001
 python3 tools/paseo-bot/paseo_bot.py resume example-001
+python3 tools/paseo-bot/paseo_bot.py permit-allow example-001 --pid abc123def456
+python3 tools/paseo-bot/paseo_bot.py permit-deny example-001 --pid abc123def456
 python3 tools/paseo-bot/paseo_bot.py peek example-001 --tail 40
 python3 tools/paseo-bot/paseo_bot.py list
 python3 tools/paseo-bot/paseo_bot.py health
@@ -207,7 +212,7 @@ interrupted. No network delivery is claimed. A producer should poll until `state
 `passed`, `failed`, `blocked` or `unknown`, then acknowledge consumption in its
 own system. Repeated reads are harmless; there is no exactly-once messaging
 claim. Active states are `queued`, `held`, `ready`, `provisioning`, `dispatching`,
-`running`, `paused`, `repairing` and `cleaning`.
+`running`, `waiting-permission`, `paused`, `repairing` and `cleaning`.
 The additional `cleaning` state precedes final publication whenever the task
 created a worktree. On `passed`, `failed` or `blocked`, the bot captures a Git
 binary patch relative to preflight HEAD, including untracked and ignored files,
@@ -230,7 +235,8 @@ evidence, summary/reason, timestamps, `deployment: not-run` and
 `needs_input` (agent error or permission wait), `capability` (pre-launch
 identity/profile/provider check), `dependency` (a prerequisite did not pass),
 `timeout` (phase deadline), `evidence` (receipt/evidence/cleanup could not be
-confirmed), `verdict` (the agent returned blocked), `cancelled` (owner cancel) or
+confirmed), `verdict` (the agent returned blocked), `cancelled` (owner cancel),
+`safety` (a hardline command pattern was detected) or
 `transient` (an outage exhausted the retry window). Raw provider output/stderr is
 never copied to outbox.
 Only one strict `PASEO_BOT_RESULT=<JSON>` final response is accepted per turn.
@@ -280,7 +286,65 @@ timeline (3 500 characters, newest lines kept) or an explanation of the task's
 state when no agent exists.
 
 CLI: `cancel|pause|resume <id> [--reason]` prints the enqueued control id, and
-`peek <id> [--tail N]` prints the scrubbed log tail.
+`peek <id> [--tail N]` prints the scrubbed log tail. Permission decisions use
+`permit-allow|permit-deny <id> --pid <key> [--reason]`; the Discord buttons and
+the GUI use the same durable `task_controls` queue.
+
+### Permission requests and the hardline safety list
+
+When an observed agent is still working (the bridge reports `timeout` from its
+one-second finish wait) or reports another non-idle status, the runner asks the
+destination for that agent's pending permission requests. If there is one, the
+task becomes `waiting-permission` and records:
+
+```json
+{"pid":"12 lowercase key","requestId":"provider request id","agentId":"...","name":"...","description":"...","askedAt":0}
+```
+
+`pid` is the short key the chat buttons carry. The machine stays busy and the
+phase deadline keeps running. A decision is a durable `permit-allow` or
+`permit-deny` control with payload `{pid}`; it applies only while the task is
+still `waiting-permission` with that same key. A stale or mismatched key is
+rejected as `stale-permission` and announced once in chat. `permissionTimeoutSeconds`
+(default 300) denies an unanswered request, logs `by: "timeout"` and returns the
+task to `running`. `cancel` denies the pending request first and then uses the
+normal cancel-and-cleanup path; `pause` is rejected as `not-pausable`.
+`auto_close` never touches `waiting-permission`. Every decision is appended to
+the result's `permissionLog` (`pid`, `name`, `decision`, `by`, `at`).
+
+**Safety rules** live in `tools/paseo-bot/safety.py`: recursive force deletion of
+`/`, `~`, `$HOME` or a whole drive; fork bombs; `mkfs`/`format C:`/`diskutil
+eraseDisk`/`dd of=/dev/disk`; piping `curl|wget|iwr|irm` into a shell; force
+pushing `main`/`master`; `DROP DATABASE` or `DROP SCHEMA ... CASCADE`; and
+reading private keys, cloud/gh/Bitwarden/broker credentials with common readers.
+Add or disable rules privately in the registry:
+
+```json
+{
+  "permissionTimeoutSeconds": 300,
+  "resumeGraceSeconds": 45,
+  "safety": {
+    "extraRules": [{"name": "kubectl-prod", "pattern": "kubectl\\s+delete\\s+namespace\\s+prod"}],
+    "disabledRules": ["fork-bomb"]
+  }
+}
+```
+
+Patterns are capped at 300 characters and must compile; invalid or duplicate
+rule names fail configuration validation. Extra rules cannot reuse a default
+name. Names are safe identifiers because they appear in chat notices.
+
+**Prevention vs detection, honestly:** only a *permission prompt* that matches a
+rule is prevented (denied immediately, never shown to the human). A provider in
+a permissive/full-access mode may run commands without asking, so the second
+layer scans the agent's tool-log tail (200 entries) when a stage finishes and
+before its evidence is accepted. That is detection after the fact, not a
+sandbox: it blocks the task with `blockedKind: "safety"` and a rule name, but it
+cannot undo a command that already ran. The matched command is written only to
+the private stderr log (scrubbed, at most 300 characters) and is never copied to
+the result, notice or chat. A failed log read is logged and does not block the
+task. The stage prompt also tells every worker which command categories are
+forbidden.
 
 The plan's **done-contract** work (§3.1 D3: re-verified completion evidence such
 as PR merge, passing checks or a JSON file condition) is **deferred** and is not
@@ -474,6 +538,8 @@ Get-Content -Raw -Encoding UTF8 'C:\path\task.json' | & $Bot submit
 & $Bot cancel 'task-id' -Reason 'owner asked'
 & $Bot pause 'task-id'
 & $Bot resume 'task-id'
+& $Bot permit-allow 'task-id' -Pid 'abc123def456'
+& $Bot permit-deny 'task-id' -Pid 'abc123def456'
 & $Bot peek 'task-id' -Tail 40
 ```
 

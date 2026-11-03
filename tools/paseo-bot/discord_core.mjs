@@ -111,12 +111,57 @@ export function formatCustomId(action, planId) {
 
 export function parseCustomId(value) {
   if (typeof value !== 'string' || value.length > 120) return null;
+  const permit = parsePermitId(value);
+  if (permit) return permit;
   const confirm = parseConfirmId(value);
   if (confirm) return {action: 'confirm', short: confirm};
   const dismiss = parseDismissId(value);
   if (dismiss) return {action: 'dismiss', short: dismiss};
   const match = /^pb:(approve|reject):([a-zA-Z0-9][a-zA-Z0-9_.-]{0,79})$/.exec(value);
   return match ? {action: match[1], planId: match[2]} : null;
+}
+
+// ---- permission buttons: pb:pa:<pid> (allow) / pb:pd:<pid> (deny) ----
+
+export const PERMIT_KEY = /^[a-z0-9]{12}$/;
+
+export function formatPermitId(decision, pid) {
+  if (!['allow', 'deny'].includes(decision)) throw new Error('permit decision');
+  if (typeof pid !== 'string' || !PERMIT_KEY.test(pid)) throw new Error('permit key');
+  return `pb:${decision === 'allow' ? 'pa' : 'pd'}:${pid}`;
+}
+
+export function parsePermitId(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^pb:(pa|pd):([a-z0-9]{12})$/.exec(value);
+  if (!match) return null;
+  return {action: match[1] === 'pa' ? 'permit-allow' : 'permit-deny', pid: match[2]};
+}
+
+export function permissionComponents(permission) {
+  if (!permission || typeof permission !== 'object') return null;
+  const {taskId, pid} = permission;
+  if (typeof taskId !== 'string' || !PLAN_ID.test(taskId)) return null;
+  if (typeof pid !== 'string' || !PERMIT_KEY.test(pid)) return null;
+  return [{
+    type: 1,
+    components: [
+      {type: 2, style: 3, label: '허용', custom_id: formatPermitId('allow', pid)},
+      {type: 2, style: 4, label: '거절', custom_id: formatPermitId('deny', pid)},
+    ],
+  }];
+}
+
+export function permissionEdit(content, decision) {
+  const text = typeof content === 'string' ? content : '';
+  const label = decision === 'allow' ? '허용했어요.' : '거절했어요.';
+  return {content: `${text}\n\n${label}`.slice(0, MAX_MESSAGE), components: [], allowed_mentions: {parse: []}};
+}
+
+export function permissionResolvedEdit(content, notice) {
+  const text = typeof content === 'string' ? content : '';
+  const label = typeof notice === 'string' && notice.trim() ? notice.trim() : '권한 요청이 처리됐어요.';
+  return {content: `${text}\n\n${label}`.slice(0, MAX_MESSAGE), components: [], allowed_mentions: {parse: []}};
 }
 
 // ---- owner control custom ids: pb:cc:<12-char key> (confirm) / pb:cx:<key> (dismiss) ----
@@ -641,7 +686,7 @@ export function statusText(payload) {
   const queue = source.queue && typeof source.queue === 'object' ? source.queue : {};
   const queueText = Object.entries(queue).map(([state, count]) => `${state} ${count}`).join(', ') || '없음';
   const tasks = Array.isArray(source.tasks) ? source.tasks : [];
-  const running = ['dispatching', 'running', 'repairing'];
+  const running = ['dispatching', 'running', 'waiting-permission', 'repairing'];
   const active = tasks.filter(task => running.includes(task?.state)).length;
   return [
     `상태: ${source.healthy ? '정상' : '확인 필요'}`,

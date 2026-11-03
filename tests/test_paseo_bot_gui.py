@@ -186,6 +186,107 @@ class GuiTests(unittest.TestCase):
             self.assertEqual(r.returncode, 1); self.assertNotIn(b'test-never-print', r.stdout + r.stderr)
             self.assertFalse(json.loads(r.stdout)['ok']); self.assertEqual(r.stderr, b'')
 
+    def test_permission_action_is_scoped_and_enqueues_a_typed_control(self):
+        self.bot.submit(self.task, {'requester': 'discord', 'conversationId': 'conv-a'})
+        pid = 'abc123def456'
+        self.bot.save(dict(self.bot.result(self.task['id']), state='waiting-permission',
+                           permission={'pid': pid, 'requestId': 'req-1', 'agentId': 'agent',
+                                       'name': 'Bash', 'description': 'Run tests', 'askedAt': time.time()}))
+        request = dict(action='permission', conversationId='conv-a', taskId=self.task['id'],
+                       pid=pid, decision='allow', requestId='d-100')
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, request, False)  # read-only bridge refuses
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, dict(request, conversationId='conv-b'), True)
+        for bad in [dict(request, decision='maybe'), dict(request, decision='deny', pid='ABC123DEF456'),
+                    dict(request, pid='short'), dict(request, pid='../bad'), dict(request, reason='x')]:
+            with self.assertRaises(ValueError):
+                gui.handle(self.home, bad, True)
+        accepted = gui.handle(self.home, request, True)
+        self.assertEqual((accepted['accepted'], accepted['controlId'], accepted['state']),
+                         (True, 'd-100', 'queued'))
+        row = self.bot.db.execute('SELECT action,payload FROM task_controls WHERE id=?', ('d-100',)).fetchone()
+        self.assertEqual(row[0], 'permit-allow')
+        self.assertEqual(json.loads(row[1]), {'conversationId': 'conv-a', 'pid': pid})
+
+    def test_permission_and_rejection_notices_are_posted_exactly_once(self):
+        record = self.bot.submit(self.task, {'requester': 'discord', 'conversationId': 'conv-a'})
+        pid = 'abc123def456'
+        self.bot.save(dict(record, state='waiting-permission',
+                           permission={'pid': pid, 'requestId': 'req-1', 'agentId': 'agent',
+                                       'name': 'Bash', 'description': 'Run the fixture gates', 'askedAt': time.time()}))
+        conversations = Conversations(self.home)
+        conversations.migrate()
+
+        def count(needle):
+            return conversations.db.execute(
+                "SELECT count(*) FROM gui_messages WHERE conversation='conv-a' AND role='system' AND instr(text,?)>0",
+                (needle,)).fetchone()[0]
+
+        try:
+            conversations.tick_notices()
+            conversations.tick_notices()
+            self.assertEqual(count('권한 요청이 왔어요: Bash'), 1)
+            payload = json.loads(conversations.db.execute(
+                "SELECT payload FROM gui_messages WHERE conversation='conv-a' AND instr(text,'권한 요청이 왔어요')>0").fetchone()[0])
+            self.assertEqual(payload['permission'], {'taskId': self.task['id'], 'pid': pid})
+
+            resolved = self.bot.result(self.task['id'])
+            resolved.pop('permission', None)
+            resolved.update(state='running', permissionLog=[
+                {'pid': pid, 'name': 'Bash', 'decision': 'allow', 'by': 'owner', 'at': 100.0},
+                {'pid': pid, 'name': 'Bash', 'decision': 'deny', 'by': 'timeout', 'at': 200.0},
+                {'name': 'Bash', 'decision': 'deny', 'by': 'hardline', 'rule': 'rm-root', 'at': 300.0},
+            ])
+            self.bot.save(resolved)
+            conversations.tick_notices()
+            conversations.tick_notices()
+            for text in ['허용했어요.', '시간이 지나 거절했어요.', '위험 명령이라 자동으로 거절했어요: rm-root']:
+                self.assertEqual(count(text), 1, text)
+            resolved_payload = json.loads(conversations.db.execute(
+                "SELECT payload FROM gui_messages WHERE conversation='conv-a' AND instr(text,'허용했어요')>0").fetchone()[0])
+            self.assertEqual(resolved_payload['permissionResolved'], {'taskId': self.task['id'], 'pid': pid})
+        finally:
+            conversations.db.close()
+
+    def test_each_rejected_control_is_announced_once(self):
+        self.bot.submit(self.task, {'requester': 'discord', 'conversationId': 'conv-a'})
+        reasons = {'dispatch-in-flight': '작업을 시작하는 중이에요. 잠시 후 다시 시도해 주세요.',
+                   'cleanup-in-progress': '정리 중인 작업이에요.',
+                   'pause-unverified': '멈춘 것을 확인하지 못했어요. 작업은 계속 진행 중이에요.',
+                   'resume-unverified': '재개 요청을 보내지 못했어요.',
+                   'not-pausable': '지금 상태에서는 멈출 수 없어요.',
+                   'not-paused': '멈춘 작업이 아니에요.',
+                   'not-cancellable': '이미 끝난 작업이에요.',
+                   'resume-unavailable': '재개할 에이전트가 없어요.',
+                   'control-failed': '처리 중 오류가 났어요.',
+                   'stale-permission': '이미 처리된 권한 요청이에요.'}
+        now = time.time()
+        with self.bot.db:
+            for index, (reason, text) in enumerate(reasons.items()):
+                self.bot.db.execute('INSERT INTO task_controls VALUES (?,?,?,?,?,?,?,?)',
+                                    ('ctl-' + str(index), self.task['id'], 'pause',
+                                     json.dumps({'conversationId': 'conv-a'}), 'rejected', now, None, reason))
+            # Applied controls are announced by state notices, never by this path.
+            self.bot.db.execute('INSERT INTO task_controls VALUES (?,?,?,?,?,?,?,?)',
+                                ('ctl-applied', self.task['id'], 'pause',
+                                 json.dumps({'conversationId': 'conv-a'}), 'applied', now, now, 'paused'))
+        conversations = Conversations(self.home)
+        conversations.migrate()
+        try:
+            conversations.tick_notices()
+            conversations.tick_notices()
+            total = conversations.db.execute(
+                "SELECT count(*) FROM gui_messages WHERE conversation='conv-a' AND instr(text,'요청을 처리하지 못했어요:')>0").fetchone()[0]
+            self.assertEqual(total, len(reasons))
+            for index, (reason, text) in enumerate(reasons.items()):
+                shown = conversations.db.execute(
+                    "SELECT count(*) FROM gui_messages WHERE conversation='conv-a' AND text=?",
+                    ('요청을 처리하지 못했어요: ' + text,)).fetchone()[0]
+                self.assertEqual(shown, 1, reason)
+        finally:
+            conversations.db.close()
+
     @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell byte-stream integration')
     def test_windows_wrapper_stdio_readonly_submit_and_result(self):
         script = str(ROOT / 'tools/paseo-bot/gui-bridge.ps1')

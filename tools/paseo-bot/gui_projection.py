@@ -6,7 +6,7 @@ import time
 from gui_state import project_list
 from paseo_bot import MODELS, model_alias, route_model, scrub
 
-GROUPS = {'waiting': ['queued', 'held', 'ready'], 'running': ['dispatching', 'running', 'paused', 'repairing'],
+GROUPS = {'waiting': ['queued', 'held', 'ready'], 'running': ['dispatching', 'running', 'waiting-permission', 'paused', 'repairing'],
           'attention': ['blocked', 'unknown'], 'success': ['passed'], 'failed': ['failed'], 'closed': ['closed']}
 
 

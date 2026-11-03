@@ -202,7 +202,7 @@ async function main() {
     const error = typeof lastError === 'string' ? lastError : (typeof lastError?.message === 'string' ? lastError.message : '');
     const quota = /(?:rate[ _-]?limit|usage limit|quota exceeded|insufficient.quota|too many requests|\b429\b|credit balance|out of credits)/i.test(error);
     const unavailable = /(?:model.{0,60}(?:not found|not available|unsupported|does not exist)|(?:unknown|invalid) model)/i.test(error);
-    return {status:r.status,message:r.lastMessage ?? '',errorKind:final.agent.status === 'error' ? (quota?'quota':unavailable?'model-unavailable':'other') : '',workspaceId:current.agent.workspaceId,cwd:current.agent.cwd};
+    return {status:r.status,message:r.lastMessage ?? '',errorKind:final.agent.status === 'error' ? (quota?'quota':unavailable?'model-unavailable':'other') : '',workspaceId:current.agent.workspaceId,cwd:current.agent.cwd,pendingPermissions:Array.isArray(final.agent.pendingPermissions) ? Math.min(final.agent.pendingPermissions.length,20) : null};
   }
   if(req.action==='repair') {
     const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
@@ -246,7 +246,7 @@ async function main() {
     if(typeof req.agentId!=='string' || !req.agentId)throw Error('action');
     const tail=req.tail===undefined ? 40 : req.tail;
     if(!Number.isInteger(tail) || tail<1 || tail>200)throw Error('action');
-    if(req.filter!==undefined && req.filter!=='tools')throw Error('action');
+    if(req.filter!==undefined && req.filter!=='tools' && req.filter!=='commands')throw Error('action');
     const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
     if(!current?.agent)throw Error('ownership');
     const label=current.agent.labels?.paseo_bot_attempt;
@@ -268,6 +268,13 @@ async function main() {
       else if(item.type==='plan')line='plan: '+String(item.text ?? '');
       else continue;
       if(req.filter==='tools' && item.type!=='tool_call')continue;
+      if(req.filter==='commands') {
+        // Safety scanning: only the command input of shell-like tools, never tool
+        // output or file contents an agent merely read.
+        if(item.type!=='tool_call' || !/shell|bash|exec|command|terminal|powershell|pwsh|cmd/i.test(String(item.name ?? '')))continue;
+        const input=item.detail && typeof item.detail==='object' ? String(item.detail.summary ?? '') : '';
+        line=input;
+      }
       line=line.replace(/\s+/g,' ').trim();
       if(line)lines.push(line.slice(0,500));
     }
@@ -278,6 +285,34 @@ async function main() {
       if(cut>=0)text=text.slice(cut+1);
     }
     return {text};
+  }
+  if(req.action==='permits') {
+    // Pending approval requests for a bot-owned agent, bounded for chat display.
+    if(typeof req.agentId!=='string' || !req.agentId)throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    const pending=Array.isArray(current.agent.pendingPermissions) ? current.agent.pendingPermissions : [];
+    return pending.slice(0,20).map(p=>({
+      id:String(p?.id ?? '').slice(0,200),
+      name:String(p?.name ?? '').slice(0,200),
+      description:String(p?.description ?? '').slice(0,1000),
+    })).filter(p=>p.id);
+  }
+  if(req.action==='permit') {
+    // Answer exactly one pending request. The id and decision are validated
+    // against the live agent before anything is sent to the provider.
+    if(typeof req.agentId!=='string' || !req.agentId || typeof req.requestId!=='string' || !req.requestId)throw Error('action');
+    if(req.decision!=='allow' && req.decision!=='deny')throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    const pending=Array.isArray(current.agent.pendingPermissions) ? current.agent.pendingPermissions : [];
+    if(!pending.some(p=>p?.id===req.requestId))throw Error('permission');
+    await client.respondToPermission(req.agentId,req.requestId,{behavior:req.decision});
+    return {result:req.decision};
   }
   if(req.action==='launch') {
     stage='profile';
@@ -348,7 +383,7 @@ async function main() {
 }
 try {process.stdout.write(JSON.stringify({ok:true,result:await main()}));}
 catch(e) {
-  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt','project receipt','pagination','action','ownership','cleanup terminal create','cleanup terminal capture','cleanup helper error','cleanup terminal timeout','cleanup terminal close','cleanup receipt']);
+  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt','project receipt','pagination','action','ownership','permission','cleanup terminal create','cleanup terminal capture','cleanup helper error','cleanup terminal timeout','cleanup terminal close','cleanup receipt']);
   // Fixed diagnostic vocabulary only. Never return raw transport/CLI messages.
   const reason=known.has(e?.message)?e.message.replaceAll(' ','-'):'operation';
   process.stdout.write(JSON.stringify({ok:false,stage,reason,error:'Paseo operation failed; inspect private configuration.'}));process.exitCode=1;

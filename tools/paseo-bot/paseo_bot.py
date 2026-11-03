@@ -20,7 +20,9 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/paseo-multi/scripts'))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hosts as fleet
+import safety
 
 PROFILES = {'sync': 'git-sync', 'hard': 'coding-hard', 'refactor': 'refactor-bulk', 'gpt': 'gpt-task'}
 # Stable aliases are the only user-selectable providers/models. Profiles carry host-local permissions.
@@ -58,8 +60,11 @@ CLOSABLE = {'failed', 'blocked', 'unknown'}
 # Owner controls: paused keeps the machine and its agent, held is a queued task paused before dispatch.
 PAUSED = 'paused'
 HELD = 'held'
-CONTROL_ACTIONS = ('cancel', 'pause', 'resume')
-BLOCKED_KINDS = ('needs_input', 'capability', 'dependency', 'timeout', 'evidence', 'verdict', 'cancelled', 'transient')
+WAITING_PERMISSION = 'waiting-permission'
+CONTROL_ACTIONS = ('cancel', 'pause', 'resume', 'permit-allow', 'permit-deny')
+PERMIT_ACTIONS = ('permit-allow', 'permit-deny')
+BLOCKED_KINDS = ('needs_input', 'capability', 'dependency', 'timeout', 'evidence', 'verdict', 'cancelled', 'transient', 'safety')
+PERMISSION_PID = re.compile(r'[a-z0-9]{12}\Z')
 TEST_ID = re.compile(r'(?:^plan-|^vaxport-|^pr\d+-proof|smoke|probe|proof|e2e|test)', re.I)
 ID = re.compile(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\Z')
 SHA = re.compile(r'[0-9a-f]{40,64}\Z')
@@ -69,7 +74,7 @@ DEFAULT_HOME = Path.home() / '.config/paseo-bot'
 class BridgeFailure(ValueError):
     def __init__(self, stage='operation', reason='operation', detail=''):
         self.stage = stage if stage in ['connect', 'identity', 'profile', 'cli', 'receipt'] else 'operation'
-        self.reason = reason if reason in ['runtime-missing', 'identity', 'connection', 'profile', 'profile-unsupported', 'provider-unavailable', 'unknown-mode', 'launch', 'launch-outcome-unknown', 'schema', 'receipt', 'workspace-receipt', 'ownership', 'action', 'pagination', 'project-receipt', 'cleanup-terminal-create', 'cleanup-terminal-capture', 'cleanup-helper-error', 'cleanup-terminal-timeout', 'cleanup-terminal-close', 'cleanup-receipt'] else 'operation'
+        self.reason = reason if reason in ['runtime-missing', 'identity', 'connection', 'profile', 'profile-unsupported', 'provider-unavailable', 'unknown-mode', 'launch', 'launch-outcome-unknown', 'schema', 'receipt', 'workspace-receipt', 'ownership', 'permission', 'action', 'pagination', 'project-receipt', 'cleanup-terminal-create', 'cleanup-terminal-capture', 'cleanup-helper-error', 'cleanup-terminal-timeout', 'cleanup-terminal-close', 'cleanup-receipt'] else 'operation'
         # An unclassified failure is a lost connection or timeout, not a verdict.
         self.transient = self.stage == 'connect' or self.reason == 'operation'
         self.detail = str(detail)[:500]
@@ -237,6 +242,10 @@ def tail_text(value, limit=3500):
     return text[:limit]
 
 
+def message_digest(observed):
+    return hashlib.sha256(str((observed or {}).get('message', '')).encode('utf-8')).hexdigest()
+
+
 def private_dir(path):
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     info = path.lstat()
@@ -314,6 +323,15 @@ def validate_config(c):
     aliases = c.get('machineAliases', {})
     if not isinstance(aliases, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in aliases.items()):
         raise ValueError('Machine aliases must map names to registered labels.')
+    for key in ('permissionTimeoutSeconds', 'resumeGraceSeconds', 'transientGraceSeconds', 'phaseTimeoutSeconds'):
+        value = c.get(key)
+        if value is not None and (type(value) not in (int, float) or value < 0):
+            raise ValueError(key + ' must be a non-negative number.')
+    rules = c.get('safety')
+    if rules is not None:
+        if not isinstance(rules, dict) or set(rules) - {'extraRules', 'disabledRules'}:
+            raise ValueError('Safety config accepts only extraRules and disabledRules.')
+        safety.build_rules(rules.get('extraRules'), rules.get('disabledRules'))
     ids = set()
     for p in c['projects']:
         if not ID.fullmatch(p.get('id', '')) or p['id'] in ids:
@@ -487,11 +505,16 @@ class Bot:
         if not isinstance(control_id, str) or not ID.fullmatch(control_id):
             raise ValueError('Invalid control ID.')
         if action not in CONTROL_ACTIONS:
-            raise ValueError('Control action must be cancel, pause or resume.')
+            raise ValueError('Control action must be cancel, pause, resume, permit-allow or permit-deny.')
         if not isinstance(task_id, str) or not ID.fullmatch(task_id):
             raise ValueError('Invalid task ID.')
         self.result(task_id)
-        encoded = json.dumps(scrub(payload or {}), sort_keys=True, ensure_ascii=False)
+        if payload is not None and not isinstance(payload, dict):
+            raise ValueError('Invalid control payload.')
+        payload = scrub(payload or {})
+        if action in PERMIT_ACTIONS and not PERMISSION_PID.fullmatch(str(payload.get('pid', ''))):
+            raise ValueError('Permission controls need a pending request key.')
+        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         with self.db:
             self.db.execute('INSERT OR IGNORE INTO task_controls VALUES (?,?,?,?,?,?,NULL,NULL)',
                             (control_id, task_id, action, encoded, 'queued', time.time()))
@@ -512,16 +535,182 @@ class Bot:
                 log_event(status='control-error', control=control_id, task=task_id, action=action, error=describe(error))
                 result = 'control-failed'
             rejected = {'dispatch-in-flight', 'cleanup-in-progress', 'pause-unverified', 'resume-unverified',
-                        'not-pausable', 'not-paused', 'not-cancellable', 'resume-unavailable', 'control-failed'}
+                        'not-pausable', 'not-paused', 'not-cancellable', 'resume-unavailable', 'control-failed',
+                        'stale-permission'}
             with self.db:
                 self.db.execute('UPDATE task_controls SET state=?,applied=?,result=? WHERE id=? AND state=?',
                                 ('rejected' if result in rejected else 'applied', time.time(), result, control_id, 'queued'))
             log_event(status='control', control=control_id, task=task_id, action=action, result=result)
 
+    def _log_permission(self, r, entry):
+        log = r.setdefault('permissionLog', [])
+        log.append(scrub(entry))
+        del log[:-100]
+
+    def safety_rules(self, config=None):
+        config = config if config is not None else self.config()
+        rules = config.get('safety') or {}
+        return safety.build_rules(rules.get('extraRules'), rules.get('disabledRules'))
+
+    def pending_permissions(self, h, run, r=None):
+        """Bounded pending permission requests, or None when the bridge failed."""
+        try:
+            value = self.rpc(h, 'permits', agentId=run['agentId'], attempt=run.get('attempt'))
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            log_event(status='permits-unavailable', task=(r or {}).get('id'), error=describe(error))
+            return None
+        items = value.get('requests') if isinstance(value, dict) else value
+        if not isinstance(items, list):
+            return []
+        out = []
+        for item in items[:20]:
+            if not isinstance(item, dict):
+                continue
+            request_id = item.get('id')
+            if not isinstance(request_id, str) or not request_id or len(request_id) > 200:
+                continue
+            out.append({'id': request_id, 'name': str(item.get('name') or '')[:200],
+                        'description': str(item.get('description') or '')[:1000]})
+        return out
+
+    def _handle_pending_permissions(self, r, h, run, pending):
+        """Hardline requests are denied here; the first human request becomes waiting."""
+        answered = {entry.get('requestId') for entry in (r.get('permissionLog') or []) if isinstance(entry, dict)}
+        pending = [item for item in pending if item['id'] not in answered]
+        if not pending:
+            return r  # an answer is already on its way to the provider; no journal write
+        rules = self.safety_rules()
+        remaining = []
+        for request in pending:
+            text = (request['name'] + '\n' + request['description']).strip()
+            rule = safety.scan(text, rules)
+            if not rule:
+                remaining.append(request)
+                continue
+            # A hardline request is never shown to the human.
+            hardline = {'requestId': request['id'], 'agentId': run['agentId'],
+                        'name': request['name'], 'description': request['description']}
+            if not self._respond_permission(r, h, run, hardline, 'deny', 'hardline', rule):
+                r.update(state='blocked', blockedKind='capability',
+                         reason='A hardline command could not be denied automatically; the task was stopped.')
+                return self.save(r)
+        if remaining:
+            request = remaining[0]
+            pid = uuid.uuid4().hex[:12]
+            r.update(state=WAITING_PERMISSION, permission={
+                'pid': pid, 'requestId': request['id'], 'agentId': run['agentId'],
+                'name': request['name'], 'description': request['description'], 'askedAt': time.time()})
+            return self.save(r)
+        return self.save(r)  # everything was denied automatically; keep working
+
+    def _waiting_permission_tick(self, r, h, run, observed):
+        """None means the answer arrived elsewhere and the turn is now idle."""
+        permission = r.get('permission') or {}
+        if observed.get('status') == 'idle':
+            r.pop('permission', None)
+            r['state'] = 'running'
+            return None
+        if observed.get('status') == 'error':
+            r.pop('permission', None)
+            r['state'] = 'running'
+            return None
+        timeout = self.config().get('permissionTimeoutSeconds', 300)
+        if time.time() - (permission.get('askedAt') or time.time()) >= timeout:
+            if self._respond_permission(r, h, run, permission, 'deny', 'timeout'):
+                r.pop('permission', None)
+                r['state'] = 'running'
+                return self.save(r)
+            # The bridge did not acknowledge: keep the card and retry next tick.
+            return r
+        pending = self.pending_permissions(h, run, r)
+        if pending is None:
+            return r
+        if any(item['id'] == permission.get('requestId') for item in pending):
+            return r
+        # Another client answered; keep the machine busy and continue.
+        self._log_permission(r, {'requestId': permission.get('requestId'), 'name': permission.get('name', ''),
+                                 'pid': permission.get('pid'), 'decision': 'resolved', 'by': 'external',
+                                 'at': time.time()})
+        r.pop('permission', None)
+        r['state'] = 'running'
+        return self.save(r)
+
+    def scan_tool_log(self, h, run, r):
+        """Detection after a stage finished. A logs failure never blocks the task."""
+        try:
+            data = self.rpc(h, 'logs', agentId=run['agentId'], attempt=run.get('attempt'), filter='commands', tail=200)
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            log_event(status='safety-log-unavailable', task=r['id'], error=describe(error))
+            return None
+        text = data.get('text', '') if isinstance(data, dict) else ''
+        try:
+            rules = self.safety_rules()
+        except ValueError:
+            return None
+        name, excerpt = safety.find(text, rules)
+        if not name:
+            return None
+        # The matched command stays in the private stderr log only.
+        log_event(status='safety-detected', task=r['id'], rule=name, excerpt=scrub(excerpt)[:300])
+        return name
+
+    def _respond_permission(self, r, h, run, permission, decision, by, rule=None):
+        """Answer one pending request. Only a bridge acknowledgement is logged."""
+        try:
+            self.rpc(h, 'permit', agentId=permission.get('agentId'), requestId=permission.get('requestId'),
+                     decision=decision, attempt=(run or {}).get('attempt'))
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            log_event(status='permission-response-failed', task=r['id'], by=by, error=describe(error))
+            return False
+        entry = {'requestId': permission.get('requestId'), 'name': str(permission.get('name', ''))[:200],
+                 'decision': decision, 'by': by, 'at': time.time()}
+        if permission.get('pid'):
+            entry['pid'] = permission['pid']
+        if rule:
+            entry['rule'] = rule
+        self._log_permission(r, entry)
+        return True
+
     def _apply_control(self, task_id, action, payload):
         r = self.result(task_id)
         state = r['state']
+        if action in PERMIT_ACTIONS:
+            if state != WAITING_PERMISSION:
+                return 'stale-permission'
+            permission = r.get('permission') or {}
+            pid = payload.get('pid')
+            if not pid or pid != permission.get('pid') or not permission.get('requestId'):
+                return 'stale-permission'
+            run = (r.get('runs') or [None])[-1]
+            if not run or run.get('agentId') != permission.get('agentId'):
+                return 'stale-permission'
+            try:
+                h = self.host(r['machine'])
+                if h['serverId'] != r['serverId']:
+                    raise ValueError('Registered server identity changed.')
+            except (ValueError, KeyError, OSError) as error:
+                log_event(status='control-permission-failed', task=task_id, error=describe(error))
+                return 'control-failed'
+            decision = 'allow' if action == 'permit-allow' else 'deny'
+            if not self._respond_permission(r, h, run, permission, decision, 'owner'):
+                return 'control-failed'
+            r.pop('permission', None)
+            r['state'] = 'running'
+            self.save(r)
+            return 'allowed' if decision == 'allow' else 'denied'
         if action == 'cancel':
+            if state == WAITING_PERMISSION:
+                permission = r.get('permission') or {}
+                run = (r.get('runs') or [None])[-1]
+                if permission.get('requestId') and run and run.get('agentId') == permission.get('agentId'):
+                    try:
+                        h = self.host(r['machine'])
+                        if h['serverId'] != r['serverId']:
+                            raise ValueError('Registered server identity changed.')
+                        self._respond_permission(r, h, run, permission, 'deny', 'cancel')
+                    except (ValueError, KeyError, OSError) as error:
+                        log_event(status='control-cancel-permission-failed', task=task_id, error=describe(error))
+                r.pop('permission', None)
             if state in TERMINAL:
                 return 'not-cancellable'
             if state == 'dispatching':
@@ -545,6 +734,8 @@ class Bot:
             self.save(r)
             return 'cancelled'
         if action == 'pause':
+            if state == WAITING_PERMISSION:
+                return 'not-pausable'
             if state == 'running':
                 run = (r.get('runs') or [None])[-1]
                 if not run or not run.get('agentId'):
@@ -560,7 +751,8 @@ class Bot:
                     return 'pause-unverified'
                 if not isinstance(observed, dict) or observed.get('status') != 'idle':
                     return 'pause-unverified'
-                r.update(state='paused', pausedFrom='running', pausedAt=time.time(), pausedStage=r.get('stage'))
+                r.update(state='paused', pausedFrom='running', pausedAt=time.time(), pausedStage=r.get('stage'),
+                         pausedMessageDigest=hashlib.sha256(str(observed.get('message', '')).encode('utf-8')).hexdigest())
                 self.save(r)
                 return 'paused'
             if state == 'queued':
@@ -604,6 +796,7 @@ class Bot:
                   'provisioning': '작업 공간을 준비 중이라 아직 볼 로그가 없어요.',
                   'dispatching': '에이전트를 시작하는 중이에요.',
                   PAUSED: '일시 정지 상태예요. 재개하면 같은 에이전트가 이어서 해요.',
+                  WAITING_PERMISSION: '권한 요청에 대한 답을 기다리는 중이에요.',
                   'repairing': '응답 형식을 바로잡는 중이에요.',
                   'cleaning': '작업 공간을 정리하는 중이에요.',
                   'passed': '작업을 마쳤어요.', 'failed': '작업에 실패했어요.',
@@ -772,6 +965,9 @@ class Bot:
             'the Paseo bot runs there and would lose its client mid-task. Leave that host out and report it as needing a manual update. '
             'Finish with exactly one line PASEO_BOT_RESULT=<JSON object>, no secrets or raw logs. '
             'JSON requires verdict (pass/fail/blocked), summary, branch, head (full git SHA), cwd (absolute path), gates (array of {command,exitCode}), files (array of changed paths). '
+            'Safety rules: never delete the filesystem root or your home directory, never run a fork bomb, never format or overwrite a disk, '
+            'never pipe a downloaded script into a shell, never force-push main or master, never drop a database, and never read private credential files. '
+            'Such commands are denied automatically, and a detected command blocks the task. '
         )
         details = {'project': body['project'], 'title': body['title'], 'task': body['prompt'], 'phase': stage,
                    'repo': target['repo'], 'defaultBranch': target['defaultBranch'], 'gates': target['gates'],
@@ -969,7 +1165,7 @@ class Bot:
             if stage == 'work':
                 r.update(workspaceId=receipt['workspaceId'], worktree=receipt['cwd'])
             return self.save(r)
-        if r['state'] == 'running':
+        if r['state'] in ('running', WAITING_PERMISSION):
             run = r['runs'][-1]
             try:
                 observed = self.rpc(h, 'observe', agentId=run['agentId'], attempt=run['attempt'])
@@ -981,21 +1177,50 @@ class Bot:
                 raise StatusCheckFailed('Agent placement changed; inspect task ownership.')
             if observed['status'] == 'timeout':
                 if time.time() - r['phaseStartedAt'] > self.config().get('phaseTimeoutSeconds', 7200):
+                    r.pop('permission', None)
                     r.update(state='blocked', blockedKind='timeout', reason='Phase deadline exceeded; the bot captures evidence, then archives the workspace (stopping its agent) and removes the worktree.')
+                    return self.save(r)
+                if r['state'] == WAITING_PERMISSION:
+                    return self._waiting_permission_tick(r, h, run, observed) or self.save(r)
+                # A working agent reports "timeout" from the 1-second finish wait;
+                # still check for a pending approval before treating it as normal work.
+                # observe reports the pending count; skip the extra RPC when it is 0.
+                pending = self.pending_permissions(h, run, r) if observed.get('pendingPermissions') != 0 else []
+                if pending:
+                    return self._handle_pending_permissions(r, h, run, pending)
                 return self.save(r)
             if body.get('workflow') != 'daily' and observed['status'] == 'error' and observed.get('errorKind') in ('quota', 'model-unavailable'):
                 next_model = fallback_model(run.get('modelAlias', r.get('model')), observed['errorKind'])
                 used = [model_alias(item.get('modelAlias')) for item in r['runs'] if item.get('stage') == stage]
                 if next_model and next_model not in used and MODELS[next_model][0] in r.get('profiles', [MODELS[next_model][0]]):
+                    r.pop('permission', None)
                     r.update(state='ready', retryModel=next_model, retryWorkspace=run['workspaceId'], retryCwd=run['cwd'],
                              reason='Provider limit or model availability; retrying in the same workspace.')
                     return self.save(r)
             if observed['status'] in ('closed', 'archived', 'deleted'):
+                r.pop('permission', None)
                 r.update(state='unknown', reason='Agent closed without a result receipt; stale run record closed.')
                 return self.save(r)
-            if observed['status'] != 'idle':
+            if r['state'] == WAITING_PERMISSION:
+                result = self._waiting_permission_tick(r, h, run, observed)
+                if result is not None:
+                    return result
+                # The request was answered elsewhere and the turn finished; fall
+                # through to normal idle receipt handling.
+            if observed['status'] not in ('idle', 'error'):
+                pending = self.pending_permissions(h, run, r)
+                if pending:
+                    return self._handle_pending_permissions(r, h, run, pending)
                 r.update(state='blocked', blockedKind='needs_input', reason='Agent error or permission wait; no automatic approval.')
                 return self.save(r)
+            if observed['status'] == 'error':
+                r.update(state='blocked', blockedKind='needs_input', reason='Agent error or permission wait; no automatic approval.')
+                return self.save(r)
+            if observed['status'] == 'idle' and r.get('resumedAt') and r.get('pausedMessageDigest'):
+                # A resumed agent can still report the old idle message for a few seconds.
+                if time.time() - r['resumedAt'] <= self.config().get('resumeGraceSeconds', 45) \
+                        and message_digest(observed) == r['pausedMessageDigest']:
+                    return r
             lines = [x[len('PASEO_BOT_RESULT='):] for x in observed.get('message', '').splitlines() if x.startswith('PASEO_BOT_RESULT=')]
             try:
                 # Agents sometimes append Markdown or stray characters after
@@ -1024,6 +1249,12 @@ class Bot:
                 self.rpc(h, 'repair', agentId=run['agentId'], attempt=run['attempt'], prompt=correction)
                 r['state'] = 'running'
                 return self.save(r)
+            rule = self.scan_tool_log(h, run, r)
+            if rule:
+                r.pop('permission', None)
+                r.update(state='blocked', blockedKind='safety',
+                         reason='Blocked command pattern detected: ' + rule + '. Review the task privately.')
+                return self.save(r)
             if (body.get('workflow') != 'daily' and stage == 'preflight' and e.get('verdict') == 'blocked' and 'needs-host-fetch' in str(e.get('summary', ''))
                     and not r.get('hostFetchRetry')):
                 # One automatic retry: the new preflight may fetch the missing base itself.
@@ -1048,7 +1279,7 @@ class Bot:
 
     def step_failed(self, task_id, error, grace):
         record = self.result(task_id)
-        if transient(error) and record['state'] in ('queued', 'ready', 'provisioning', 'dispatching', 'running', 'cleaning'):
+        if transient(error) and record['state'] in ('queued', 'ready', 'provisioning', 'dispatching', 'running', 'cleaning', WAITING_PERMISSION):
             now = time.time()
             since = record.get('transientSince') or now
             if now - since <= grace:
@@ -1072,7 +1303,7 @@ class Bot:
         elif record['state'] == 'repairing':
             record.update(state='unknown', reason='Receipt repair outcome unknown; inspect the recorded agent before follow-up.')
             self.save(record)
-        elif record['state'] not in ['running', 'dispatching']:
+        elif record['state'] not in ['running', 'dispatching', WAITING_PERMISSION]:
             record.update(state='blocked', blockedKind='transient' if expired else 'capability',
                           reason=expired or 'Routing, registry or result validation failed. Inspect task evidence privately.')
             self.save(record)
@@ -1225,6 +1456,8 @@ def main():
         control = sub.add_parser(name)
         control.add_argument('id')
         control.add_argument('--reason', default='')
+        if name in PERMIT_ACTIONS:
+            control.add_argument('--pid', required=True)
     peek = sub.add_parser('peek')
     peek.add_argument('id')
     peek.add_argument('--tail', type=int, default=40)
@@ -1252,6 +1485,8 @@ def main():
                 out = bot.close(args.id, args.reason)
         elif args.command in CONTROL_ACTIONS:
             payload = {'reason': args.reason} if args.reason else {}
+            if args.command in PERMIT_ACTIONS:
+                payload['pid'] = args.pid
             out = bot.control(args.id, args.command, 'cli-' + uuid.uuid4().hex[:20], payload)
         elif args.command == 'peek':
             out = bot.peek(args.id, args.tail)

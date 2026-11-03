@@ -1,13 +1,14 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory=$true,Position=0)]
-  [ValidateSet('submit','status','result','health','list','serve','discover','tick','close','cancel','pause','resume','peek','supervise')]
+  [ValidateSet('submit','status','result','health','list','serve','discover','tick','close','cancel','pause','resume','permit-allow','permit-deny','peek','supervise')]
   [string]$Command,
   [Parameter(Position=1)][string]$Id,
   [string]$File,
   [string]$State = (Join-Path $env:USERPROFILE '.config\paseo-bot'),
   [string]$Python,
   [string]$Reason,
+  [string]$Pid,
   [int]$Tail,
   [switch]$Apply,
   [ValidateSet('cli','discord')][string]$Producer = 'cli',
@@ -44,7 +45,11 @@ end {
       if ($Id) { $argv += $Id }
     }
     if ($File) { $argv += @('--file',$File) }
-    if ($Command -in @('close','cancel','pause','resume') -and $Reason) { $argv += @('--reason',$Reason) }
+    if ($Command -in @('close','cancel','pause','resume','permit-allow','permit-deny') -and $Reason) { $argv += @('--reason',$Reason) }
+    if ($Command -in @('permit-allow','permit-deny')) {
+      if (!$Pid) { throw 'permit-allow and permit-deny need -Pid' }
+      $argv += @('--pid',$Pid)
+    }
     if ($Command -eq 'peek' -and $PSBoundParameters.ContainsKey('Tail')) { $argv += @('--tail',[string]$Tail) }
     if ($Command -eq 'submit') { $argv += @('--producer',$Producer) }
     # .NET Framework's ProcessStartInfo lacks ArgumentList. Quote CreateProcess

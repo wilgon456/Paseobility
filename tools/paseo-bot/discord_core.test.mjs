@@ -403,6 +403,47 @@ test('cancel confirmation custom ids round-trip and stay inside 100 characters',
   assert.deepEqual(card.allowed_mentions, {parse: []});
 });
 
+test('permission custom ids round-trip and only a 12-character key is accepted', () => {
+  const pid = 'abc123def456';
+  assert.equal(c.formatPermitId('allow', pid), 'pb:pa:abc123def456');
+  assert.equal(c.formatPermitId('deny', pid), 'pb:pd:abc123def456');
+  assert.deepEqual(c.parsePermitId('pb:pa:abc123def456'), {action: 'permit-allow', pid});
+  assert.deepEqual(c.parsePermitId('pb:pd:abc123def456'), {action: 'permit-deny', pid});
+  assert.deepEqual(c.parseCustomId('pb:pa:abc123def456'), {action: 'permit-allow', pid});
+  assert.deepEqual(c.parseCustomId('pb:pd:abc123def456'), {action: 'permit-deny', pid});
+  // Existing plan and cancel ids keep working.
+  assert.deepEqual(c.parseCustomId('pb:approve:plan-1'), {action: 'approve', planId: 'plan-1'});
+  assert.deepEqual(c.parseCustomId('pb:reject:plan-2'), {action: 'reject', planId: 'plan-2'});
+  assert.deepEqual(c.parseCustomId('pb:cc:AbCdEf123456'), {action: 'confirm', short: 'AbCdEf123456'});
+  assert.deepEqual(c.parseCustomId('pb:cx:AbCdEf123456'), {action: 'dismiss', short: 'AbCdEf123456'});
+  for (const bad of ['', 'pb:pa:', 'pb:pa:short', 'pb:pa:ABC123DEF456', 'pb:pa:abc123def4567',
+    'pb:px:abc123def456', 'pb:pa:abc 123def45', null, 7]) {
+    assert.equal(c.parseCustomId(bad), null, String(bad));
+    assert.equal(c.parsePermitId(bad), null, String(bad));
+  }
+  assert.throws(() => c.formatPermitId('maybe', pid));
+  assert.throws(() => c.formatPermitId('allow', 'ABC123DEF456'));
+});
+
+test('permission notices render allow and deny buttons and can be resolved', () => {
+  const pid = 'abc123def456';
+  const components = c.permissionComponents({taskId: 'task-1', pid});
+  assert.deepEqual(components, [{type: 1, components: [
+    {type: 2, style: 3, label: '허용', custom_id: 'pb:pa:abc123def456'},
+    {type: 2, style: 4, label: '거절', custom_id: 'pb:pd:abc123def456'},
+  ]}]);
+  assert.equal(c.permissionComponents({taskId: '../bad', pid}), null);
+  assert.equal(c.permissionComponents({taskId: 'task-1', pid: 'short'}), null);
+  assert.equal(c.permissionComponents(null), null);
+  assert.deepEqual(c.permissionEdit('• 권한 요청이 왔어요: Bash', 'allow'),
+    {content: '• 권한 요청이 왔어요: Bash\n\n허용했어요.', components: [], allowed_mentions: {parse: []}});
+  assert.ok(c.permissionEdit('x', 'deny').content.endsWith('거절했어요.'));
+  assert.deepEqual(c.permissionResolvedEdit('요청', '시간이 지나 거절했어요.').components, []);
+  assert.ok(c.permissionResolvedEdit('요청', '시간이 지나 거절했어요.').content.includes('시간이 지나 거절했어요.'));
+  assert.ok(c.permissionResolvedEdit('요청', '').content.includes('처리됐어요'));
+  assert.ok(c.permissionEdit('x'.repeat(3000), 'allow').content.length <= c.MAX_MESSAGE);
+});
+
 test('peek formatting fences the newest lines under the reply cap', () => {
   assert.equal(c.peekBlock('hello'), '```\nhello\n```');
   const long = Array.from({length: 400}, (_, i) => `line ${i} ` + 'y'.repeat(20)).join('\n');

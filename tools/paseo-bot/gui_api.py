@@ -6,7 +6,7 @@ import socket
 import sqlite3
 import sys
 from pathlib import Path
-from paseo_bot import Bot, ID, private_file, scrub
+from paseo_bot import Bot, ID, PERMISSION_PID, private_file, scrub
 from gui_projection import apply_supervisor, snapshot
 from gui_state import Conversations
 
@@ -26,6 +26,7 @@ def handle(home, request, allow_submit=False):
     action = request.get('action')
     allowed = {'status': {'action', 'offset'}, 'result': {'action', 'id'}, 'submit': {'action', 'task'},
                'control': {'action', 'conversationId', 'taskId', 'op', 'requestId'},
+               'permission': {'action', 'conversationId', 'taskId', 'pid', 'decision', 'requestId'},
                'peek': {'action', 'conversationId', 'taskId', 'tail'},
                'sync': {'action', 'offset', 'conversationId', 'before', 'query', 'project', 'machine', 'requester', 'scope', 'group', 'sort'},
                'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf', 'selection'},
@@ -67,7 +68,7 @@ def handle(home, request, allow_submit=False):
             return scrub(bot.submit(request['task']))
         finally:
             bot.db.close()
-    if action in ('control', 'peek'):
+    if action in ('control', 'permission', 'peek'):
         if not allow_submit:
             raise ValueError('Read-only bridge')
         conversation = request.get('conversationId')
@@ -82,6 +83,19 @@ def handle(home, request, allow_submit=False):
             # A chat control may only touch a task admitted from that same conversation.
             if not origin or json.loads(origin[0]).get('conversationId') != conversation:
                 raise ValueError('Task scope')
+            if action == 'permission':
+                pid = request.get('pid')
+                decision = request.get('decision')
+                request_id = request.get('requestId')
+                if not isinstance(pid, str) or not PERMISSION_PID.fullmatch(pid):
+                    raise ValueError('Invalid permission key')
+                if decision not in ('allow', 'deny'):
+                    raise ValueError('Invalid permission decision')
+                if not isinstance(request_id, str) or not ID.fullmatch(request_id):
+                    raise ValueError('Invalid request ID')
+                out = bot.control(task_id, 'permit-' + decision, request_id,
+                                  {'conversationId': conversation, 'pid': pid})
+                return {'accepted': True, 'controlId': out['controlId'], 'state': out['state']}
             if action == 'control':
                 op = request.get('op')
                 request_id = request.get('requestId')

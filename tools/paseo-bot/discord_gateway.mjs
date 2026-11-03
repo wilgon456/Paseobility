@@ -71,7 +71,7 @@ async function readToken() {
 }
 
 function emptyState() {
-  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, review: {}, confirms: {}, seenMessages: [], seenInteractions: [], gateway: {}};
+  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, permissions: {}, review: {}, confirms: {}, seenMessages: [], seenInteractions: [], gateway: {}};
 }
 
 function newThread(conversationId) {
@@ -118,9 +118,21 @@ function normalizeState(value) {
     if (typeof card.messageId !== 'string' || typeof card.conversationId !== 'string') throw new Error('state cards');
     cards[planId] = {conversationId: card.conversationId, messageId: card.messageId, state: typeof card.state === 'string' ? card.state : 'pending'};
   }
+  const permissions = {};
+  for (const [pid, card] of Object.entries(value.permissions ?? {}).slice(-200)) {
+    if (!core.PERMIT_KEY.test(pid) || !card || typeof card !== 'object') continue;
+    if (typeof card.conversationId !== 'string' || !card.conversationId) continue;
+    if (typeof card.taskId !== 'string' || !card.taskId) continue;
+    if (typeof card.messageId !== 'string' || !card.messageId) continue;
+    permissions[pid] = {
+      conversationId: card.conversationId,
+      taskId: card.taskId,
+      messageId: card.messageId,
+      content: typeof card.content === 'string' ? card.content.slice(0, core.MAX_MESSAGE) : '',
+    };
+  }
   const review = {};
-  for (const [key, record] of Object.entries(value.review ?? {}).slice(-200)) {
-    if (typeof key === 'string' && record && typeof record === 'object') {
+  for (const [key, record] of Object.entries(value.review ?? {}).slice(-200)) {    if (typeof key === 'string' && record && typeof record === 'object') {
       review[key] = {at: Number(record.at) || 0, reason: 'needs-review', notice: record.notice === true};
     }
   }
@@ -138,6 +150,7 @@ function normalizeState(value) {
     threads,
     delivered,
     cards,
+    permissions,
     review,
     confirms,
     seenMessages: seen(value.seenMessages, 5000),
@@ -439,6 +452,29 @@ async function latestPlan(conversationId, planId) {
 async function handleComponent(interaction, parsed) {
   const thread = core.trackedThread(config, state.threads, interaction.channel_id);
   if (!thread) return;
+  if (parsed.action === 'permit-allow' || parsed.action === 'permit-deny') {
+    const entry = state.permissions[parsed.pid];
+    if (!entry || entry.conversationId !== thread.conversationId) {
+      await interactionFollowUp(interaction, {content: '이미 처리된 권한 요청이에요.', components: []}).catch(() => {});
+      return;
+    }
+    const decision = parsed.action === 'permit-allow' ? 'allow' : 'deny';
+    try {
+      await gui({action: 'permission', conversationId: entry.conversationId, taskId: entry.taskId,
+        pid: parsed.pid, decision, requestId: `d-${interaction.id}`});
+    } catch (error) {
+      noteError(`permission:${entry.taskId}`, error);
+      await interactionFollowUp(interaction, {content: '권한 요청을 처리하지 못했어요. 상태를 확인해 주세요.', components: []}).catch(() => {});
+      return;
+    }
+    delete state.permissions[parsed.pid];
+    const record = state.threads[interaction.channel_id];
+    if (record) record.lastActivityAt = Date.now();
+    saveState();
+    const content = entry.content || (typeof interaction.message?.content === 'string' ? interaction.message.content : '');
+    await editMessage(interaction.channel_id, entry.messageId, core.permissionEdit(content, decision)).catch(() => {});
+    return;
+  }
   if (parsed.action === 'confirm' || parsed.action === 'dismiss') {
     const entry = state.confirms[parsed.short];
     if (!entry || entry.conversationId !== thread.conversationId) {
@@ -753,8 +789,31 @@ async function deliver(threadId, record, synced) {
   for (const message of messages) {
     const text = core.formatOutbound(message);
     if (!text.trim()) continue;
-    for (const chunk of core.chunkText(text)) {
-      await postMessage(threadId, chunk);
+    const permission = message?.payload?.permission;
+    const components = core.permissionComponents(permission);
+    const chunks = core.chunkText(text);
+    let lastId = '';
+    let lastChunk = '';
+    for (const [index, chunk] of chunks.entries()) {
+      const last = index === chunks.length - 1;
+      lastId = await postMessage(threadId, chunk, last ? components : undefined);
+      if (last) lastChunk = chunk;
+    }
+    if (components && lastId) {
+      state.permissions[permission.pid] = {
+        conversationId,
+        taskId: permission.taskId,
+        messageId: lastId,
+        content: lastChunk.slice(0, core.MAX_MESSAGE),
+      };
+    }
+    const resolved = message?.payload?.permissionResolved;
+    if (resolved && typeof resolved.pid === 'string' && core.PERMIT_KEY.test(resolved.pid)) {
+      const entry = state.permissions[resolved.pid];
+      if (entry) {
+        await editMessage(threadId, entry.messageId, core.permissionResolvedEdit(entry.content, text)).catch(() => {});
+        delete state.permissions[resolved.pid];
+      }
     }
     state.delivered[conversationId] = core.cappedAppend(state.delivered[conversationId], [message.id], 500);
     touch(record);

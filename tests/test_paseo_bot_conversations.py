@@ -9,6 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/paseo-bot'))
+import gui_state
 from gui_state import Conversations
 from gui_api import handle
 from paseo_bot import write_json
@@ -22,6 +23,8 @@ class FakeManager:
         self.found = True
         self.created = []
         self.archived = []
+        self.permits = []
+        self.permit_calls = []
 
     def __call__(self, config, action, **kw):
         if action == 'create':
@@ -37,6 +40,11 @@ class FakeManager:
             if self.lose_ack: raise ValueError('lost acknowledgement')
             return {'accepted': True}
         if action == 'find': return {'found': self.found}
+        if action == 'permits': return list(self.permits)
+        if action == 'permit':
+            self.permit_calls.append(kw)
+            self.permits = [item for item in self.permits if item.get('id') != kw['requestId']]
+            return {'result': kw['decision']}
         raise AssertionError(action)
 
 
@@ -364,6 +372,40 @@ class ConversationTests(unittest.TestCase):
         self.c.tick()
         self.fake.reply = 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId=message, reply=reply, tasks=[]))
         self.c.tick()
+
+    def test_manager_permissions_are_denied_without_asking_the_human(self):
+        self.c.send('session-1', 'perm', 'Please change the fixture')
+        self.fake.permits = [{'id': 'manager-req-1', 'name': 'Edit file', 'description': 'touch fixture.py'}]
+        with patch.object(gui_state, 'log_event') as logged:
+            self.c.tick()
+        self.assertEqual(self.fake.permit_calls[-1]['decision'], 'deny')
+        self.assertEqual(self.fake.permit_calls[-1]['requestId'], 'manager-req-1')
+        denied = [call for call in logged.call_args_list if call.kwargs.get('status') == 'manager-permission-denied']
+        self.assertEqual(len(denied), 1)
+        self.assertEqual(denied[0].kwargs.get('name'), 'Edit file')
+        self.assertNotIn('description', denied[0].kwargs)
+        self.assertEqual(self.c.db.execute(
+            "SELECT count(*) FROM gui_messages WHERE instr(text,'권한 요청이 왔어요')>0").fetchone()[0], 0)
+
+    def test_unsafe_manager_mode_warns_once_per_process(self):
+        config = json.loads((self.home / 'gui-runtime.json').read_text(encoding='utf-8'))
+        write_json(self.home / 'gui-runtime.json', dict(config, mode='full-access'))
+        gui_state._UNSAFE_MANAGER_MODES.clear()
+        try:
+            with patch.object(gui_state, 'log_event') as logged:
+                self.assertEqual(self.c.runtime_config()['mode'], 'full-access')
+                self.c.runtime_config()
+            warnings = [call for call in logged.call_args_list if call.kwargs.get('status') == 'manager-mode-unsafe']
+            self.assertEqual(len(warnings), 1)
+            self.assertEqual(warnings[0].kwargs.get('mode'), 'full-access')
+        finally:
+            gui_state._UNSAFE_MANAGER_MODES.clear()
+
+    def test_manager_role_prompt_is_read_only(self):
+        prompt = self.c.role_prompt()
+        for phrase in ['read-only', 'do not edit files', 'state-changing commands', 'access the network',
+                       'must become a plan task']:
+            self.assertIn(phrase, prompt)
 
     def test_managers_share_one_workspace_per_daemon(self):
         self.assertIsNone(self.fake.created[0]['workspaceId'])

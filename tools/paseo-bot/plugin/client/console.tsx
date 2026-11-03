@@ -95,7 +95,7 @@ export function Console(p: Props) {
   }
   const queue = p.data?.queue ?? {},
     running =
-      (queue.running ?? 0) + (queue.dispatching ?? 0) + (queue.repairing ?? 0),
+      (queue.running ?? 0) + (queue.dispatching ?? 0) + (queue.repairing ?? 0) + (queue["waiting-permission"] ?? 0),
     waiting = (queue.queued ?? 0) + (queue.ready ?? 0),
     attention = (queue.blocked ?? 0) + (queue.unknown ?? 0);
   const memoryProject =

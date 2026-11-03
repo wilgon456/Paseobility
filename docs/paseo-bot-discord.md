@@ -137,7 +137,7 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 
 | 파일 | 내용 |
 |---|---|
-| `discord-state.json` | 쓰레드↔대화 매핑, 쓰레드별 마지막 활동 시각·폴링 시각·연속 실패 수·dormant 표시, 대화별 전달한 메시지 ID(각 500개), 카드로 보낸 계획 ID와 메시지 ID, 취소 확인 키(`confirms`, 최대 200개), 처리한 Discord 메시지/상호작용 ID(각 5000개, FIFO), RESUME용 세션 |
+| `discord-state.json` | 쓰레드↔대화 매핑, 쓰레드별 마지막 활동 시각·폴링 시각·연속 실패 수·dormant 표시, 대화별 전달한 메시지 ID(각 500개), 카드로 보낸 계획 ID와 메시지 ID, 권한 카드(`permissions`, `pid → {conversationId, taskId, messageId, content}`, 최대 200개), 취소 확인 키(`confirms`, 최대 200개), 처리한 Discord 메시지/상호작용 ID(각 5000개, FIFO), RESUME용 세션 |
 | `discord-gateway.json` | 자식 하트비트 `{pid,lastTickAt,status,lastEventAt}` |
 | `discord-health.json` | 서비스 하트비트(위) |
 
@@ -264,6 +264,44 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 파일 JSON 조건처럼 실시간으로 다시 확인하는 규약은 이 제어 단계에 포함되지
 않아요.
 
+## 7.2 권한 요청 버튼
+
+에이전트가 승인을 기다리면 작업은 `waiting-permission`이 되고, 그 대화의
+쓰레드에 권한 요청 카드가 올라와요. 카드에는 요청 이름과 설명(앞 600자)이
+들어가고, 5분 안에 답이 없으면 자동으로 거절한다는 안내가 붙어요.
+
+| 버튼 | `custom_id` | 스타일 | 동작 |
+|---|---|---|---|
+| 허용 | `pb:pa:<pid>` | SUCCESS(3) | `gui_api.py permission`에 `decision: allow` |
+| 거절 | `pb:pd:<pid>` | DANGER(4) | `gui_api.py permission`에 `decision: deny` |
+
+- `pid`는 12자 `[a-z0-9]` 키예요. 게이트웨이는 `payload.permission`이 있는
+  시스템 메시지를 게시할 때 버튼을 붙이고 `pid → {conversationId, taskId,
+  messageId, content}`를 `discord-state.json`의 `permissions`에 저장해요.
+- owner만 누를 수 있고, 상호작용은 3초 안에 type 6으로 확인 응답한 뒤
+  `requestId = "d-" + interaction.id`로 `gui_api.py permission`을 호출해요.
+- 처리되면 그 카드의 버튼을 없애고 `허용했어요.` / `거절했어요.`를 덧붙여요.
+  시간 초과나 다른 클라이언트가 먼저 처리한 경우에도 해석 메시지의
+  `payload.permissionResolved`로 같은 카드의 버튼을 지워요.
+- 위험 명령으로 자동 거절된 요청은 사람에게 카드가 가지 않아요. 대신
+  `위험 명령이라 자동으로 거절했어요: <규칙 이름>` 알림만 한 번 올라와요.
+- 이미 처리된 `pid`를 누르면 `이미 처리된 권한 요청이에요.`를 본인에게만
+  보여 줘요.
+
+## 7.3 관리자 읽기 전용 설정
+
+`gui-runtime.json`의 `mode`는 Codex **`"auto"`**로 두세요. workspace-write
+샌드박스에 승인 요청이 붙는 모드이고, 봇은 관리자 에이전트의 권한 요청을
+사람에게 묻지 않고 **즉시 전부 거절**해요(`manager-permission-denied`, 요청
+이름만 기록). `full-access`나 `bypassPermissions`는 봇이 중간에서 막을 수
+없어서 프로세스 시작당 한 번 `manager-mode-unsafe` 경고를 남겨요(실행을
+거부하지는 않아요). 관리자 역할 프롬프트도 읽기 전용이며, 파일 수정·상태
+변경 명령·네트워크 접근을 하지 않고 코드 변경은 owner가 승인할 계획 작업으로
+만들라고 지시해요.
+
+`mode`를 생략하면 `"auto"`가 기본이에요. 기존 `full-access` 설정은 위험하니
+직접 바꿔 주세요.
+
 ## 8. 보안 모델
 
 - **입장 경계**: `guildId`, `channelId`, `ownerIds` allowlist, 그리고 비밀
@@ -272,7 +310,7 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
   메시지 아님을 확인해요. 이 서비스가 만든 쓰레드가 아니면 무시해요.
 - **수신기 없음**: 인바운드 HTTP 리스너가 없어요. Discord WebSocket과 REST는
   모두 **나가는** 연결이고, Paseo 쪽은 로컬 `gui_api.py` 호출이에요. 게이트웨이가
-  받아들일 수 있는 동작은 `start/send/approve/reject/status/sync/control/peek`로
+  받아들일 수 있는 동작은 `start/send/approve/reject/status/sync/control/permission/peek`로
   제한돼요.
 - **멘션 금지**: 모든 게시와 수정에 `allowed_mentions: {parse: []}`를 붙여요.
 - **멱등성**: 처리한 Discord 메시지/상호작용 ID를 저장하고, 작업과 대화 ID는
