@@ -50,7 +50,8 @@ function readConfig(dir) {
   const info = fs.lstatSync(file);
   if (info.isSymbolicLink() || !info.isFile()) throw new Error('config');
   if (process.platform !== 'win32' && (info.mode & 0o077)) throw new Error('config permissions');
-  const parsed = core.parseConfig(JSON.parse(fs.readFileSync(file, 'utf8')));
+  // PowerShell 5.1 writes UTF-8 with a BOM; JSON.parse rejects a leading U+FEFF.
+  const parsed = core.parseConfig(JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')));
   if (!parsed) throw new Error('config');
   if (!parsed.enabled) throw new Error('disabled');
   return parsed;
@@ -71,7 +72,7 @@ async function readToken() {
 }
 
 function emptyState() {
-  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, permissions: {}, memory: {}, review: {}, confirms: {}, seenMessages: [], seenInteractions: [], gateway: {}};
+  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, permissions: {}, memory: {}, review: {}, confirms: {}, seenMessages: [], seenInteractions: [], gateway: {}, lastSeen: {}, partial: {}};
 }
 
 function newThread(conversationId) {
@@ -109,8 +110,9 @@ function normalizeState(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== STATE_VERSION) throw new Error('state version');
   const threads = {};
   for (const [threadId, record] of Object.entries(value.threads ?? {})) {
-    if (!core.isSnowflake(threadId) || !record || typeof record !== 'object') throw new Error('state threads');
-    if (record.parentId !== config.channelId || typeof record.conversationId !== 'string' || !record.conversationId) throw new Error('state threads');
+    // A record from another channel or a damaged entry is dropped, never fatal.
+    if (!core.isSnowflake(threadId) || !record || typeof record !== 'object') continue;
+    if (record.parentId !== config.channelId || typeof record.conversationId !== 'string' || !record.conversationId) continue;
     threads[threadId] = {
       conversationId: record.conversationId,
       parentId: record.parentId,
@@ -125,14 +127,15 @@ function normalizeState(value) {
   }
   const delivered = {};
   for (const [conversationId, ids] of Object.entries(value.delivered ?? {})) {
-    if (typeof conversationId !== 'string' || !Array.isArray(ids)) throw new Error('state delivered');
+    if (typeof conversationId !== 'string' || !Array.isArray(ids)) continue;
     delivered[conversationId] = ids.filter(id => typeof id === 'string').slice(-500);
   }
   const cards = {};
   for (const [planId, card] of Object.entries(value.cards ?? {})) {
-    if (typeof planId !== 'string' || !card || typeof card !== 'object') throw new Error('state cards');
-    if (typeof card.messageId !== 'string' || typeof card.conversationId !== 'string') throw new Error('state cards');
-    cards[planId] = {conversationId: card.conversationId, messageId: card.messageId, state: typeof card.state === 'string' ? card.state : 'pending'};
+    if (typeof planId !== 'string' || !card || typeof card !== 'object') continue;
+    if (typeof card.messageId !== 'string' || typeof card.conversationId !== 'string') continue;
+    cards[planId] = {conversationId: card.conversationId, messageId: card.messageId, state: typeof card.state === 'string' ? card.state : 'pending',
+      digest: typeof card.digest === 'string' ? card.digest : '', at: Number(card.at) || 0};
   }
   const permissions = {};
   for (const [pid, card] of Object.entries(value.permissions ?? {}).slice(-200)) {
@@ -182,6 +185,8 @@ function normalizeState(value) {
     memory,
     review,
     confirms,
+    partial: Object.fromEntries(Object.entries(value.partial ?? {}).filter(([, v]) => Number.isInteger(v) && v > 0).slice(-100)),
+    lastSeen: Object.fromEntries(Object.entries(value.lastSeen ?? {}).filter(([k, v]) => core.isSnowflake(k) && core.isSnowflake(v)).slice(-300)),
     seenMessages: seen(value.seenMessages, 5000),
     seenInteractions: seen(value.seenInteractions, 5000),
     gateway: {
@@ -198,26 +203,65 @@ function loadState(dir) {
     const info = fs.lstatSync(file);
     if (info.isSymbolicLink() || !info.isFile()) throw new Error('state');
     if (process.platform !== 'win32' && (info.mode & 0o077)) throw new Error('state permissions');
-    return normalizeState(JSON.parse(fs.readFileSync(file, 'utf8')));
+    try {
+      return normalizeState(JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '')));
+    } catch (error) {
+      // A torn or foreign state file must not crash-loop the service: keep it aside, start clean.
+      const aside = path.join(dir, `discord-state.corrupt-${Date.now()}.json`);
+      try { fs.renameSync(file, aside); } catch {}
+      log('state-reset', {reason: String(error?.message ?? error).slice(0, 120)});
+      return emptyState();
+    }
   } catch (error) {
     if (error.code === 'ENOENT') return emptyState();
     throw error;
   }
 }
 
-function saveState() {
-  const file = path.join(stateDir, 'discord-state.json');
-  const temp = path.join(stateDir, `.discord-state.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`);
-  fs.writeFileSync(temp, JSON.stringify(state), {encoding: 'utf8', mode: 0o600});
-  fs.renameSync(temp, file);
+function atomicWrite(file, text) {
+  const temp = `${file}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
+  const fd = fs.openSync(temp, 'w', 0o600);
+  try {
+    fs.writeSync(fd, text);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fs.renameSync(temp, file);
+      return;
+    } catch (error) {
+      // Windows: a reader holding the target briefly makes rename fail with EPERM/EBUSY.
+      if (attempt >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(error.code)) {
+        try { fs.unlinkSync(temp); } catch {}
+        throw error;
+      }
+      const until = Date.now() + 50 * (attempt + 1);
+      while (Date.now() < until) { /* short synchronous back-off */ }
+    }
+  }
 }
 
+let stateDirty = false;
+function saveState() {
+  stateDirty = false;
+  try {
+    atomicWrite(path.join(stateDir, 'discord-state.json'), JSON.stringify(state));
+  } catch (error) {
+    stateDirty = true;  // retried by the next tick
+    noteError('state-save', error);
+  }
+}
+
+let lastAckAt = 0;
 function writeHeartbeat(stateName) {
-  const file = path.join(stateDir, 'discord-gateway.json');
-  const temp = path.join(stateDir, `.discord-gateway.${process.pid}.tmp`);
-  const payload = {pid: process.pid, lastTickAt: Date.now() / 1000, status: stateName, lastEventAt: lastEventAt / 1000};
-  fs.writeFileSync(temp, JSON.stringify(payload), {encoding: 'utf8', mode: 0o600});
-  fs.renameSync(temp, file);
+  const payload = {pid: process.pid, lastTickAt: Date.now() / 1000, status: stateName, lastEventAt: lastEventAt / 1000, lastAckAt: lastAckAt / 1000};
+  try {
+    atomicWrite(path.join(stateDir, 'discord-gateway.json'), JSON.stringify(payload));
+  } catch (error) {
+    noteError('heartbeat-write', error);  // never let a heartbeat write break reconnect logic
+  }
 }
 
 // ---- REST with bucket and global rate-limit waits ----
@@ -226,16 +270,39 @@ const buckets = new Map();
 let globalUntil = 0;
 const errorLogAt = new Map();
 
+function routeKey(method, route) {
+  // Interaction/webhook tokens never become map keys (unbounded growth, token in memory dumps).
+  return `${method} ${route.replace(/\/(interactions|webhooks)\/(\d+)\/[^/]+/, '/$1/$2/:token').replace(/\/\d{16,22}/g, '/:id')}`;
+}
+
 async function request(method, route, {body, auth = true, reason} = {}) {
-  const key = `${method} ${route.replace(/\/\d{16,22}/g, '/:id')}`;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const wait = Math.max(0, (buckets.get(key) ?? 0) - Date.now(), globalUntil - Date.now());
+  const key = routeKey(method, route);
+  const interaction = route.startsWith('/interactions/');
+  let failures = 0;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    // Interaction callbacks have their own budget and a 3 s deadline: never park them behind a global wait.
+    const wait = Math.max(0, (buckets.get(key) ?? 0) - Date.now(), interaction ? 0 : globalUntil - Date.now());
     if (wait > 0) await sleep(Math.min(wait, 60000));
     const headers = {};
     if (auth) headers.authorization = `Bot ${token}`;
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (reason) headers['x-audit-log-reason'] = reason;
-    const response = await fetch(API + route, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
+    let response;
+    try {
+      response = await fetch(API + route, {method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(interaction ? 5000 : 15000)});
+    } catch (error) {
+      // Network error or timeout: a short bounded retry instead of a hung event queue.
+      failures += 1;
+      if (failures > 2) throw new Error('rest-network');
+      await sleep(1000 * failures);
+      continue;
+    }
+    if (response.status >= 500 && failures < 2) {
+      failures += 1;
+      await sleep(1000 * failures * 2);
+      continue;
+    }
     const resetAfter = core.rateLimitWait({headers: response.headers});
     if (core.rateLimitExhausted(response.headers) && resetAfter > 0) buckets.set(key, Date.now() + resetAfter);
     if (response.status === 429) {
@@ -251,6 +318,12 @@ async function request(method, route, {body, auth = true, reason} = {}) {
     return response;
   }
   throw new Error('rate-limit');
+}
+
+function pruneBuckets() {
+  const now = Date.now();
+  for (const [key, until] of buckets) if (until < now) buckets.delete(key);
+  for (const [key, at] of errorLogAt) if (now - at > 3600000) errorLogAt.delete(key);
 }
 
 async function jsonRequest(method, route, body, options = {}) {
@@ -274,7 +347,83 @@ function noteError(key, error) {
 
 const guiChains = new Map();
 
+// One resident `gui_api.py --serve` child answers fast DB requests line by line.
+const guiWorker = {child: null, buffer: '', pending: [], starting: false};
+
+function stopGuiWorker(reason) {
+  const child = guiWorker.child;
+  guiWorker.child = null;
+  guiWorker.buffer = '';
+  const pending = guiWorker.pending.splice(0);
+  for (const item of pending) {
+    clearTimeout(item.timer);
+    item.reject(new Error(reason));
+  }
+  if (child) { try { child.kill(); } catch {} }
+}
+
+function guiWorkerChild() {
+  if (guiWorker.child) return guiWorker.child;
+  const python = process.env.PASEO_BOT_PYTHON;
+  if (!python) throw new Error('python-env');
+  const child = spawn(python, ['-X', 'utf8', GUI_API, '--state', stateDir, '--allow-submit', '--serve'], {
+    stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
+  });
+  guiWorker.child = child;
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => {
+    if (guiWorker.child !== child) return;
+    guiWorker.buffer += chunk;
+    if (guiWorker.buffer.length > 4000000) { stopGuiWorker('gui-output'); return; }
+    let newline;
+    while ((newline = guiWorker.buffer.indexOf('\n')) >= 0) {
+      const line = guiWorker.buffer.slice(0, newline);
+      guiWorker.buffer = guiWorker.buffer.slice(newline + 1);
+      const item = guiWorker.pending.shift();
+      if (!item) continue;
+      clearTimeout(item.timer);
+      try {
+        const value = JSON.parse(line);
+        if (value?.ok !== true) {
+          log('gui-refused', {action: item.action});
+          item.reject(new Error('gui-refused'));
+        } else item.resolve(value.result);
+      } catch {
+        item.reject(new Error('gui-output'));
+      }
+    }
+  });
+  child.stderr.on('data', () => {});  // drained, never logged
+  child.on('error', () => { if (guiWorker.child === child) stopGuiWorker('gui-spawn'); });
+  child.on('close', code => {
+    if (guiWorker.child === child) {
+      log('gui-worker-exit', {code});
+      stopGuiWorker('gui-exit');
+    }
+  });
+  child.stdin.on('error', () => {});
+  return child;
+}
+
+function invokeResident(request) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try { child = guiWorkerChild(); } catch (error) { reject(error); return; }
+    const item = {resolve, reject, action: request.action, timer: null};
+    // A stuck request (lock wait, crash) restarts the worker; requests are answered strictly in order.
+    item.timer = setTimeout(() => { log('gui-timeout', {action: request.action}); stopGuiWorker('gui-timeout'); }, 30000);
+    guiWorker.pending.push(item);
+    child.stdin.write(JSON.stringify(request) + '\n');
+  });
+}
+
 function invokeGui(request) {
+  // peek waits on a remote host (up to ~65 s); keep it off the resident worker.
+  if (request.action !== 'peek') return invokeResident(request);
+  return invokeOnce(request);
+}
+
+function invokeOnce(request) {
   return new Promise((resolve, reject) => {
     const python = process.env.PASEO_BOT_PYTHON;
     if (!python) {
@@ -361,6 +510,12 @@ async function interactionFollowUp(interaction, data) {
     {body: {...data, allowed_mentions: {parse: []}}, auth: false});
 }
 
+// Errors and "already handled" go to the clicker privately; the card itself is never overwritten.
+async function interactionPrivate(interaction, content) {
+  await request('POST', `/webhooks/${appId}/${interaction.token}`,
+    {body: {content: content.slice(0, core.MAX_MESSAGE), flags: 64, allowed_mentions: {parse: []}}, auth: false}).catch(() => {});
+}
+
 async function interactionEphemeral(interaction, content) {
   await interactionCallback(interaction, {type: 4, data: {content: content.slice(0, core.MAX_MESSAGE), flags: 64}});
 }
@@ -413,11 +568,28 @@ async function submit(conversationId, messageKey, text, selection) {
   }
 }
 
+// "typing…" is the immediate acknowledgement (no extra permission needed); it lasts ~10 s per call.
+const typingAt = new Map();
+function typing(channelId, force = false) {
+  const last = typingAt.get(channelId) ?? 0;
+  if (!force && Date.now() - last < 8000) return;
+  typingAt.set(channelId, Date.now());
+  request('POST', `/channels/${channelId}/typing`).catch(() => {});
+}
+
+function markSeen(channelId, messageId) {
+  // Highest message id seen per channel/thread, used to catch up after a fresh IDENTIFY.
+  const previous = state.lastSeen[channelId];
+  if (!previous || BigInt(messageId) > BigInt(previous)) state.lastSeen[channelId] = messageId;
+}
+
 async function handleMessage(message) {
   if (!core.acceptMessage(config, message, state.threads)) return;
   if (seen('seenMessages', message.id)) return;
   state.seenMessages = core.remember(state.seenMessages, message.id, 5000);
+  markSeen(message.channel_id, message.id);
   saveState();
+  typing(message.channel_id, true);
   const text = await messageText(message);
   if (!text.trim()) {
     log('empty-message', {id: message.id});
@@ -432,6 +604,7 @@ async function handleMessage(message) {
     record.dormant = false;
     const hold = state.review[thread.conversationId];
     if (hold) {
+      // The hold stops new input only; replies, cards and notices keep flowing.
       log('review-hold', {id: message.id});
       const notice = core.holdNotice(hold);
       if (notice) {
@@ -448,9 +621,9 @@ async function handleMessage(message) {
       await gui({action: 'send', conversationId: thread.conversationId, messageId: `d-${message.id}`, text});
     } catch (error) {
       noteError(`send:${thread.conversationId}`, error);
-      state.review[thread.conversationId] = {at: Date.now(), reason: 'needs-review'};
+      state.review[thread.conversationId] = {at: Date.now(), reason: 'needs-review', notice: true};
       saveState();
-      await postMessage(message.channel_id, '요청을 접수하지 못했어요. 자동으로 다시 보내지 않아요. 대화를 확인해 주세요.').catch(() => {});
+      await postMessage(message.channel_id, '요청을 접수하지 못했어요. 중복을 막으려고 자동으로 다시 보내지 않아요. /resolve 로 다시 연 뒤 한 번 더 보내 주세요.').catch(() => {});
     }
     return;
   }
@@ -460,15 +633,18 @@ async function handleMessage(message) {
     threadId = await openThread(message.id, text);
   } catch (error) {
     noteError('thread', error);
+    await postMessage(config.channelId, '스레드를 만들지 못했어요. 잠시 후 다시 보내 주세요.').catch(() => {});
     return;
   }
   const conversationId = `d-${message.id}`;
   state.threads[threadId] = newThread(conversationId);
   saveState();
+  typing(threadId, true);
   const started = await submit(conversationId, conversationId, text, core.DEFAULT_SELECTION);
   if (!started) {
+    state.review[conversationId].notice = true;
     saveState();
-    await postMessage(threadId, '요청을 접수하지 못했어요. 자동으로 다시 보내지 않아요. 대화를 확인해 주세요.').catch(() => {});
+    await postMessage(threadId, '요청을 접수하지 못했어요. 중복을 막으려고 자동으로 다시 보내지 않아요. /resolve 로 다시 연 뒤 한 번 더 보내 주세요.').catch(() => {});
   }
 }
 
@@ -482,7 +658,7 @@ async function handleComponent(interaction, parsed) {
   if (parsed.action === 'memory-approve' || parsed.action === 'memory-reject') {
     const entry = state.memory[parsed.key];
     if (!entry || entry.channelId !== interaction.channel_id) {
-      await interactionFollowUp(interaction, {content: '이미 처리된 기억 요청이에요.', components: []}).catch(() => {});
+      await interactionPrivate(interaction, '이미 처리된 기억 요청이에요.');
       return;
     }
     const op = parsed.action === 'memory-approve' ? 'approve' : 'reject';
@@ -490,7 +666,7 @@ async function handleComponent(interaction, parsed) {
       await gui({action: 'memory', op, key: parsed.key, requestId: `d-${interaction.id}`});
     } catch (error) {
       noteError(`memory:${parsed.key}`, error);
-      await interactionFollowUp(interaction, {content: '기억 요청을 처리하지 못했어요. 상태를 확인해 주세요.', components: []}).catch(() => {});
+      await interactionPrivate(interaction, '기억 요청을 처리하지 못했어요. 상태를 확인해 주세요.');
       return;
     }
     delete state.memory[parsed.key];
@@ -503,7 +679,7 @@ async function handleComponent(interaction, parsed) {
   if (parsed.action === 'permit-allow' || parsed.action === 'permit-deny') {
     const entry = state.permissions[parsed.pid];
     if (!entry || entry.conversationId !== thread.conversationId) {
-      await interactionFollowUp(interaction, {content: '이미 처리된 권한 요청이에요.', components: []}).catch(() => {});
+      await interactionPrivate(interaction, '이미 처리된 권한 요청이에요.');
       return;
     }
     const decision = parsed.action === 'permit-allow' ? 'allow' : 'deny';
@@ -512,7 +688,7 @@ async function handleComponent(interaction, parsed) {
         pid: parsed.pid, decision, requestId: `d-${interaction.id}`});
     } catch (error) {
       noteError(`permission:${entry.taskId}`, error);
-      await interactionFollowUp(interaction, {content: '권한 요청을 처리하지 못했어요. 상태를 확인해 주세요.', components: []}).catch(() => {});
+      await interactionPrivate(interaction, '권한 요청을 처리하지 못했어요. 상태를 확인해 주세요.');
       return;
     }
     delete state.permissions[parsed.pid];
@@ -555,13 +731,26 @@ async function handleComponent(interaction, parsed) {
     noteError(`plan-sync:${parsed.planId}`, error);
   }
   if (!plan) {
-    await interactionFollowUp(interaction, {content: '계획을 찾지 못했어요. 새 계획을 요청해 주세요.'}).catch(() => {});
+    await interactionPrivate(interaction, '계획을 찾지 못했어요. 새 계획을 요청해 주세요.');
+    return;
+  }
+  if (plan.state !== 'pending') {
+    // Double click or decided elsewhere: show the real outcome instead of an error.
+    const card = state.cards[parsed.planId];
+    if (card) { card.state = plan.state; saveState(); }
+    await interactionFollowUp(interaction, core.planCardEdit(plan)).catch(() => {});
+    return;
+  }
+  const shown = state.cards[parsed.planId]?.digest;
+  if (parsed.action === 'approve' && shown && shown !== plan.digest) {
+    await interactionPrivate(interaction, '카드를 올린 뒤 계획이 바뀌었어요. 새 카드를 확인해 주세요.');
     return;
   }
   let outcome = plan;
   try {
     if (parsed.action === 'approve') {
-      await gui({action: 'approve', conversationId: thread.conversationId, planId: parsed.planId, digest: plan.digest});
+      // Approve exactly what the card showed.
+      await gui({action: 'approve', conversationId: thread.conversationId, planId: parsed.planId, digest: shown || plan.digest});
       outcome = {...plan, state: 'approved'};
     } else {
       await gui({action: 'reject', conversationId: thread.conversationId, planId: parsed.planId});
@@ -569,7 +758,7 @@ async function handleComponent(interaction, parsed) {
     }
   } catch (error) {
     noteError(`plan:${parsed.planId}`, error);
-    await interactionFollowUp(interaction, {content: '계획을 처리하지 못했어요. 상태를 확인해 주세요.'}).catch(() => {});
+    await interactionPrivate(interaction, '계획을 처리하지 못했어요. 잠시 후 다시 눌러 주세요.');
     return;
   }
   const card = state.cards[parsed.planId];
@@ -654,7 +843,7 @@ async function resolveThreadTask(interaction, requested) {
   }
   const choice = core.resolveTaskChoice(tasks, typeof requested === 'string' ? requested : '');
   if (choice.state === 'one') return {thread, taskId: choice.taskId};
-  if (choice.state === 'none') return {error: '이 쓰레드에 진행 중인 작업이 없어요.'};
+  if (choice.state === 'none') return {error: '이 스레드에 진행 중인 작업이 없어요.'};
   if (choice.state === 'many') return {error: core.taskListText(tasks)};
   return {error: `작업을 찾지 못했어요: ${String(requested).slice(0, 80)}`};
 }
@@ -755,7 +944,9 @@ async function handleAutocomplete(interaction) {
 
 async function handleInteraction(interaction) {
   if (!core.acceptInteraction(config, interaction, state.threads)) {
-    await interactionEphemeral(interaction, '권한이 없어요').catch(() => {});
+    const user = interaction?.member?.user ?? interaction?.user;
+    const owner = user && config.ownerIds.includes(user.id);
+    await interactionEphemeral(interaction, owner ? '이 채널에서는 쓸 수 없어요. 봇 채널이나 봇이 만든 스레드에서 써 주세요.' : '권한이 없어요.').catch(() => {});
     return;
   }
   if (interaction.type === 4) {
@@ -766,7 +957,7 @@ async function handleInteraction(interaction) {
   if (interaction.type === 3) {
     const parsed = core.parseCustomId(interaction.data?.custom_id);
     if (!parsed) {
-      await interactionEphemeral(interaction, '권한이 없어요').catch(() => {});
+      await interactionEphemeral(interaction, '오래된 버튼이라 처리할 수 없어요.').catch(() => {});
       return;
     }
     state.seenInteractions = core.remember(state.seenInteractions, interaction.id, 5000);
@@ -843,11 +1034,17 @@ async function deliver(threadId, record, synced) {
     const chunks = core.chunkText(text);
     let lastId = '';
     let lastChunk = '';
+    // Chunk progress survives a failure mid-message, so a retry never reposts earlier chunks.
+    const progressKey = `${conversationId}:${message.id}`;
+    const already = Number(state.partial[progressKey]) || 0;
     for (const [index, chunk] of chunks.entries()) {
+      if (index < already) continue;
       const last = index === chunks.length - 1;
       lastId = await postMessage(threadId, chunk, last ? components : undefined);
       if (last) lastChunk = chunk;
+      else { state.partial[progressKey] = index + 1; saveState(); }
     }
+    delete state.partial[progressKey];
     if (components && lastId && permission) {
       state.permissions[permission.pid] = {
         conversationId,
@@ -882,13 +1079,25 @@ async function deliver(threadId, record, synced) {
     if (plan.state === 'pending' && !card) {
       const body = core.planCard(plan);
       const messageId = await postMessage(threadId, body.content, body.components);
-      state.cards[plan.id] = {conversationId, messageId, state: 'pending'};
+      // The digest shown on the card is the one the 접수 button approves.
+      state.cards[plan.id] = {conversationId, messageId, state: 'pending', digest: plan.digest ?? '', at: Date.now()};
       touch(record);
       saveState();
     } else if (card && plan.state !== 'pending' && card.state === 'pending') {
-      await editMessage(threadId, card.messageId, core.planCardEdit(plan));
+      await editMessage(threadId, card.messageId, core.planCardEdit(plan)).catch(error => {
+        if (!/http-404/.test(String(error?.message))) throw error;  // a deleted card is simply done
+      });
       card.state = plan.state;
       touch(record);
+      saveState();
+    }
+  }
+  // A pending card whose plan left the 10-plan window for a day is expired, not polled forever.
+  const listed = new Set((Array.isArray(synced?.plans) ? synced.plans : []).map(plan => plan?.id));
+  for (const [planId, card] of Object.entries(state.cards)) {
+    if (card.conversationId === conversationId && card.state === 'pending' && !listed.has(planId)
+        && Date.now() - (card.at || 0) > 86400000) {
+      card.state = 'expired';
       saveState();
     }
   }
@@ -908,8 +1117,7 @@ async function outboundTick() {
     const entries = [];
     for (const [threadId, record] of Object.entries(state.threads)) {
       if (!core.isSnowflake(threadId) || record.parentId !== config.channelId) continue;
-      // A needs-review hold is only cleared by /resolve or a new thread message.
-      if (state.review[record.conversationId]) continue;
+      // A needs-review hold blocks new input only; replies, cards and notices keep flowing.
       const tier = core.threadTier({...record, pendingCard: pendingCard(record.conversationId)}, record.sync, now);
       entries.push({id: threadId, tier, polledAt: record.polledAt});
     }
@@ -939,12 +1147,19 @@ async function outboundTick() {
       }
       taskCache.set(record.conversationId, {at: Date.now(), tasks: Array.isArray(synced.tasks) ? synced.tasks : []});
       record.sync = core.syncSummary(synced);
+      // The manager is still working on a reply: keep "typing…" visible in the thread.
+      if (['queued', 'prepared', 'waiting'].includes(synced.deliveryState) && !core.isMemoryReview(record.conversationId)) typing(threadId);
       // The review channel stays warm (60 s), never hot: no thread activity to track.
       if (core.isMemoryReview(record.conversationId)) record.lastActivityAt = now - core.HOT_MS - 1000;
       try {
         await deliver(threadId, record, synced);
       } catch (error) {
         noteError(`deliver:${record.conversationId}`, error);
+        // 10003 Unknown Channel / 404: the thread was deleted; stop polling it.
+        if (/http-404/.test(String(error?.message))) {
+          record.dormant = true;
+          log('thread-gone', {conversationId: record.conversationId});
+        }
       }
       saveState();
     }
@@ -988,20 +1203,25 @@ function startHeartbeat(interval) {
   }, jitter);
 }
 
-function beat() {
-  if (!acked) {
-    log('zombie');
-    try { socket?.close(4000, 'zombie'); } catch {}
+function abandonSocket(reason) {
+  // Half-open TCP (sleep, Wi-Fi switch) may never deliver a close event: detach and reconnect now.
+  const ws = socket;
+  socket = null;
+  log(reason);
+  try { ws?.close(4000, reason); } catch {}
+  scheduleReconnect();
+}
+
+function beat(requested = false) {
+  if (!acked && !requested) {
+    abandonSocket('zombie');
     return;
   }
   acked = false;
   send({op: 1, d: sequence});
   clearTimeout(ackTimer);
   ackTimer = setTimeout(() => {
-    if (!acked) {
-      log('heartbeat-ack-timeout');
-      try { socket?.close(4000, 'zombie'); } catch {}
-    }
+    if (!acked) abandonSocket('heartbeat-ack-timeout');
   }, heartbeatMs + 5000);
 }
 
@@ -1042,6 +1262,7 @@ function connect() {
   socket = ws;
   acked = true;
   ws.addEventListener('message', event => {
+    if (socket !== ws) return;  // a detached (zombie) socket can still emit late events
     let payload;
     try {
       payload = JSON.parse(typeof event.data === 'string' ? event.data : Buffer.from(event.data).toString('utf8'));
@@ -1051,17 +1272,26 @@ function connect() {
     handlePayload(payload);
   });
   ws.addEventListener('close', event => {
+    if (socket !== ws) return;  // already abandoned and reconnecting
     clearInterval(heartbeatTimer);
     clearTimeout(ackTimer);
     heartbeatTimer = null;
-    if (socket === ws) socket = null;
+    socket = null;
     if (stopped) return;
     if (core.fatalClose(event.code)) {
       fatal = true;
       setStatus('error');
       log('fatal-close', {code: event.code});
-      setTimeout(() => process.exit(3), 100);
+      // 4: authentication/intents problem the owner must fix; the service waits longer before retrying.
+      setTimeout(() => process.exit(4), 100);
       return;
+    }
+    if (event.code === 4007 || event.code === 4009) {
+      // Invalid seq / session timed out: a resume would fail again.
+      sessionId = '';
+      sequence = null;
+      state.gateway = {};
+      saveState();
     }
     log('gateway-close', {code: event.code});
     scheduleReconnect();
@@ -1088,11 +1318,12 @@ function handlePayload(payload) {
   }
   if (op === 11) {
     acked = true;
+    lastAckAt = Date.now();
     clearTimeout(ackTimer);
     return;
   }
   if (op === 1) {
-    beat();
+    beat(true);  // server asked for a heartbeat now; not a missed ACK
     return;
   }
   if (op === 7) {
@@ -1123,13 +1354,17 @@ function handlePayload(payload) {
     state.gateway = {sessionId, seq: sequence, resumeUrl};
     saveState();
     reconnectAttempt = 0;
+    readyAt = Date.now();
     setStatus('connected');
     log('ready', {guilds: Array.isArray(payload.d?.guilds) ? payload.d.guilds.length : 0});
     if (appId) registerCommands().catch(error => noteError('commands', error));
+    // A fresh session does not replay events from the downtime: fetch what the owner sent meanwhile.
+    queue(() => catchUp());
     return;
   }
   if (type === 'RESUMED') {
     reconnectAttempt = 0;
+    readyAt = Date.now();
     setStatus('connected');
     log('resumed');
     return;
@@ -1141,6 +1376,35 @@ function handlePayload(payload) {
   if (type === 'INTERACTION_CREATE') {
     handleInteraction(payload.d).catch(error => noteError('interaction', error));
   }
+}
+
+let readyAt = 0;
+
+async function catchUp() {
+  // Channel plus threads active in the last day, oldest first, through the same accept/dedup path.
+  const channels = [config.channelId, ...Object.entries(state.threads)
+    .filter(([id, record]) => id !== config.channelId && !record.dormant && Date.now() - (record.lastActivityAt || 0) < 86400000)
+    .map(([id]) => id)];
+  let replayed = 0;
+  for (const channelId of channels.slice(0, 20)) {
+    const after = state.lastSeen[channelId];
+    if (!after) continue;
+    let messages;
+    try {
+      messages = await jsonRequest('GET', `/channels/${channelId}/messages?after=${after}&limit=50`);
+    } catch (error) {
+      noteError(`catchup:${channelId}`, error);
+      continue;
+    }
+    if (!Array.isArray(messages)) continue;
+    for (const message of messages.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1))) {
+      if (!message.guild_id) message.guild_id = config.guildId;  // REST message objects omit guild_id
+      if (!message.channel_id) message.channel_id = channelId;
+      await handleMessage(message);
+      replayed += 1;
+    }
+  }
+  if (replayed) log('catch-up', {messages: replayed});
 }
 
 async function registerCommands() {
@@ -1178,11 +1442,29 @@ async function main() {
     state.threads[config.channelId] = memoryReviewThread();
     saveState();
   }
+  // One gateway per state directory: an orphaned second process would answer every message twice.
+  const lockFile = path.join(stateDir, 'discord-gateway.lock');
+  try {
+    const other = Number(fs.readFileSync(lockFile, 'utf8').trim());
+    if (Number.isInteger(other) && other > 0 && other !== process.pid) {
+      try { process.kill(other, 0); log('already-running', {pid: other}); process.exit(5); return; } catch {}
+    }
+  } catch {}
+  atomicWrite(lockFile, String(process.pid));
+  process.on('exit', () => {
+    try { if (fs.readFileSync(lockFile, 'utf8').trim() === String(process.pid)) fs.unlinkSync(lockFile); } catch {}
+  });
   sessionId = state.gateway.sessionId ?? '';
   sequence = Number.isInteger(state.gateway.seq) ? state.gateway.seq : null;
   resumeUrl = state.gateway.resumeUrl ?? '';
   writeHeartbeat('connecting');
+  const startedAt = Date.now();
   setInterval(() => {
+    // Connected-looking but no READY/RESUMED for 10 minutes: let the supervisor restart a clean process.
+    if (!readyAt && Date.now() - startedAt > 600000) { log('never-ready'); process.exit(1); }
+    if (status !== 'connected' && readyAt && Date.now() - readyAt > 600000 && reconnectAttempt > 20) { log('stuck-reconnecting'); process.exit(1); }
+    if (stateDirty) saveState();
+    pruneBuckets();
     writeHeartbeat(status);
     if (Number.isInteger(sequence) && sequence !== savedSeq) {
       savedSeq = sequence;
@@ -1199,7 +1481,7 @@ async function main() {
   if (appId) await registerCommands().catch(error => noteError('commands', error));
   await refreshProjects().catch(() => {});
   setInterval(() => { outboundTick().catch(error => noteError('outbound', error)); }, OUTBOUND_MS);
-  setInterval(() => { refreshProjects().catch(() => {}); }, OUTBOUND_MS * 6);
+  setInterval(() => { refreshProjects().catch(() => {}); }, 300000);
   const shutdown = () => {
     stopped = true;
     clearInterval(heartbeatTimer);

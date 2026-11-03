@@ -209,11 +209,36 @@ def handle(home, request, allow_submit=False):
         db.close()
 
 
+def serve(state, allow_submit, stdin=None, stdout=None):
+    """Resident mode for chat gateways: one JSON request per line in, one JSON line out.
+    Avoids a Python cold start (and on Windows an AV scan) for every poll."""
+    stdin = stdin or sys.stdin
+    stdout = stdout or sys.stdout
+    for line in stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            if len(line) > MAX_INPUT:
+                raise ValueError('Oversize request')
+            result = handle(state, json.loads(line), allow_submit)
+            out = json.dumps({'ok': True, 'result': result}, ensure_ascii=False)
+        except (ValueError, OSError, sqlite3.Error, KeyError, TypeError):
+            out = '{"ok":false,"error":"Bot GUI request failed. Check task, queue ownership and bridge permissions."}'
+        stdout.write(out + '\n')
+        stdout.flush()
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--state', type=Path, default=Path.home() / '.config/paseo-bot')
     parser.add_argument('--allow-submit', action='store_true')
+    parser.add_argument('--serve', action='store_true', help='resident JSON-lines mode for the Discord gateway')
     args = parser.parse_args()
+    if args.serve:
+        sys.stdin.reconfigure(encoding='utf-8')
+        return serve(args.state, args.allow_submit)
     try:
         raw = sys.stdin.buffer.read(MAX_INPUT + 1)
         if len(raw) > MAX_INPUT:

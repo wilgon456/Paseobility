@@ -213,6 +213,17 @@ class ChildTests(unittest.TestCase):
         self.assertEqual(json.loads(child.stdin.data.decode('utf-8')), {'token': 'sentinel-token-value'})
         self.assertTrue(child.stdin.closed)
 
+    def test_fatal_auth_exit_waits_ten_minutes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            write_config(state)
+            runner, clock, spawner = build(state)
+            runner.step()
+            spawner.children[0].returncode = 4  # token rejected / intents disabled
+            clock.now = 1001.0
+            runner.step()
+            self.assertGreaterEqual(runner.next_start, 1001.0 + 600)
+
     def test_child_crash_restarts_with_backoff(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)

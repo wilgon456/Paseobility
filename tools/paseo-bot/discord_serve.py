@@ -96,6 +96,10 @@ def deliver(child, token):
     child.stdin.close()
 
 
+FATAL_AUTH_EXIT = 4
+FATAL_AUTH_DELAY = 600
+
+
 def next_delay(failures):
     return min(MAX_DELAY, START_DELAY * 2 ** max(0, failures - 1))
 
@@ -183,7 +187,7 @@ class Runner:
             except OSError:
                 code = 0
             if code is not None:
-                self.reaped(now, 'child exited with code ' + str(code))
+                self.reaped(now, 'child exited with code ' + str(code), code)
             elif self.stale(now):
                 self.terminate(reason='child heartbeat stale')
                 self.reaped(now, 'child heartbeat stale')
@@ -219,13 +223,16 @@ class Runner:
         self.child_started = now
         log_event(status='discord-child-start', pid=child.pid)
 
-    def reaped(self, now, reason):
+    def reaped(self, now, reason, code=None):
         lived = now - self.child_started
         self.child = None
         if lived >= HEALTHY_CHILD_SECONDS:
             self.failures = 0
         self.failures += 1
         delay = next_delay(self.failures)
+        if code == FATAL_AUTH_EXIT:
+            # Token rejected or intents disabled: retrying every minute cannot fix it.
+            delay = max(delay, FATAL_AUTH_DELAY)
         self.next_start = now + delay
         log_event(status='discord-child-exit', reason=reason, delay=delay, failures=self.failures)
 

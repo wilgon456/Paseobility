@@ -367,6 +367,65 @@ class ConversationTests(unittest.TestCase):
         self.c.db.execute('UPDATE gui_conversations SET created=? WHERE id=?', (old, conversation))
         self.c.db.commit()
 
+    def reply_with(self, message, tasks, selection=None):
+        self.c.send('session-1', message, 'Question about fixture', selection=selection)
+        job = self.c.db.execute('SELECT * FROM gui_jobs WHERE id=?', (message,)).fetchone()
+        self.c.collect_reply(job, 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId=message, reply='OK', tasks=tasks)))
+        return self.c.db.execute('SELECT id,state FROM gui_plans ORDER BY created DESC LIMIT 1').fetchone()
+
+    def test_inspect_only_plan_starts_without_a_click(self):
+        plan_id, state = self.reply_with('ask-1', [dict(self.step, workflow='inspect')])
+        self.assertEqual(state, 'approved')
+        task = self.c.bot.result(plan_id + '-1')
+        self.assertEqual(task['workflow'], 'inspect')
+        texts = [r[0] for r in self.c.db.execute("SELECT text FROM gui_messages WHERE conversation='session-1' AND role='system'")]
+        self.assertIn('읽기 전용 확인이라 바로 시작할게요.', texts)
+
+    def test_owner_selected_workflow_overrides_the_manager(self):
+        plan_id, state = self.reply_with('ask-2', [dict(self.step, workflow='inspect')], selection={'workflow': 'daily'})
+        self.assertEqual(state, 'pending')
+        body = json.loads(self.c.db.execute('SELECT body FROM gui_plans WHERE id=?', (plan_id,)).fetchone()[0])
+        self.assertEqual(body['tasks'][0]['workflow'], 'daily')
+
+    def test_mixed_inspect_and_change_plan_still_needs_a_click(self):
+        _, state = self.reply_with('ask-3', [dict(self.step, workflow='inspect'), dict(self.step, workflow='daily', title='Change it')])
+        self.assertEqual(state, 'pending')
+
+    def test_auto_admit_can_be_turned_off(self):
+        config = json.loads((self.home / 'gui-runtime.json').read_text(encoding='utf-8'))
+        write_json(self.home / 'gui-runtime.json', dict(config, autoAdmitInspect=False))
+        _, state = self.reply_with('ask-4', [dict(self.step, workflow='inspect')])
+        self.assertEqual(state, 'pending')
+
+    def test_first_question_rides_with_manager_creation(self):
+        # A conversation whose first message is already queued: one model turn, no greeting turn.
+        self.c.create('session-fast')
+        self.c.send('session-fast', 'fast-1', 'How many projects?')
+        sent_before = len(self.fake.sent)
+        self.c.tick()
+        created = self.fake.created[-1]['prompt']
+        self.assertIn('GUI_REQUEST_ID=fast-1', created)
+        self.assertIn('How many projects?', created)
+        self.assertEqual(len(self.fake.sent), sent_before)  # nothing sent separately
+        state = self.c.db.execute("SELECT state FROM gui_jobs WHERE id='fast-1'").fetchone()[0]
+        self.assertEqual(state, 'waiting')
+        self.fake.reply = 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId='fast-1', reply='Twenty', tasks=[]))
+        self.c.tick()
+        self.assertEqual(self.c.db.execute("SELECT state FROM gui_jobs WHERE id='fast-1'").fetchone()[0], 'done')
+        self.assertEqual(len(self.fake.sent), sent_before)
+
+    def test_manager_permits_rpc_is_skipped_when_observe_reports_none(self):
+        calls = []
+        original = self.fake.__call__
+        def rpc(config, action, **kw):
+            calls.append(action)
+            if action == 'observe':
+                return {'status': 'idle', 'message': self.fake.reply, 'pendingPermissions': 0}
+            return original(config, action, **kw)
+        self.c.rpc = rpc
+        self.converse('quiet', 'Hello', 'Hi')
+        self.assertNotIn('permits', calls)
+
     def converse(self, message, text, reply):
         self.c.send('session-1', message, text)
         self.c.tick()
@@ -429,7 +488,8 @@ class ConversationTests(unittest.TestCase):
         self.c.send('session-1', 'two', 'What was the deadline?')
         self.c.tick(); self.c.tick()
         self.assertEqual(len(self.fake.created), 2)
-        prompt = self.fake.sent[-1]['prompt']
+        # The revived manager receives history and the question with its creation: one model turn.
+        prompt = self.fake.created[-1]['prompt']
         self.assertIn('Earlier messages in THIS conversation', prompt)
         self.assertIn('Remember the fixture deadline', prompt); self.assertIn('Noted the deadline', prompt)
         self.assertIsNone(self.c.db.execute("SELECT 1 FROM gui_meta WHERE key='revive:session-1'").fetchone())
@@ -464,3 +524,19 @@ class ConversationTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class KoreanReasonTests(unittest.TestCase):
+    def test_known_reasons_and_validation_causes_become_korean(self):
+        from gui_state import korean_reason
+        text = korean_reason({'reason': 'Result receipt validation failed; the bot captures evidence, then archives the workspace. Nothing is relaunched.',
+                              'validationError': 'Independent gate evidence incomplete.'})
+        self.assertIn('검증 기준', text)
+        self.assertIn('검사 명령이 모두 실행되지', text)
+        self.assertNotIn('Nothing is relaunched', text)
+
+    def test_unknown_english_reason_points_to_peek_and_korean_passes_through(self):
+        from gui_state import korean_reason
+        self.assertEqual(korean_reason({'reason': 'Some new internal failure text'}), '자세한 내용은 /peek 으로 볼 수 있어요.')
+        self.assertEqual(korean_reason({'reason': '테스트 명령을 찾지 못했어요.'}), '테스트 명령을 찾지 못했어요.')
+        self.assertEqual(korean_reason({}), '')

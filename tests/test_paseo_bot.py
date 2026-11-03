@@ -54,6 +54,7 @@ class Fake:
         self.message_override = None
         self.observe_pending = None  # None: field absent (older bridge)
         self.permits_calls = 0
+        self.inspect_files = []
 
     def __call__(self, host, action, **kw):
         if action == 'discover':
@@ -114,9 +115,13 @@ class Fake:
         if action == 'observe':
             self.observes += 1
             stage = self.launches[-1]['title'].split()[-1]
-            e = {'verdict': 'pass', 'summary': 'Verified fixture', 'branch': 'main' if stage == 'preflight' else 'paseo-bot/task-1', 'head': 'a' * 40, 'cwd': '/repo' if stage == 'preflight' else '/worktree', 'gates': [{'command': 'python -m unittest', 'exitCode': 1 if self.bad_gate else 0}], 'files': ['file.py'], 'snapshot': 'b' * 64}
-            if stage == 'preflight':
-                e['files'] = []; e['gates'] = []
+            source = stage in ('preflight', 'inspect')
+            e = {'verdict': 'pass', 'summary': 'Verified fixture', 'branch': 'main' if source else 'paseo-bot/task-1', 'head': 'a' * 40, 'cwd': '/repo' if source else '/worktree', 'gates': [{'command': 'python -m unittest', 'exitCode': 1 if self.bad_gate else 0}], 'files': ['file.py'], 'snapshot': 'b' * 64}
+            if source:
+                e['files'] = list(self.inspect_files) if stage == 'inspect' else []; e['gates'] = []
+            if stage == 'inspect':
+                e['summary'] = '테스트 명령은 npm test 예요 (package.json:7).'
+                e.pop('snapshot', None)
             if stage == 'work':
                 e['verdict'] = self.work_verdict
             if stage == 'postflight' and self.changed_snapshot:
@@ -128,7 +133,7 @@ class Fake:
             receipt = json.dumps(e)
             if stage == 'postflight':
                 receipt = self.postflight_override if self.postflight_override is not None else '  ' + receipt + self.postflight_suffix
-            return {'workspaceId': 'workspace1' if stage == 'preflight' else 'workspace2', 'cwd': '/repo' if stage == 'preflight' else '/worktree', 'status': self.status, 'message': self.message_override if self.message_override is not None else ('' if self.empty else 'PASEO_BOT_RESULT=' + receipt), **({} if self.observe_pending is None else {'pendingPermissions': self.observe_pending})}
+            return {'workspaceId': 'workspace1' if source else 'workspace2', 'cwd': '/repo' if source else '/worktree', 'status': self.status, 'message': self.message_override if self.message_override is not None else ('' if self.empty else 'PASEO_BOT_RESULT=' + receipt), **({} if self.observe_pending is None else {'pendingPermissions': self.observe_pending})}
         raise AssertionError(action)
 
 
@@ -918,9 +923,10 @@ class BotTests(unittest.TestCase):
         self.assertEqual(self.drive()['state'], 'blocked')
         self.assertEqual(len(self.fake.launches), 3)
 
-    def test_prompt_allows_full_flow_with_three_hard_limits(self):
+    def test_prompt_allows_branch_and_pr_but_merge_deploy_only_when_asked(self):
         text = self.bot.prompt(self.body, {'target': {'repo': '/r', 'defaultBranch': 'main', 'gates': []}, 'branch': 'b', 'evidence': {}}, 'work')
-        for phrase in ['commit, push, open a PR, wait for CI, merge, deploy', 'never print secrets', 'never post to Slack', 'protected runtimes']:
+        for phrase in ['open a PR when the task needs one', 'ONLY when the task text explicitly asks', 'stop at the PR',
+                       'never print secrets', 'never post to Slack', 'protected runtimes', 'summary in Korean']:
             self.assertIn(phrase, text)
         self.assertNotIn('Do not deploy, merge, push, commit', text)
         self.assertNotIn('ERP', text)
@@ -1142,6 +1148,43 @@ class BotTests(unittest.TestCase):
         self.assertEqual(result['state'], m.WAITING_PERMISSION)
         self.assertEqual(result['permission']['requestId'], 'req-timeout')
         self.assertEqual(self.fake.permit_calls, [])
+
+    def test_inspect_runs_one_read_only_stage_in_the_source_checkout(self):
+        self.bot.submit(dict(self.body, workflow='inspect'))
+        result = self.drive()
+        self.assertEqual(result['state'], 'passed')
+        self.assertIn('npm test', result['summary'])
+        self.assertEqual(result['verification'], 'read-only')
+        self.assertEqual(len(self.fake.launches), 1)
+        launch = self.fake.launches[0]
+        self.assertTrue(launch['title'].endswith('inspect'))
+        self.assertIs(launch.get('readOnly'), True)
+        self.assertEqual(launch['workspaceId'], 'workspace1')
+        self.assertNotIn('workspaceId', result)  # no worktree, so no cleanup phase
+        self.assertIn('Read-only inspection', launch['prompt'])
+        self.assertIn('Fix file.py', launch['prompt'])  # the question reaches the inspector
+
+    def test_inspect_reporting_changed_files_blocks_with_a_korean_cause(self):
+        self.fake.inspect_files = ['README.md']
+        self.bot.submit(dict(self.body, workflow='inspect'))
+        result = self.drive()
+        self.assertEqual(result['state'], 'blocked')
+        self.assertEqual(result['blockedKind'], 'evidence')
+        self.assertIn('Read-only inspection', result['validationError'])
+
+    def test_inspect_permission_requests_are_denied_without_the_owner(self):
+        self.bot.submit(dict(self.body, workflow='inspect'))
+        for _ in range(6):
+            self.bot.tick()
+            if self.fake.launches:
+                break
+        self.fake.status = 'timeout'
+        self.fake.permits = [{'id': 'req-ro', 'name': 'Bash', 'description': 'npm install'}]
+        self.bot.tick()
+        current = self.bot.result('task-1')
+        self.assertNotEqual(current['state'], m.WAITING_PERMISSION)
+        self.assertEqual(self.fake.permit_calls[-1]['decision'], 'deny')
+        self.assertEqual(current['permissionLog'][-1]['by'], 'read-only')
 
     def test_observe_reporting_no_pending_permissions_skips_the_permits_rpc(self):
         self.running_task()

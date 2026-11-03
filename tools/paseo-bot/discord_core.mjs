@@ -9,8 +9,8 @@ export const ATTACHMENT_HOSTS = Object.freeze(['cdn.discordapp.com', 'media.disc
 export const ATTACHMENT_EXTS = Object.freeze(['.md', '.txt', '.json', '.log', '.csv', '.py', '.ts', '.js']);
 export const MODELS = Object.freeze(['auto', 'sol', 'claude', 'go']);
 export const EFFORTS = Object.freeze(['auto', 'low', 'medium', 'high']);
-export const WORKFLOWS = Object.freeze(['daily', 'verified']);
-export const DEFAULT_SELECTION = Object.freeze({project: 'auto', model: 'auto', effort: 'auto', workflow: 'daily'});
+export const WORKFLOWS = Object.freeze(['auto', 'inspect', 'daily', 'verified']);
+export const DEFAULT_SELECTION = Object.freeze({project: 'auto', model: 'auto', effort: 'auto', workflow: 'auto'});
 export const FATAL_CLOSE_CODES = Object.freeze([4004, 4010, 4011, 4012, 4013, 4014]);
 export const CONFIG_KEYS = Object.freeze(['version', 'enabled', 'guildId', 'channelId', 'ownerIds', 'python', 'secretName', 'node']);
 // Outbound polling tiers and the per-tick budget (a tick runs every 3 s).
@@ -73,8 +73,8 @@ export function acceptMessage(config, event, threads) {
     if (event.webhook_id) return false;
     if (typeof event.id !== 'string' || !SNOWFLAKE.test(event.id)) return false;
     if (typeof event.content !== 'string') return false;
-    // 0 is DEFAULT; every other message type is a system/join/thread notice.
-    if (event.type !== undefined && event.type !== 0) return false;
+    // 0 DEFAULT and 19 REPLY are owner text; every other type is a system/join/thread notice.
+    if (event.type !== undefined && event.type !== 0 && event.type !== 19) return false;
     const author = event.author;
     if (!author || typeof author !== 'object') return false;
     if (author.bot === true || author.system === true) return false;
@@ -295,7 +295,7 @@ export function taskChoices(tasks, typed, limit = 25) {
 export function taskListText(tasks, limit = 10) {
   const active = (Array.isArray(tasks) ? tasks : []).filter(task =>
     task && typeof task.id === 'string' && !TERMINAL_STATES.includes(task.state));
-  if (!active.length) return '이 쓰레드에 진행 중인 작업이 없어요.';
+  if (!active.length) return '이 스레드에 진행 중인 작업이 없어요.';
   return ['어떤 작업일까요? `task` 값으로 골라 주세요.', ...active.slice(0, limit).map(task =>
     `- ${task.id} · ${task.project ?? ''} · ${task.state ?? ''}`)].join('\n');
 }
@@ -367,7 +367,7 @@ function planLines(plan, previewLimit) {
     const bits = [`${index + 1}. ${task.project ?? '?'}`];
     if (typeof task.machine === 'string' && task.machine) bits.push(task.machine);
     bits.push(`모델 ${modelLabel(task)}`);
-    bits.push(`워크플로 ${task.workflow ?? 'verified'}`);
+    bits.push({inspect: '확인만', daily: '일반 변경', verified: '중요 변경'}[task.workflow ?? 'verified'] ?? String(task.workflow));
     lines.push(bits.join(' · '));
     const title = typeof task.title === 'string' ? task.title.trim() : '';
     if (title) lines.push('   ' + title.slice(0, 200));
@@ -511,7 +511,8 @@ export function syncSelection(entries, now = Date.now(), cap = SYNC_CAP) {
   const limit = Math.max(0, Math.floor(Number(cap) || 0));
   const current = Number.isFinite(Number(now)) ? Number(now) : Date.now();
   const list = (Array.isArray(entries) ? entries : []).filter(entry => entry && typeof entry.id === 'string');
-  const hot = list.filter(entry => entry.tier === 'hot');
+  // Least recently polled first, so more than `cap` hot threads still all get turns.
+  const hot = list.filter(entry => entry.tier === 'hot').sort((a, b) => (Number(a.polledAt) || 0) - (Number(b.polledAt) || 0));
   const warm = list.filter(entry => entry.tier === 'warm'
     && current - (Number(entry.polledAt) || 0) >= WARM_POLL_MS);
   warm.sort((a, b) => (Number(a.polledAt) || 0) - (Number(b.polledAt) || 0));
@@ -633,7 +634,7 @@ export function isGlobalLimit(headers) {
 
 // ---- slash commands ----
 
-const TASK_OPTION = Object.freeze({type: 3, name: 'task', description: '작업 ID (비우면 이 쓰레드의 작업)', required: false, autocomplete: true});
+const TASK_OPTION = Object.freeze({type: 3, name: 'task', description: '작업 ID (비우면 이 스레드의 작업)', required: false, autocomplete: true});
 
 export const COMMANDS = Object.freeze([
   {
@@ -649,8 +650,9 @@ export const COMMANDS = Object.freeze([
       {type: 3, name: 'effort', description: '노력 수준', required: false, choices: [
         {name: '자동', value: 'auto'}, {name: '낮음', value: 'low'}, {name: '보통', value: 'medium'}, {name: '높음', value: 'high'},
       ]},
-      {type: 3, name: 'workflow', description: '워크플로', required: false, choices: [
-        {name: 'daily', value: 'daily'}, {name: 'verified', value: 'verified'},
+      {type: 3, name: 'workflow', description: '진행 방식 (비우면 자동)', required: false, choices: [
+        {name: '자동', value: 'auto'}, {name: '확인만 (읽기 전용, 바로 시작)', value: 'inspect'},
+        {name: '일반 변경 (자체 확인)', value: 'daily'}, {name: '중요 변경 (독립 검토)', value: 'verified'},
       ]},
     ],
   },
@@ -682,7 +684,7 @@ export function selectionFromOptions(options) {
     project,
     model: pick(source.model, MODELS, 'auto'),
     effort: pick(source.effort, EFFORTS, 'auto'),
-    workflow: pick(source.workflow, WORKFLOWS, 'daily'),
+    workflow: pick(source.workflow, WORKFLOWS, 'auto'),
   };
 }
 
@@ -731,7 +733,9 @@ export function projectSuggestions(projects, typed, limit = 5) {
 export function statusText(payload) {
   const source = payload && typeof payload === 'object' ? payload : {};
   const queue = source.queue && typeof source.queue === 'object' ? source.queue : {};
-  const queueText = Object.entries(queue).map(([state, count]) => `${state} ${count}`).join(', ') || '없음';
+  const label = {queued: '대기', held: '보류', running: '진행', paused: '멈춤', 'waiting-permission': '승인 대기', passed: '완료',
+    failed: '실패', blocked: '멈춰 있음', unknown: '확인 필요', closed: '닫힘', cleaning: '정리', ready: '준비', dispatching: '시작 중'};
+  const queueText = Object.entries(queue).map(([state, count]) => `${label[state] ?? state} ${count}`).join(', ') || '없음';
   const tasks = Array.isArray(source.tasks) ? source.tasks : [];
   const running = ['dispatching', 'running', 'waiting-permission', 'repairing'];
   const active = tasks.filter(task => running.includes(task?.state)).length;

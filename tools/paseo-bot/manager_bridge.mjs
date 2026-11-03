@@ -185,7 +185,16 @@ async function main() {
   }
   if (req.action === "observe") {
     const r = await client.waitForFinish(req.agentId, 1000);
-    return { status: r.status, message: r.lastMessage || "" };
+    // The pending count lets the caller skip a separate permits round trip.
+    let pendingPermissions = null;
+    try {
+      const current = await client.fetchAgent({ agentId: req.agentId, timeout: 10000 });
+      if (Array.isArray(current?.agent?.pendingPermissions))
+        pendingPermissions = Math.min(current.agent.pendingPermissions.length, 20);
+    } catch {
+      pendingPermissions = null;
+    }
+    return { status: r.status, message: r.lastMessage || "", pendingPermissions };
   }
   if (req.action === "find") {
     const { fetchProjectedTimelineItems } = await import(

@@ -153,6 +153,14 @@ maps `sync→git-sync`, `hard→coding-hard`, `refactor→refactor-bulk`,
 work, otherwise gpt. Explicit kinds always win. Sync uses the same
 worktree/review pipeline and does not authorize a push.
 
+### Workflows: inspect, daily, verified
+
+- `inspect` — a read-only question about a project. One `inspect` stage in the registered source checkout (no worktree, gates, snapshot or cleanup), launched with `readOnly` so the bridge picks the provider's narrowest mode (Codex `auto`, Claude/OpenCode `plan`); every permission request is denied automatically and a receipt reporting changed files or gate runs blocks the task. The answer is the receipt `summary` (Korean), surfaced as the task result. Recorded with `verification: read-only`.
+- `daily` — preparation + implementation, self-checked (default for changes).
+- `verified` — four stages with independent review; only when the owner selects it.
+
+Chat selection `workflow: auto` (default) lets the manager choose `inspect` or `daily` per task; plans made only of `inspect` tasks are admitted without a click unless `gui-runtime.json` sets `autoAdmitInspect: false`. Workers may push a task branch and open a PR; merging into the default branch, deploying, publishing or purchasing happens only when the task text explicitly asks for that exact action.
+
 ## Run and submit
 
 From a persistent checkout of this branch/version:

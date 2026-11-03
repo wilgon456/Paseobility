@@ -46,7 +46,7 @@ test('scope policy accepts only the owner in the configured channel', () => {
   assert.equal(c.acceptMessage(cfg, message({channel_id: '999999999999999999'}), THREADS), false);
   assert.equal(c.acceptMessage(cfg, message({webhook_id: '999999999999999999'}), THREADS), false);
   assert.equal(c.acceptMessage(cfg, message({type: 7}), THREADS), false);
-  assert.equal(c.acceptMessage(cfg, message({type: 19}), THREADS), false);
+  assert.equal(c.acceptMessage(cfg, message({type: 19}), THREADS), true);  // mobile replies are owner text
   assert.equal(c.acceptMessage(cfg, message({id: '42'}), THREADS), false);
   assert.equal(c.acceptMessage(cfg, message({content: undefined}), THREADS), false);
 });
@@ -118,7 +118,7 @@ test('plan cards render tasks with approve and reject buttons', () => {
     {type: 2, style: 3, label: '접수', custom_id: 'pb:approve:plan-1'},
     {type: 2, style: 4, label: '거절', custom_id: 'pb:reject:plan-1'},
   ]}]);
-  for (const needed of ['paseo', 'VAX_COM', '모델 auto (sol)', '워크플로 daily', '일반 작업 기본 모델', '버튼 수정']) {
+  for (const needed of ['paseo', 'VAX_COM', '모델 auto (sol)', '일반 변경', '일반 작업 기본 모델', '버튼 수정']) {
     assert.ok(card.content.includes(needed), needed);
   }
   assert.deepEqual(card.allowed_mentions, {parse: []});
@@ -186,7 +186,8 @@ test('each tick selects hot threads first, then due warm ones, capped at eight',
   const minute = 60 * 1000;
   const hot = Array.from({length: 10}, (_, i) => ({id: 'hot-' + i, tier: 'hot', polledAt: now - i}));
   assert.deepEqual(c.syncSelection(hot, now).length, 8);
-  assert.deepEqual(c.syncSelection(hot, now), hot.slice(0, 8).map(entry => entry.id));
+  // least recently polled first, so every hot thread gets a turn even beyond the cap
+  assert.deepEqual(c.syncSelection(hot, now), [...hot].reverse().slice(0, 8).map(entry => entry.id));
   const warm = [
     {id: 'warm-new', tier: 'warm', polledAt: now - 5 * minute},
     {id: 'warm-old', tier: 'warm', polledAt: now - 10 * minute},
@@ -316,7 +317,7 @@ test('slash commands, selections and autocomplete stay bounded', () => {
   for (const name of c.CONTROL_COMMANDS) {
     const command = c.commandDefinitions().find(item => item.name === name);
     assert.equal(command.type, 1);
-    assert.deepEqual(command.options, [{type: 3, name: 'task', description: '작업 ID (비우면 이 쓰레드의 작업)', required: false, autocomplete: true}]);
+    assert.deepEqual(command.options, [{type: 3, name: 'task', description: '작업 ID (비우면 이 스레드의 작업)', required: false, autocomplete: true}]);
   }
   assert.deepEqual(c.commandOptions({data: {options: [{name: 'text', value: 'go'}, {name: 'project', value: 'paseo'}]}}),
     {text: 'go', project: 'paseo'});
@@ -506,4 +507,21 @@ test('memory-review maps to the channel itself, not a thread', () => {
   // A normal thread is still tracked and remains distinct from the review channel.
   assert.equal(c.trackedThread(cfg, THREADS, THREAD).conversationId, 'd-' + MESSAGE);
   assert.equal(c.isMemoryReview(c.trackedThread(cfg, THREADS, THREAD).conversationId), false);
+});
+
+test('workflow selection defaults to auto and offers read-only inspect', () => {
+  assert.equal(c.DEFAULT_SELECTION.workflow, 'auto');
+  assert.equal(c.selectionFromOptions({}).workflow, 'auto');
+  assert.equal(c.selectionFromOptions({workflow: 'inspect'}).workflow, 'inspect');
+  assert.equal(c.selectionFromOptions({workflow: 'rm -rf'}).workflow, 'auto');
+  const task = c.commandDefinitions().find(command => command.name === 'task');
+  const values = task.options.find(option => option.name === 'workflow').choices.map(choice => choice.value);
+  assert.deepEqual(values, ['auto', 'inspect', 'daily', 'verified']);
+});
+
+test('status text uses Korean state labels', () => {
+  const text = c.statusText({healthy: true, acceptsTasks: true, queue: {passed: 2, blocked: 1}, tasks: []});
+  assert.match(text, /완료 2/);
+  assert.match(text, /멈춰 있음 1/);
+  assert.doesNotMatch(text, /passed/);
 });

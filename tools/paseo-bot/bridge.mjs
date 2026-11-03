@@ -345,7 +345,11 @@ async function main() {
     if(!entry?.enabled || entry.status!=='ready')throw Error('provider unavailable');
     // Bot agents always run in the provider's most permissive mode when offered: no approval prompts.
     const permissive={codex:'full-access',claude:'bypassPermissions',opencode:'build'}[p.provider];
-    const mode=permissive && entry.modes?.some(m=>m.id===permissive) ? permissive : (p.modeId ?? entry.defaultModeId);
+    // Read-only inspection: the provider's narrowest offered mode; the runner denies any approval request.
+    const readOnly={codex:'auto',claude:'plan',opencode:'plan'}[p.provider];
+    const mode=req.readOnly===true
+      ? (readOnly && entry.modes?.some(m=>m.id===readOnly) ? readOnly : (p.modeId ?? entry.defaultModeId))
+      : (permissive && entry.modes?.some(m=>m.id===permissive) ? permissive : (p.modeId ?? entry.defaultModeId));
     if(mode && !entry.modes?.some(m=>m.id===mode))throw Error('unknown mode');
     const argv=['run','--no-wait','--json','--provider',p.provider,'--model',p.model,'--cwd',req.repo,'--title',req.title,'--label','paseo_bot_attempt='+req.attempt];
     if(p.thinkingOptionId)argv.push('--thinking',p.thinkingOptionId);

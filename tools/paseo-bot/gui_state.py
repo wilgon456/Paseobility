@@ -39,6 +39,74 @@ CONTROL_REJECTIONS = {
 _UNSAFE_MANAGER_MODES = set()
 
 
+# Owner-facing Korean explanations for runner reasons. English internals stay in
+# the record/outbox and /peek; chat shows a short Korean line and what to do next.
+REASON_KO = [
+    ('Result receipt validation failed', '작업 결과 보고가 검증 기준에 맞지 않았어요.'),
+    ('Routing, registry or result validation failed', '작업 배정이나 결과 확인에 실패했어요.'),
+    ('Phase deadline exceeded', '단계 시간 제한을 넘었어요.'),
+    ('Agent error or permission wait', '작업자에게 오류가 났거나 승인을 기다리다 멈췄어요.'),
+    ('Agent closed without a result', '작업자가 결과 없이 종료됐어요.'),
+    ('Dispatch acknowledgement missing', '작업자 시작이 확인되지 않아 중복 실행을 막으려고 멈췄어요.'),
+    ('Pre-launch', '작업자를 시작하기 전 확인(연결·프로필)에서 실패했어요.'),
+    ('Destination temporarily unreachable', '대상 기기에 잠시 연결되지 않아요. 같은 단계를 다시 시도해요.'),
+    ('A prerequisite did not pass', '선행 작업이 통과하지 못해 시작하지 않았어요.'),
+    ('Cancelled by owner', '요청대로 취소했어요.'),
+    ('Blocked command pattern detected', '안전 규칙에 걸린 명령이 감지됐어요.'),
+    ('A hardline command could not be denied', '위험 명령을 자동으로 거절하지 못해 작업을 멈췄어요.'),
+    ('Cleanup', '정리 단계를 확인하지 못했어요. 작업 공간은 그대로 보존했어요.'),
+    ('Daily evidence or cleanup', '결과 지문이나 정리 단계를 확인하지 못했어요. 작업 공간은 보존했어요.'),
+    ('Agent status could not be checked', '작업자 상태를 확인하지 못했어요. 중복 실행을 막으려고 그대로 두었어요.'),
+    ('needs-host-fetch', '대상 기기에서 최신 코드를 먼저 받아야 해요.'),
+    ('Recovered agent workspace mismatch', '작업 공간 정보가 맞지 않아 멈췄어요.'),
+    ('Retry workspace receipt mismatch', '작업 공간 정보가 맞지 않아 멈췄어요.'),
+    ('Workspace receipt mismatch', '작업 공간 정보가 맞지 않아 멈췄어요.'),
+    ('Receipt repair', '결과 형식 교정이 확인되지 않았어요.'),
+    ('Provider limit or model availability', '모델 사용량 한도라서 다른 모델로 다시 시도해요.'),
+]
+VALIDATION_KO = [
+    ('Independent gate evidence incomplete', '프로젝트 검사 명령이 모두 실행되지 않았어요.'),
+    ('Independent gate check failed', '프로젝트 검사 명령 중 실패한 것이 있어요.'),
+    ('Branch evidence does not match', '보고된 브랜치가 작업 브랜치와 달라요.'),
+    ('Worktree evidence does not match', '보고된 작업 폴더가 달라요.'),
+    ('Missing reviewed content fingerprint', '결과 지문(snapshot)이 빠졌어요.'),
+    ('Read-only preparation must report', '읽기 전용 단계에서 변경이나 검사 실행이 보고됐어요.'),
+    ('Read-only inspection', '읽기 전용 확인 중 파일이 바뀌었거나 검사 명령이 실행됐어요.'),
+    ('Missing git/worktree evidence', 'git 기록(HEAD·경로)이 빠졌어요.'),
+    ('Agent returned an invalid verdict', '작업자 판정 값이 올바르지 않았어요.'),
+    ('Daily worker receipt invalid', '작업자가 결과 보고 형식을 지키지 않았어요.'),
+    ('did not produce a valid receipt', '작업자가 결과 보고 형식을 지키지 않았어요.'),
+    ('HEAD changed after independent review', '검토 뒤에 내용이 바뀌었어요.'),
+    ('Worktree content changed after independent review', '검토 뒤에 내용이 바뀌었어요.'),
+    ('Review HEAD does not match', '검토한 내용이 작업 결과와 달라요.'),
+]
+
+
+def _looks_english(text):
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and sum(c.isascii() for c in letters) / len(letters) > 0.8
+
+
+def korean_reason(record):
+    """Short Korean explanation for a terminal record; never raw English internals."""
+    reason = str(record.get('reason') or '')
+    lines = []
+    for prefix, text in REASON_KO:
+        if reason.startswith(prefix):
+            lines.append(text)
+            break
+    detail = str(record.get('validationError') or '')
+    for prefix, text in VALIDATION_KO:
+        if prefix in detail:
+            lines.append(text)
+            break
+    if not lines and reason and not _looks_english(reason):
+        lines.append(reason[:2000])  # the agent's own (Korean) explanation
+    if not lines and reason:
+        lines.append('자세한 내용은 /peek 으로 볼 수 있어요.')
+    return '\n'.join(lines)
+
+
 def is_resume(record):
     """A running task that was previously paused at this same stage."""
     return bool(record.get('resumedAt')) and record.get('pausedStage') == record.get('stage')
@@ -182,10 +250,10 @@ class Conversations:
         project = selection.get('project', 'auto')
         model = model_alias(selection.get('model', 'auto'))
         effort = selection.get('effort', 'auto')
-        workflow = selection.get('workflow', 'daily')
+        workflow = selection.get('workflow', 'auto')
         if project != 'auto' and not any(p['id'] == project and any(t.get('enabled') for t in p['targets']) for p in self.bot.config()['projects']):
             raise ValueError('Unknown project selection')
-        if model not in MODEL_CHOICES or effort not in EFFORTS or workflow not in ('daily', 'verified'):
+        if model not in MODEL_CHOICES or effort not in EFFORTS or workflow not in ('auto', 'daily', 'verified', 'inspect'):
             raise ValueError('Unknown model or effort')
         selection = dict(project=project, model=model, effort=effort, workflow=workflow)
         prompt = text + '\nUser selections (enforced by service): ' + dumps(selection)
@@ -201,7 +269,7 @@ class Conversations:
         old = self.db.execute('SELECT conversation,text,payload FROM gui_messages WHERE id=?', (message_id,)).fetchone()
         if old:
             previous = json.loads(old[2]).get('selection', {'project':'auto','model':'auto','effort':'auto'})
-            previous.setdefault('workflow', 'daily')
+            previous.setdefault('workflow', 'auto')
             if old[0:2] != (conversation, text) or previous != selection:
                 raise ValueError('Message ID collision')
             return {'accepted': True, 'messageId': message_id}
@@ -218,9 +286,9 @@ class Conversations:
         for i, task in enumerate(steps):
             if not isinstance(task, dict) or set(task) - {'project', 'title', 'prompt', 'kind', 'machine', 'dependsOn', 'model', 'effort', 'modelReason', 'resolvedModel', 'workflow'}:
                 raise ValueError('Plan fields')
-            if task.get('workflow', 'verified') not in ('daily', 'verified'):
+            if task.get('workflow', 'verified') not in ('daily', 'verified', 'inspect'):
                 raise ValueError('Invalid workflow')
-            if task.get('workflow') == 'daily' and len(steps) > 3:
+            if task.get('workflow') in ('daily', 'inspect') and len(steps) > 3:
                 raise ValueError('Daily plans allow at most three tasks')
             if any(not isinstance(task.get(k), str) or not task[k].strip() for k in ['project', 'title', 'prompt']):
                 raise ValueError('Plan text')
@@ -238,7 +306,7 @@ class Conversations:
                 raise ValueError('Dependencies must reference earlier steps')
         return scrub(steps)
 
-    def approve(self, conversation, plan_id, digest):
+    def approve(self, conversation, plan_id, digest, auto=False):
         self.conversation(conversation)
         valid_id(plan_id)
         with lock(self.bot.home, 'intake.lock'):
@@ -256,11 +324,11 @@ class Conversations:
                 for i, step in enumerate(body['tasks']):
                     task = {k: v for k, v in step.items() if k not in ('dependsOn', 'resolvedModel')}
                     task['id'] = ids[i]
-                    origin = dict(requester='gui', conversationId=conversation, planId=plan_id,
+                    origin = dict(requester='discord' if conversation.startswith('d-') else 'gui', conversationId=conversation, planId=plan_id,
                                   messageId=body['messageId'], dependsOn=[ids[n] for n in step.get('dependsOn', [])], retryOf=body.get('retryOf'))
                     self.bot._submit(task, origin, commit=False)
                 self.db.execute('UPDATE gui_plans SET state=? WHERE id=?', ('approved', plan_id))
-                self.message(conversation, 'system', str(len(ids)) + '개 작업을 접수했어요. 진행 상황은 여기서 알려드릴게요.', {'taskIds': ids})
+                self.message(conversation, 'system', ('읽기 전용 확인이라 바로 시작할게요.' if auto else str(len(ids)) + '개 작업을 접수했어요. 진행 상황은 여기서 알려드릴게요.'), {'taskIds': ids})
                 self.db.commit()
                 return {'taskIds': ids}
             except Exception:
@@ -308,7 +376,7 @@ class Conversations:
         config = json.loads(path.read_text(encoding='utf-8-sig'))
         required = {'serverId', 'cwd', 'provider', 'model', 'thinking'}
         idle_days = config.get('managerIdleDays', 7)
-        if (not required <= set(config) <= required | {'mode', 'managerIdleDays', 'curator', 'memoryExport'}
+        if (not required <= set(config) <= required | {'mode', 'managerIdleDays', 'curator', 'memoryExport', 'autoAdmitInspect'}
                 or not isinstance(config.get('mode', 'auto'), str)
                 or type(idle_days) not in (int, float) or idle_days < 0):
             raise ValueError('Runtime config')
@@ -338,8 +406,11 @@ class Conversations:
                 'Choose the project, machine and model profile yourself from the supplied registry and task context; never demand form fields. Ask only when a meaningful ambiguity remains. '
                 'Use concise explanations without shortening the requested deliverable. '
                 'Project modifications require a plan; use active project IDs supplied each turn. Daily plans use one task normally, at most 3; verified plans at most 12. '
+                'Each task has workflow: inspect = read-only question about a project whose files you cannot read here (runs immediately, about a minute, no changes); '
+                'daily = small change with self-check (default for changes). verified (independent review) runs only when the owner selects it, so mention it in reply for risky changes. Prefer inspect for questions, status checks and investigations; '
+                'never use inspect for anything that must change files. '
                 'Include observable completion criteria and relevant checks in each task prompt, not a ceremony or a request for more agents. '
-                'Return tasks with project,title,prompt,kind '
+                'Return tasks with project,title,prompt,workflow,kind '
                 '(gpt=general, hard=only the most difficult design or bug, refactor=ordinary refactoring, sync=lightweight work), machine (choose an enabled registry machine), optional dependsOn (zero-based earlier step indices). '
                 'For a failed-task retry you may add top-level retryOf with the exact failed task ID in this conversation. Never silently replay blocked/unknown tasks. '
                 'Do not claim tasks are admitted or completed before evidence. Every final reply MUST be exactly one line: '
@@ -365,12 +436,18 @@ class Conversations:
             # The manager can suggest tasks, but selections and explanations are server-owned.
             old_payload = self.db.execute('SELECT payload FROM gui_messages WHERE id=?', (job_id,)).fetchone()
             selection = json.loads(old_payload[0]).get('selection', {}) if old_payload else {}
-            workflow = selection.get('workflow', 'daily')
-            if len(tasks) > (3 if workflow == 'daily' else 12):
+            chosen = selection.get('workflow', 'daily')  # older messages without a choice behaved as daily
+            if not isinstance(tasks, list) or not all(isinstance(task, dict) for task in tasks):
+                raise ValueError('Invalid plan tasks')
+            # 'auto': the manager picks inspect (read-only question) or daily per task; the slower,
+            # costlier verified pipeline runs only when the owner selects it explicitly.
+            workflows = [chosen if chosen != 'auto' else ('inspect' if task.get('workflow') == 'inspect' else 'daily')
+                         for task in tasks]
+            if len(tasks) > (12 if 'verified' in workflows else 3):
                 raise ValueError('Plan exceeds selected workflow budget')
             if not isinstance(tasks, list) or not all(isinstance(task, dict) for task in tasks):
                 raise ValueError('Invalid plan tasks')
-            for task in tasks:
+            for task, workflow in zip(tasks, workflows):
                 if selection.get('project', 'auto') != 'auto':
                     if task.get('project') != selection['project']:
                         task.pop('machine', None)
@@ -396,9 +473,17 @@ class Conversations:
                 retry_of = proposed_retry or (json.loads(old_payload[0]).get('retryOf') if old_payload else None)
                 body = dict(tasks=tasks, messageId=job_id, retryOf=retry_of)
                 plan_id = uid('plan')
+                plan_digest = hashlib.sha256(dumps(body).encode()).hexdigest()
                 self.db.execute('INSERT INTO gui_plans VALUES (?,?,?,?,?,?)',
-                                (plan_id, conversation, dumps(body), hashlib.sha256(dumps(body).encode()).hexdigest(), 'pending', time.time()))
+                                (plan_id, conversation, dumps(body), plan_digest, 'pending', time.time()))
             self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('done', job_id))
+        # Read-only questions start without a click: the inspect stage runs in a read-only
+        # provider mode, every permission request is denied and changes block the task.
+        if tasks and all(task.get('workflow') == 'inspect' for task in tasks) and self.runtime_config().get('autoAdmitInspect', True) is not False:
+            try:
+                self.approve(conversation, plan_id, plan_digest, auto=True)
+            except ValueError as error:
+                log_event(status='inspect-auto-admit-failed', conversation=conversation, error=str(error)[:200])
 
     def tick(self):
         config = self.runtime_config()
@@ -441,8 +526,16 @@ class Conversations:
                 if status == 'new':
                     with self.db:
                         self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('creating', conversation))
+                    # The first queued request rides along with creation: one model turn
+                    # instead of a greeting turn followed by the real question.
+                    first = self.db.execute("SELECT id,kind,prompt FROM gui_jobs WHERE conversation=? AND state='queued' ORDER BY created LIMIT 1", (conversation,)).fetchone()
+                    initial = self.role_prompt()
+                    if first:
+                        initial = self.envelope(conversation, first[0], first[1], first[2])
+                        with self.db:
+                            self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', first[0]))
                     try:
-                        created = self.rpc(config, 'create', session=conversation, prompt=self.role_prompt(),
+                        created = self.rpc(config, 'create', session=conversation, prompt=initial,
                                            workspaceId=self.manager_workspace(config))
                         agent = created['id']
                     except (ValueError, OSError, subprocess.SubprocessError):
@@ -462,6 +555,9 @@ class Conversations:
                     agent = matches[0]['id']
                 with self.db:
                     self.db.execute('UPDATE gui_conversations SET agent_id=?,status=? WHERE id=?', (agent, 'idle', conversation))
+                    if status == 'new' and first:
+                        self.db.execute('UPDATE gui_jobs SET state=? WHERE id=? AND state=?', ('waiting', first[0], 'prepared'))
+                        self.db.execute('DELETE FROM gui_meta WHERE key=?', ('revive:' + conversation,))
                 return
             pending = self.db.execute("SELECT 1 FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid','unknown') LIMIT 1", (conversation,)).fetchone()
             if not pending and status == 'idle':
@@ -471,7 +567,8 @@ class Conversations:
             with self.db:
                 self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('running' if current['status'] == 'timeout' else current['status'], conversation))
             # The manager is read-only: never let the owner approve a manager request.
-            self.deny_manager_permissions(config, conversation, agent)
+            if current.get('pendingPermissions') != 0:
+                self.deny_manager_permissions(config, conversation, agent)
             jobs = self.db.execute("SELECT * FROM gui_jobs WHERE conversation=? AND state NOT IN ('done','invalid') ORDER BY created LIMIT 1", (conversation,)).fetchone()
             if not jobs:
                 return
@@ -485,20 +582,7 @@ class Conversations:
             if state == 'unknown':
                 return  # Shown as stuck in the GUI until the operator resolves it.
             if state == 'queued' and current['status'] == 'idle':
-                projects = [p for p in project_list(self.bot.config()) if p['enabled']]
-                related = [p['id'] for p in projects if re.search(r'(?<![\w-])' + re.escape(p['id']) + r'(?![\w-])', prompt)]
-                store = self.memory_store()
-                block = store.render(related, prompt, limit=1500) if store else ''
-                context = []
-                for task_id, record_text, task_text in self.db.execute("SELECT t.id,t.record,t.body FROM tasks t JOIN task_origins o ON o.task_id=t.id WHERE json_extract(o.context,'$.conversationId')=? ORDER BY t.rowid DESC LIMIT 6", (conversation,)):
-                    record, task = json.loads(record_text), json.loads(task_text)
-                    context.append(dict(id=task_id,title=task['title'],project=task['project'],state=record['state'],stage=record.get('stage'),machine=record.get('machine'),profile=record.get('profile'),summary=str(record.get('summary', ''))[:600],reason=str(record.get('reason', ''))[:600],request=task['prompt'][:600],prUrl=record.get('prUrl')))
-                earlier = ''
-                if self.db.execute('SELECT 1 FROM gui_meta WHERE key=?', ('revive:' + conversation,)).fetchone():
-                    # A fresh manager continues an archived or lost one: replay the visible chat as data.
-                    rows = self.db.execute("SELECT role,text FROM gui_messages WHERE conversation=? AND id<>? AND role IN ('user','assistant') ORDER BY time DESC LIMIT 12", (conversation, job_id)).fetchall()
-                    earlier = '\nEarlier messages in THIS conversation (historical data, oldest first): ' + dumps([dict(role=r, text=t[:800]) for r, t in reversed(rows)])
-                envelope = marker + '\n' + self.role_prompt().replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + ('\n' + block if block else '') + earlier + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
+                envelope = self.envelope(conversation, job_id, kind, prompt)
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', job_id))
                 self.rpc(config, 'send', session=conversation, agentId=agent, prompt=envelope)
@@ -513,7 +597,27 @@ class Conversations:
                         self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('invalid', job_id))
                         self.message(conversation, 'system', '봇의 응답을 안전하게 확인하지 못했습니다. 작업은 접수하지 않았습니다. 내용을 다시 알려주세요.')
                 # A turn can end with a request still queued; deny it before the next tick.
-                self.deny_manager_permissions(config, conversation, agent)
+                if current.get('pendingPermissions') != 0:
+                    self.deny_manager_permissions(config, conversation, agent)
+
+    def envelope(self, conversation, job_id, kind, prompt):
+        """Everything one manager turn needs: role, registry, task context, memory and the request."""
+        marker = 'GUI_REQUEST_ID=' + job_id
+        projects = [p for p in project_list(self.bot.config()) if p['enabled']]
+        related = [p['id'] for p in projects if re.search(r'(?<![\w-])' + re.escape(p['id']) + r'(?![\w-])', prompt)]
+        store = self.memory_store()
+        block = store.render(related, prompt, limit=1500) if store else ''
+        context = []
+        for task_id, record_text, task_text in self.db.execute("SELECT t.id,t.record,t.body FROM tasks t JOIN task_origins o ON o.task_id=t.id WHERE json_extract(o.context,'$.conversationId')=? ORDER BY t.rowid DESC LIMIT 6", (conversation,)):
+            record, task = json.loads(record_text), json.loads(task_text)
+            context.append(dict(id=task_id,title=task['title'],project=task['project'],state=record['state'],stage=record.get('stage'),machine=record.get('machine'),profile=record.get('profile'),summary=str(record.get('summary', ''))[:600],reason=str(record.get('reason', ''))[:600],request=task['prompt'][:600],prUrl=record.get('prUrl')))
+        earlier = ''
+        if self.db.execute('SELECT 1 FROM gui_meta WHERE key=?', ('revive:' + conversation,)).fetchone():
+            # A fresh manager continues an archived or lost one: replay the visible chat as data.
+            rows = self.db.execute("SELECT role,text FROM gui_messages WHERE conversation=? AND id<>? AND role IN ('user','assistant') ORDER BY time DESC LIMIT 12", (conversation, job_id)).fetchall()
+            earlier = '\nEarlier messages in THIS conversation (historical data, oldest first): ' + dumps([dict(role=r, text=t[:800]) for r, t in reversed(rows)])
+        envelope = marker + '\n' + self.role_prompt().replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + ('\n' + block if block else '') + earlier + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
+        return envelope
 
     def manager_workspace(self, config):
         """The one workspace that hosts every GUI manager on this daemon, once known."""
@@ -652,9 +756,12 @@ class Conversations:
                         text = {'passed':'작업과 확인을 마쳤어요.', 'failed':'작업에 실패했어요.', 'unknown':'진행 상태를 확인하지 못했어요. 중복으로 실행하지 않을게요.'}.get(
                             record['state'], labels.get(record['state']) or labels.get(record.get('stage'), ''))
                     if record['state'] in TERMINAL:
-                        detail = record.get('summary') if record['state'] == 'passed' else record.get('reason') or record.get('summary')
+                        if record['state'] == 'passed':
+                            detail = str(record.get('summary') or '')[:3500]
+                        else:
+                            detail = korean_reason(record) or str(record.get('summary') or '')[:2000]
                         if detail:
-                            text += '\n' + str(detail)[:2000]
+                            text += '\n' + detail
                 if text:
                     self.message(conversation, 'system', text, payload)
         for task_id, encoded, context in rows:

@@ -33,6 +33,16 @@ class GuiTests(unittest.TestCase):
         self.bot.db.close()
         self.tmp.cleanup()
 
+    def test_resident_serve_mode_answers_one_line_per_request_and_survives_errors(self):
+        import io
+        lines = '\n'.join([json.dumps(dict(action='status')), 'not json', json.dumps(dict(action='nope')),
+                            json.dumps(dict(action='status'))]) + '\n'
+        out = io.StringIO()
+        self.assertEqual(gui.serve(self.home, False, io.StringIO(lines), out), 0)
+        replies = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertEqual([r['ok'] for r in replies], [True, False, False, True])
+        self.assertTrue(all('error' in r for r in replies if not r['ok']))
+
     def test_read_only_default_and_idempotent_submit(self):
         with self.assertRaises(ValueError): gui.handle(self.home, dict(action='submit', task=self.task))
         for _ in range(2): self.assertEqual(gui.handle(self.home, dict(action='submit', task=self.task), True)['id'], self.task['id'])
