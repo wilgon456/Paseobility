@@ -559,3 +559,29 @@ class HousekeepingNoticeTests(unittest.TestCase):
             c.db.close()
         finally:
             tmp.cleanup()
+
+
+class CuratorNotifyCommitTests(unittest.TestCase):
+    def test_curator_notice_is_committed_and_releases_the_write_lock(self):
+        import tempfile as _t, sqlite3 as _sq
+        tmp = _t.TemporaryDirectory()
+        try:
+            home = Path(tmp.name) / 'state'
+            c = Conversations(home, FakeManager())
+            c.migrate()
+            c.create('notice-conv')
+            # Exercise the same wrapper the curator receives.
+            def notify(conversation, role, text, payload=None):
+                with c.db:
+                    c.message(conversation, role, text, payload)
+            notify('notice-conv', 'system', '기억 변경 승인 요청', {'memoryApproval': {'key': 'abcdefabcdef'}})
+            self.assertFalse(c.db.in_transaction)
+            other = _sq.connect(home / 'queue.sqlite3', timeout=1)
+            try:
+                other.execute('BEGIN IMMEDIATE'); other.rollback()  # would raise "database is locked" if uncommitted
+                self.assertEqual(other.execute("SELECT count(*) FROM gui_messages WHERE conversation='notice-conv' AND role='system'").fetchone()[0], 1)
+            finally:
+                other.close()
+            c.db.close()
+        finally:
+            tmp.cleanup()

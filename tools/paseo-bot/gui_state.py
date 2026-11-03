@@ -503,8 +503,13 @@ class Conversations:
             if not store:
                 return
             if self._curator is None:
+                def notify(conversation, role, text, payload=None):
+                    # message() only INSERTs; commit here so the notice is visible to other
+                    # processes and never holds the queue database write lock.
+                    with self.db:
+                        self.message(conversation, role, text, payload)
                 self._curator = memory.MemoryCurator(store, config, rpc=self.rpc, db=self.db,
-                                                     notify=self.message, clock=time.time)
+                                                     notify=notify, clock=time.time)
             self._curator.runtime = config
             self._curator.projects = [p['id'] for p in self.bot.config()['projects']]
             self._curator.tick()

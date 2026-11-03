@@ -13,25 +13,36 @@ store is the private file `<state>/memory.sqlite3`.
   `command`, `caution`, `convention`, `preference`), text (at most 500
   characters), status (`active`, `pending`, `stale`, `quarantined`, `retired`),
   importance, JSON `source` provenance, evidence level, model, counters
-  (`uses`, `successes`, `failures`), `supersedes`, the pending `approval` and a
-  bounded JSON `history`.
+  (`uses`, `successes`, `failures`), `supersedes`, the pending `approval`, its
+  indexed `approval_key` and a bounded JSON `history`.
 - `uses(task_id, item_id, at)` records which items were injected into which
   task. `curation_jobs` queues one curator turn per finished task or idle
-  owner conversation, and `meta` stores migration markers, the curator agent,
-  export bookkeeping and rejected proposals.
+  owner conversation; it also stores `attempts`, `sent` and `ready` so a lost
+  job can be detected and retried. `meta` stores cursors, migration markers,
+  the curator agent, export bookkeeping and rejected proposals.
+- Status columns are indexed (`items(status)`, `items(status,last_verified)`,
+  `items(scope,project,status)`, `items(approval_key)` and the job columns), so
+  a tick with nothing new is a handful of indexed lookups rather than a scan.
 - A SQLite FTS5 table `search(doc_id, kind, project, title, body)` indexes
   active/stale items and finished tasks (title, prompt excerpt up to 2 000
-  characters, summary/reason, project, state). Without FTS5 the store degrades
-  to `LIKE` search; nothing else changes.
+  characters, summary/reason, project, state). A task document is re-indexed
+  whenever its terminal state or summary changes. Without FTS5 the store
+  degrades to `LIKE` search; nothing else changes.
 - Existing GUI `remember` pins in `gui_memory` are copied once as
   `scope=project, kind=fact, evidence=owner, importance=routine` items with a
   `gui-pin` source. `gui_memory` is left untouched, and the GUI action keeps
   writing both places.
 - Caps: at most 40 active project items / 6 000 characters per project, and 15
-  owner items / 2 000 characters. A write over the cap retires the
-  lowest-score routine items first (score = successes − 2·failures, then oldest
-  `last_verified`). A hard cap still holds if only important items remain; the
-  retired item stays in history and the export omits it.
+  owner items / 2 000 characters. Capacity **never** retires an important
+  item. It retires the lowest-score routine items first (score = successes −
+  2·failures, then oldest `last_verified`); when no routine item can make room,
+  a new project write becomes a `pending` (important) proposal with reason
+  `capacity`, and a new owner write is rejected with a `memory-capacity-rejected`
+  log line. Approving an item therefore never pushes out another approved or
+  important item; the scope may briefly exceed its cap instead.
+- Writes use WAL, `busy_timeout=5000` and `BEGIN IMMEDIATE` for every
+  read-modify-write of counters, history and approvals. The schema is created
+  once per process, not on every prompt build.
 
 ## Policy (routine vs important)
 
@@ -41,13 +52,21 @@ store is the private file `<state>/memory.sqlite3`.
 
 Importance rules, verbatim from the implementation contract:
 
-> an op is `important` if ANY: scope is `owner`; kind is `convention`; text matches deploy/release/publish/secret/token/credential/password/permission/approve/production/merge/force/delete/database keywords (Korean equivalents too: 배포, 출시, 비밀, 토큰, 인증, 권한, 운영, 병합, 삭제, 데이터베이스); it updates/retires an item whose evidence is `owner` or that was approved before; it would retire > 3 items in one job. Otherwise `routine`.
+> an op is `important` if ANY: scope is `owner`; kind is `convention`; text matches deploy/release/publish/secret/token/credential/password/permission/approve/production/merge/force/delete/database keywords (Korean equivalents too: 배포, 출시, 비밀, 토큰, 인증, 권한, 운영, 병합, 삭제, 데이터베이스); it updates/retires an item whose evidence is `owner` or whose stored `importance` is already `important`; it would retire > 3 items in one job. Otherwise `routine`.
+
+The keyword rule is checked against the new text **and** the old text of an
+update, so an update can never quietly launder an important item into a routine
+one. Approving an important item sets `importance='important'` permanently; the
+stored column, not history, decides later updates. Importance never decays.
 
 Routine operations apply immediately (`active`/`retired`) and append history
 `{at, op, by:'curator', job, model}`. Important operations become `pending`
 with `approval={key, op, proposedText, at}`; the previous version stays active
-and pending items are never injected. Approvals never expire into an automatic
-apply: unanswered proposals stay pending (P5b lists them in the weekly digest).
+and pending items are never injected. An item that already carries an approval
+key is never overwritten: a new proposal for it is rejected (a pending update
+is queued as its own row via `supersedes`). Approvals never expire into an
+automatic apply: unanswered proposals stay pending (P5b lists them in the weekly
+digest).
 
 ## Evidence gate
 
@@ -55,7 +74,9 @@ apply: unanswered proposals stay pending (P5b lists them in the weekly digest).
   evidence is `verified` for a `verified` workflow and `daily` for a daily one.
 - A `failed` or `blocked` task may only add `kind='caution'` items, and may
   retire/update items that were actually injected into that task.
-- A conversation job takes evidence from the owner's own messages; owner-scope
+- A conversation job takes project items as evidence `owner` only when the
+  proposed text restates owner-authored text (substring or ≥ 0.5 token overlap
+  with an owner message); otherwise the evidence is `daily`. Owner-scope
   operations are allowed only there, and project operations only for a project
   that conversation's tasks already used.
 - Every operation is re-validated in code: schema, length, scrub, secret-like
@@ -65,21 +86,73 @@ apply: unanswered proposals stay pending (P5b lists them in the weekly digest).
 - Near-duplicate adds (≥ 0.8 token Jaccard overlap with an active item) are
   converted into an update of that item instead of creating a duplicate.
 
+## Curator runs
+
+- The curator is one model turn per tick, phrased with
+  `MEMORY_REQUEST_ID=<job>` and a `Memory data` block (untrusted data). It also
+  receives the project's active, pending, **stale** and **quarantined** items so
+  update/retire proposals can target an item that is no longer injected.
+- The reply must be exactly one line
+  `PASEO_MEMORY_RESPONSE={"jobId":"<job id>","ops":[...]}` with at most five
+  ops. The job id must match the request; a reply for another job is never
+  applied.
+- A `sent` job older than 10 minutes, an agent whose status is `error` or
+  `closed`, and a conclusive but unusable reply each mark the job invalid
+  (`attempts+1`). It is re-queued **once** at the back of the queue and then
+  becomes `invalid`, so a single job can never stall the queue. A queued job
+  that waits six hours behind a busy agent is bounded the same way.
+- The curator agent is long-lived but is archived and recreated every 50 jobs
+  or 7 days to bound its context.
+- At most **one remote manager call per tick**: recover/create, observe, send,
+  permits or archive happen on separate ticks. Permission requests are only
+  polled when the last `observe` reported `pendingPermissions > 0`; each one is
+  denied on its own tick.
+
+## Cost model
+
+Task outcomes, triggers and task indexing share one cursor over the append-only
+`events` table (`cursor:task-events`), which receives one row per task save.
+`tasks.rowid` cannot detect a state change because rows are updated in place,
+and JSON-extracting `updatedAt` would mean a full scan every tick, so the event
+sequence is the indexed equivalent. Conversation triggers use a cursor over
+`gui_messages.rowid` plus per-conversation `conv:<id>` meta
+(`{last, owners, last_curated_at}`). The first start after an upgrade only enqueues the
+last 20 finished tasks.
+
+A conversation is curated again only when at least 4 **new** owner messages
+arrived since `last_curated_at` and the conversation has been idle
+for 30 minutes. The owner-message counter is reset when a job is queued, so an
+idle conversation is never re-curated in a loop.
+
 ## Outcomes, quarantine and staleness
 
 - `passed` increments `successes` for the items that were injected into the
   task; `command`/`fact` items whose text contains a gate command or a changed
   path from the receipt get `last_verified=now` and leave `stale`.
-- `failed`/`blocked` increments `failures`, except `cancelled`, `capability` and
-  `transient` blocks, which say nothing about the memory.
+- A later `passed` task also re-activates a `stale` item of the same project
+  whose text matches one of its gate commands or changed files **without** that
+  item having been injected.
+- `failures` is incremented only when the task itself is at fault: state
+  `failed`, or state `blocked` with `blockedKind` `verdict`/`evidence`.
+  `timeout`, `needs_input`, `capability`, `transient`, `cancelled`, `safety` and
+  `dependency` say nothing about the memory.
 - An item with at least 3 failures and a failure ratio of 0.6 or more over its
   last 5 outcomes is quarantined (not injected, still searchable) and a curator
   job is queued to propose an update or retirement.
 - `command`/`fact` items not verified for 60 days become `stale`: they are not
-  injected but remain searchable. A later passed task that re-verifies the same
-  command or path makes them `active` again.
+  injected but remain searchable, and the curator sees them.
 - Rejected proposals are recorded and the curator is told about them for 30
   days, so it does not re-propose the same text.
+- The outcome marker and the counter updates commit in one transaction, so a
+  crash mid-outcome leaves nothing half-applied.
+
+## Retention
+
+Once a day the store prunes `uses` older than 180 days, `done`/`invalid`
+curation jobs older than 30 days, retired items older than 180 days, and stale
+`meta` keys (old outcome markers, old index signatures, expired rejections and
+conversation activity, and `announced:` markers whose approval is gone). Items
+retired by capacity are removed from the search index.
 
 ## Injection format
 
@@ -116,6 +189,10 @@ conversation maps to the configured channel itself (no thread) and is polled at
 the warm 60-second tier. Rejecting drops the proposed operation, records it in
 history and feeds the rejection back to the curator.
 
+The notify callback owns its own database write and must commit it before it
+returns; `announced:<key>` is recorded only after the callback returns
+successfully, so a notice that failed to persist is retried on the next tick.
+
 ## Git-versioned export
 
 Set `memoryExport` in `gui-runtime.json` to push a human-readable copy into a
@@ -125,15 +202,32 @@ private clone:
 {"memoryExport": {"repo": "/Users/me/private-memory", "remote": "origin", "branch": "main"}}
 ```
 
-After a change (debounced 10 minutes) and at least daily, the bot renders
-`owner.md` and `projects/<id>.md` with active, pending, stale and quarantined
-sections. Every line carries the item id, kind, text, status, evidence, source,
-uses (`successes/failures`) and last verification date. Retired items are
-omitted but stay in history. The export runs `git add -A`, commits only when
-there is a diff (`memory: <n> changes`), and pushes with a 60-second timeout,
-using the host's existing git credentials. Nothing is force-pushed, no token is
-put in argv, the environment or logs, and every rendered line is scrubbed
-again. A failed push is retried on the next cycle.
+After a change (debounced 10 minutes) and at least once per local day, the bot
+renders `owner.md` and `projects/<id>.md` with active, pending, stale and
+quarantined sections. Every line carries the item id, kind, text, status,
+evidence, source, uses (`successes/failures`) and last verification date.
+Retired items are omitted but stay in history. The rendered files contain no
+per-run content (no generated timestamp), so unchanged memory produces no
+commit. The export runs `git add -A`, commits only when there is a diff
+(`memory: <n> changes`), and pushes.
+
+Export rules:
+
+- at most one export per 10 minutes, with exponential backoff on failure
+  (10 min, 20 min, 40 min … capped at 6 hours);
+- one 60-second budget for the whole export, including the push; a git call
+  that exceeds it has its whole process tree killed;
+- `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never` so git can never block on
+  a prompt; `GCM_CREDENTIAL_*` settings are kept (they name a credential store,
+  not a secret) while token-bearing environment variables are removed;
+- git output is decoded with `errors='replace'`, nothing is force-pushed, no
+  token goes into argv, the environment or logs, and every rendered line is
+  scrubbed again;
+- the branch must be a strict refname (no `+`, `..`, leading `-`, spaces or
+  control characters);
+- a directory that is not a git repository is logged once and the export stays
+  disabled until the process restarts. A failed push is retried on the next
+  cycle.
 
 ## Configuration
 
