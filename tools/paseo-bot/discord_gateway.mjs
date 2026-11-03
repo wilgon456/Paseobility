@@ -10,7 +10,7 @@ import * as core from './discord_core.mjs';
 
 const API = 'https://discord.com/api/v10';
 const INTENTS = 33281; // GUILDS | GUILD_MESSAGES | MESSAGE_CONTENT
-const OUTBOUND_MS = 3000;
+const OUTBOUND_MS = 1000;  // tick; each thread is polled every 1 s while a reply is pending, else 3 s (hot) / 60 s (warm)
 const HEARTBEAT_MS = 5000;
 const STATE_VERSION = 1;
 const DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -1119,6 +1119,10 @@ async function outboundTick() {
       if (!core.isSnowflake(threadId) || record.parentId !== config.channelId) continue;
       // A needs-review hold blocks new input only; replies, cards and notices keep flowing.
       const tier = core.threadTier({...record, pendingCard: pendingCard(record.conversationId)}, record.sync, now);
+      if (tier === 'hot') {
+        const waiting = ['queued', 'prepared', 'waiting'].includes(record.sync?.deliveryState) || now - (record.lastActivityAt || 0) < 15000;
+        if (now - (record.polledAt || 0) < (waiting ? 1000 : 3000)) continue;  // not due yet
+      }
       entries.push({id: threadId, tier, polledAt: record.polledAt});
     }
     for (const threadId of core.syncSelection(entries, now)) {

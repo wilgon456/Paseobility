@@ -585,3 +585,49 @@ class CuratorNotifyCommitTests(unittest.TestCase):
             c.db.close()
         finally:
             tmp.cleanup()
+
+
+class ResidentManagerRPCTests(unittest.TestCase):
+    """The resident client keeps one child, answers in order and recovers from a dead child."""
+
+    def make(self, script):
+        import gui_state, queue, threading, subprocess as sp, sys as _sys
+
+        class Echo(gui_state.ResidentManagerRPC):
+            TIMEOUT = 3
+            starts = 0
+
+            def _start(self):
+                Echo.starts += 1
+                self.proc = sp.Popen([_sys.executable, '-c', script], stdin=sp.PIPE, stdout=sp.PIPE, text=True)
+                self.lines = queue.Queue()
+                self.started = time.time()
+                proc, lines = self.proc, self.lines
+
+                def pump():
+                    for line in proc.stdout:
+                        lines.put(line)
+                    lines.put(None)
+                threading.Thread(target=pump, daemon=True).start()
+        return Echo()
+
+    def test_reuses_one_child_for_many_calls(self):
+        rpc = self.make('import sys,json\nfor l in sys.stdin:\n r=json.loads(l)\n print(json.dumps({"ok":True,"result":{"echo":r["action"]}}),flush=True)')
+        try:
+            self.assertEqual(rpc({'serverId': 's'}, 'observe')['echo'], 'observe')
+            self.assertEqual(rpc({'serverId': 's'}, 'send')['echo'], 'send')
+            self.assertEqual(type(rpc).starts, 1)
+        finally:
+            rpc.close()
+
+    def test_refusal_and_dead_child_raise_and_restart(self):
+        rpc = self.make('import sys\nl=sys.stdin.readline()\nprint(\'{"ok":false}\',flush=True)')
+        try:
+            with self.assertRaises(ValueError):
+                rpc({'serverId': 's'}, 'observe')
+            time.sleep(0.3)  # child exited after one line
+            with self.assertRaises(ValueError):
+                rpc({'serverId': 's'}, 'observe')
+            self.assertGreaterEqual(type(rpc).starts, 2)
+        finally:
+            rpc.close()

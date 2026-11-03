@@ -155,6 +155,71 @@ def manager_rpc(config, action, **data):
         raise ValueError('Manager outcome unavailable; do not automatically resend.') from None
 
 
+class ResidentManagerRPC:
+    """One long-lived `manager_bridge.mjs --serve` child for every manager/curator call.
+
+    Same contract as manager_rpc (raises ValueError when the outcome is unknown), but avoids a
+    Node start + daemon connect per call. A hung or dead child is killed and restarted on the
+    next call; nothing is resent automatically.
+    """
+    TIMEOUT = 65
+    MAX_AGE = 6 * 3600
+
+    def __init__(self):
+        self.proc = None
+        self.lines = None
+        self.started = 0.0
+
+    def _start(self):
+        import queue as _queue
+        import threading
+        launch, module = fleet.runtime()
+        env = dict(os.environ, ELECTRON_RUN_AS_NODE='1', PASEO_MULTI_HOST_CLIENT_MODULE=str(module),
+                   PASEO_BOT_RUNTIME_PREFIX=json.dumps(launch[1:]))
+        flags = 0x08000000 if os.name == 'nt' else 0  # CREATE_NO_WINDOW
+        self.proc = subprocess.Popen(launch + [str(Path(__file__).with_name('manager_bridge.mjs')), '--serve'],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                     text=True, encoding='utf-8', env=env, creationflags=flags)
+        self.lines = _queue.Queue()
+        self.started = time.time()
+        proc, lines = self.proc, self.lines
+
+        def pump():
+            for line in proc.stdout:
+                lines.put(line)
+            lines.put(None)
+        threading.Thread(target=pump, daemon=True).start()
+
+    def close(self):
+        proc, self.proc = self.proc, None
+        if proc is not None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+
+    def __call__(self, config, action, **data):
+        import queue as _queue
+        if self.proc is not None and (self.proc.poll() is not None or time.time() - self.started > self.MAX_AGE):
+            self.close()
+        if self.proc is None:
+            self._start()
+        try:
+            self.proc.stdin.write(json.dumps(dict(config, action=action, **data)) + '\n')
+            self.proc.stdin.flush()
+            line = self.lines.get(timeout=self.TIMEOUT)
+            if line is None:
+                raise ValueError('closed')
+            reply = json.loads(line)
+            if not reply.get('ok'):
+                raise ValueError('refused')
+            return reply['result']
+        except (OSError, ValueError, KeyError, _queue.Empty):
+            if not isinstance(self.proc, subprocess.Popen) or self.proc.poll() is not None:
+                self.close()
+            raise ValueError('Manager outcome unavailable; do not automatically resend.') from None
+
+
 def project_list(config):
     return [dict(id=p['id'], enabled=any(t.get('enabled') for t in p['targets']),
                  machines=list(dict.fromkeys(t['machine'] for t in p['targets'] if t.get('enabled'))))
@@ -162,10 +227,11 @@ def project_list(config):
 
 
 class Conversations:
-    def __init__(self, home, rpc=manager_rpc):
+    def __init__(self, home, rpc=None):
         self.bot = Bot(home)
         self.db = self.bot.db
-        self.rpc = rpc
+        # Default: the resident bridge (gui_serve). Tests and one-off tools pass their own rpc.
+        self.rpc = rpc if rpc is not None else ResidentManagerRPC()
         self._memory = None
         self._curator = None
 
@@ -370,6 +436,10 @@ class Conversations:
                 self.message(conversation, 'system', '확인하지 못한 요청은 건너뛰었어요. 필요하면 다시 보내 주세요.')
         return {'accepted': True}
 
+    def busy(self):
+        """A manager reply is pending: the service loop should poll faster."""
+        return bool(self.db.execute("SELECT 1 FROM gui_jobs WHERE state IN ('queued','prepared','waiting') LIMIT 1").fetchone())
+
     def runtime_config(self):
         path = self.bot.home / 'gui-runtime.json'
         private_file(path)
@@ -540,9 +610,12 @@ class Conversations:
                         with self.db:
                             self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', first[0]))
                     try:
+                        began = time.time()
                         created = self.rpc(config, 'create', session=conversation, prompt=initial,
                                            workspaceId=self.manager_workspace(config))
                         agent = created['id']
+                        log_event(status='manager-created', conversation=conversation, createMs=int((time.time() - began) * 1000),
+                                  withQuestion=bool(first))
                     except (ValueError, OSError, subprocess.SubprocessError):
                         return  # Unknown creation is recovered by label, never repeated.
                     if created.get('workspaceId'):
@@ -591,12 +664,17 @@ class Conversations:
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', job_id))
                 self.rpc(config, 'send', session=conversation, agentId=agent, prompt=envelope)
+                created_at = self.db.execute('SELECT created FROM gui_jobs WHERE id=?', (job_id,)).fetchone()
+                log_event(status='manager-sent', conversation=conversation, path='send',
+                          queuedMs=int((time.time() - (created_at[0] if created_at else time.time())) * 1000))
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('waiting', job_id))
                     self.db.execute('DELETE FROM gui_meta WHERE key=?', ('revive:' + conversation,))
             elif state == 'waiting' and current['status'] == 'idle':
+                created_at = jobs[5]
                 try:
                     self.collect_reply(jobs, current['message'])
+                    log_event(status='manager-reply', conversation=conversation, totalMs=int((time.time() - created_at) * 1000))
                 except (ValueError, KeyError, TypeError):
                     with self.db:
                         self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('invalid', job_id))

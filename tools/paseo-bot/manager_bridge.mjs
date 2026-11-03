@@ -4,8 +4,12 @@ import path from "node:path";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
-const req = JSON.parse(fs.readFileSync(0, "utf8"));
+// One-shot: one JSON request on stdin. Resident (--serve): one JSON request per line, one reply per line,
+// reusing a single daemon connection so chat polling does not pay a process start + connect each time.
+const SERVE = process.argv.includes("--serve");
+let req = SERVE ? null : JSON.parse(fs.readFileSync(0, "utf8"));
 let client;
+let verifiedServer = "";
 async function workspaceExists(id) {
   const listed = await client.fetchWorkspaces({
     filter: { query: id, includeBackground: true },
@@ -40,16 +44,23 @@ function createBackgroundWorkspace(prefix, cli, cwd) {
 }
 async function main() {
   const module = process.env.PASEO_MULTI_HOST_CLIENT_MODULE;
-  const { connectToDaemon } = await import(pathToFileURL(module).href);
-  client = await connectToDaemon({
-    target: {
-      kind: "instance",
-      home: process.env.PASEO_HOME || path.join(os.homedir(), ".paseo"),
-    },
-    timeout: 10000,
-  });
-  const status = await client.getDaemonStatus({ timeout: 10000 });
-  if (status.serverId !== req.serverId) throw Error("identity");
+  if (!client) {
+    const { connectToDaemon } = await import(pathToFileURL(module).href);
+    client = await connectToDaemon({
+      target: {
+        kind: "instance",
+        home: process.env.PASEO_HOME || path.join(os.homedir(), ".paseo"),
+      },
+      timeout: 10000,
+    });
+    verifiedServer = "";
+  }
+  // Identity is checked on every new connection and whenever the requested server changes.
+  if (verifiedServer !== req.serverId) {
+    const status = await client.getDaemonStatus({ timeout: 10000 });
+    if (status.serverId !== req.serverId) throw Error("identity");
+    verifiedServer = req.serverId;
+  }
   if (req.action === "recover") {
     let cursor;
     const agents = [];
@@ -249,13 +260,33 @@ async function main() {
   }
   throw Error("action");
 }
-try {
-  process.stdout.write(JSON.stringify({ ok: true, result: await main() }));
-} catch {
-  process.stdout.write(
-    '{"ok":false,"error":"Manager transport unavailable; outcome may be unknown."}',
-  );
-  process.exitCode = 1;
-} finally {
+const FAILED = '{"ok":false,"error":"Manager transport unavailable; outcome may be unknown."}';
+if (!SERVE) {
+  try {
+    process.stdout.write(JSON.stringify({ ok: true, result: await main() }));
+  } catch {
+    process.stdout.write(FAILED);
+    process.exitCode = 1;
+  } finally {
+    await client?.close().catch(() => {});
+  }
+} else {
+  const readline = await import("node:readline");
+  const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  for await (const line of lines) {
+    if (!line.trim()) continue;
+    let out;
+    try {
+      req = JSON.parse(line);
+      out = JSON.stringify({ ok: true, result: await main() });
+    } catch {
+      out = FAILED;
+      // A failed call may mean a dead connection: reconnect (and re-verify identity) next time.
+      await client?.close().catch(() => {});
+      client = null;
+      verifiedServer = "";
+    }
+    process.stdout.write(out + "\n");
+  }
   await client?.close().catch(() => {});
 }

@@ -33,7 +33,12 @@ def main():
                     log_event(status='gui-tick-error', error=describe(error))
                 if args.command == 'tick':
                     break
-                for i in range(30):
+                # 1 s while a manager reply is pending (chat latency), 3 s otherwise.
+                try:
+                    pause = 10 if c.busy() else 30
+                except Exception:
+                    pause = 30
+                for i in range(pause):
                     if not running or (i % 10 == 0 and stop_requested(args.state, 'gui_serve')):
                         running = False
                         break
