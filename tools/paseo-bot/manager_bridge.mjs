@@ -14,6 +14,30 @@ async function workspaceExists(id) {
   if (!Array.isArray(listed?.entries)) throw Error("schema");
   return listed.entries.some((w) => w.id === id && !w.archivedAt);
 }
+function createBackgroundWorkspace(prefix, cli, cwd) {
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env };
+    for (const k of ["PASEO_AGENT_ID", "PASEO_WORKSPACE_ID"]) delete env[k];
+    const c = spawn(process.execPath, [...prefix, cli, "workspace", "create", "--isolation", "local",
+      "--path", cwd, "--title", "Paseo 봇 에이전트", "--background", "--json"], { env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    const timer = setTimeout(() => { c.kill(); reject(Error("workspace")); }, 30000);
+    c.stdout.on("data", (b) => { out += b; if (out.length > 200000) c.kill(); });
+    c.stderr.resume();
+    c.on("error", () => { clearTimeout(timer); reject(Error("workspace")); });
+    c.on("close", (code) => {
+      clearTimeout(timer);
+      try {
+        const r = JSON.parse(out);
+        const id = (r.data || r).workspaceId;
+        if (code || typeof id !== "string" || !id) throw Error();
+        resolve(id);
+      } catch {
+        reject(Error("workspace"));
+      }
+    });
+  });
+}
 async function main() {
   const module = process.env.PASEO_MULTI_HOST_CLIENT_MODULE;
   const { connectToDaemon } = await import(pathToFileURL(module).href);
@@ -69,9 +93,18 @@ async function main() {
       throw Error("provider");
     // Managers share one workspace instead of adding a sidebar entry per
     // conversation. A remembered workspace that is gone falls back to one new one.
-    const reuse = req.workspaceId && (await workspaceExists(req.workspaceId));
+    let reuse = req.workspaceId && (await workspaceExists(req.workspaceId));
     const cli = path.join(path.dirname(path.dirname(module)), "index.js");
     const prefix = JSON.parse(process.env.PASEO_BOT_RUNTIME_PREFIX || "[]");
+    if (!reuse) {
+      // One background workspace hosts every manager and the memory curator: it stays out of
+      // the Paseo sidebar instead of appearing under whatever project owns req.cwd.
+      const made = await createBackgroundWorkspace(prefix, cli, req.cwd).catch(() => null);
+      if (made) {
+        req.workspaceId = made;
+        reuse = true;
+      }
+    }
     const args = [
       ...prefix,
       cli,
