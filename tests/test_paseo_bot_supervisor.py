@@ -306,3 +306,24 @@ class PowerShellWrapperParameters(unittest.TestCase):
         names = {n.lower() for n in re.findall(r'\]\s*\$([A-Za-z_][A-Za-z0-9_]*)', block[:end])}
         self.assertTrue(names)
         self.assertFalse(names & self.RESERVED, sorted(names & self.RESERVED))
+
+
+class WriteJsonRetry(unittest.TestCase):
+    def test_transient_permission_error_on_replace_is_retried(self):
+        import importlib.util, tempfile
+        from unittest import mock
+        spec = importlib.util.spec_from_file_location('pb_wj', Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo_bot.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'state' / 'health.json'
+            real = module.os.replace
+            calls = {'n': 0}
+            def flaky(src, dst):
+                calls['n'] += 1
+                if calls['n'] < 3:
+                    raise PermissionError(5, 'Access is denied')
+                return real(src, dst)
+            with mock.patch.object(module.os, 'replace', flaky), mock.patch.object(module.time, 'sleep', lambda s: None):
+                module.write_json(target, {'ok': True})
+            self.assertEqual(json.loads(target.read_text(encoding='utf-8')), {'ok': True})
+            self.assertEqual(calls['n'], 3)

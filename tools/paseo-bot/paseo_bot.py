@@ -271,7 +271,16 @@ def write_json(path, value, ascii=False):
             json.dump(scrub(value), f, ensure_ascii=ascii, indent=2)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(temp, path)
+        for attempt in range(6):
+            try:
+                os.replace(temp, path)
+                break
+            except PermissionError:
+                # Windows: replacing a file another process has open briefly fails with
+                # WinError 5 (status/health readers poll these files). Retry, then give up.
+                if attempt == 5:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
     finally:
         temp.unlink(missing_ok=True)
 
