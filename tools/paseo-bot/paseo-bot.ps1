@@ -9,7 +9,7 @@ param(
   [string]$Python,
   [string]$Reason,
   [switch]$Apply,
-  [ValidateSet('cli','grok')][string]$Producer = 'cli',
+  [ValidateSet('cli','discord')][string]$Producer = 'cli',
   [Parameter(ValueFromPipeline=$true)][AllowEmptyString()][string]$Json
 )
 begin { $chunks = New-Object 'System.Collections.Generic.List[string]' }

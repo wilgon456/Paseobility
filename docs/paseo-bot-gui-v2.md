@@ -115,20 +115,20 @@ The task digest still covers only the original task body. Producer/context are
 stored separately in `task_origins` and remain immutable on duplicate intake.
 
 ```powershell
-# Grok's trusted local producer route; JSON via -File or UTF-8 stdin as before:
-.\tools\paseo-bot\paseo-bot.ps1 submit -File task.json -Producer grok
+# Trusted local producer route; JSON via -File or UTF-8 stdin as before:
+.\tools\paseo-bot\paseo-bot.ps1 submit -File task.json -Producer discord
 ```
 
 ```text
-python tools/paseo-bot/paseo_bot.py submit --producer grok --file task.json
+python tools/paseo-bot/paseo_bot.py submit --producer discord --file task.json
 ```
 
 The producer flag records the trusted OS caller's declared route; it is not a
 second authentication boundary. GUI origins come from the conversation service,
 not task text. Prior unlabelled tasks remain **이전 작업**, ordinary CLI tasks
-remain **CLI**, and Grok-marked tasks display **Grok 봇**. Never infer historical
-provenance from a title or ID. Existing Grok callers can keep their old command;
-to get the explicit badge they must use the producer flag on the updated CLI.
+remain **CLI**, and Discord-marked tasks display **Discord**. Never infer
+historical provenance from a title or ID. Use `--producer cli` or
+`--producer discord` on the updated CLI.
 
 **재시도** on failed cards opens a confirmation and asks the manager to inspect
 the old request/result. It does not change the old task or immediately submit a

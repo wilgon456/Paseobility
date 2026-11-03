@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Store the Grok webhook JSON from stdin using the official Bitwarden SDK."""
+"""Store a secret JSON value from stdin using the official Bitwarden SDK."""
 import argparse
 import json
 import sys
-from sdk_secrets import Vault, silent_sdk, validate_secret
+from sdk_secrets import VALIDATORS, Vault, silent_sdk, validate
 
 
 class Parser(argparse.ArgumentParser):
@@ -16,6 +16,8 @@ def main(argv=None, stream=None, vault_factory=Vault):
         parser = Parser(description=__doc__)
         parser.add_argument('command', choices=['check', 'store', 'verify'])
         parser.add_argument('--broker-config')  # Public path only; never a credential.
+        parser.add_argument('--kind', choices=sorted(VALIDATORS), default='discord-bot')
+        parser.add_argument('--name')  # Optional Bitwarden item name; never a credential.
         args = parser.parse_args(argv)
         value = None
         if args.command == 'store':
@@ -25,9 +27,9 @@ def main(argv=None, stream=None, vault_factory=Vault):
             raw = source.read(20001)
             if len(raw) > 20000:
                 raise ValueError('Input too large.')
-            value = validate_secret(json.loads(raw.decode('utf-8')))
+            value = validate(args.kind, json.loads(raw.decode('utf-8')))
         with silent_sdk():
-            vault = vault_factory(args.broker_config)
+            vault = vault_factory(args.broker_config, name=args.name, kind=args.kind)
             if args.command == 'store':
                 vault.store(value)
             elif args.command == 'verify':

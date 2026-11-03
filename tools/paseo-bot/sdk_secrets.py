@@ -5,10 +5,9 @@ import logging
 import os
 from pathlib import Path
 import sys
-from urllib.parse import urlsplit
 from uuid import UUID
 
-SECRET_NAME = 'paseo-bot-grok-webhook'
+DEFAULT_NAMES = {'discord-bot': 'paseo-bot-discord-token'}
 
 
 def native_standard_handles():
@@ -31,19 +30,26 @@ def broker_config_path():
     return Path.home() / '.config/agent-auth-broker/config.toml'
 
 
-def validate_secret(value):
-    if not isinstance(value, dict) or set(value) != {'url', 'key'}:
-        raise ValueError('Invalid webhook secret.')
-    if any(not isinstance(value[k], str) or not value[k] or len(value[k]) > 8192 for k in value):
-        raise ValueError('Invalid webhook secret.')
-    url = urlsplit(value['url'])
-    if url.scheme != 'https' or not url.hostname or url.username or url.password or url.fragment:
-        raise ValueError('Invalid webhook secret.')
-    if any(ord(c) < 32 or ord(c) == 127 for c in value['url'] + value['key']):
-        raise ValueError('Invalid webhook secret.')
-    url.port  # Validate any explicit port without copying the URL into an error.
-    value['key'].encode('latin-1')  # urllib headers must be representable on the wire.
+def validate_discord_bot(value):
+    """A Discord bot token: exactly one bounded, whitespace-free string."""
+    if not isinstance(value, dict) or set(value) != {'token'}:
+        raise ValueError('Invalid secret value.')
+    token = value['token']
+    if not isinstance(token, str) or not token or len(token) > 512:
+        raise ValueError('Invalid secret value.')
+    if any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in token):
+        raise ValueError('Invalid secret value.')
     return value
+
+
+VALIDATORS = {'discord-bot': validate_discord_bot}
+
+
+def validate(kind, value):
+    validator = VALIDATORS.get(kind)
+    if validator is None:
+        raise ValueError('Unsupported secret kind.')
+    return validator(value)
 
 
 @contextmanager
@@ -97,7 +103,13 @@ def settings(path):
 
 
 class Vault:
-    def __init__(self, config=None, client=None):
+    def __init__(self, config=None, client=None, name=None, kind='discord-bot'):
+        if kind not in VALIDATORS:
+            raise ValueError('Unsupported secret kind.')
+        if name is not None and (not isinstance(name, str) or not name or len(name) > 200):
+            raise ValueError('Invalid secret name.')
+        self.kind = kind
+        self.name = name or DEFAULT_NAMES[kind]
         project, token = settings(config or broker_config_path())
         if client is None:
             from bitwarden_sdk import BitwardenClient
@@ -110,7 +122,7 @@ class Vault:
         self.organization = str(client.projects().get(project).data.organization_id)
 
     def find(self):
-        found = [x for x in self.client.secrets().list(self.organization).data.data if x.key == SECRET_NAME]
+        found = [x for x in self.client.secrets().list(self.organization).data.data if x.key == self.name]
         if len(found) > 1:
             raise ValueError('Ambiguous secret name.')
         if found:
@@ -123,18 +135,18 @@ class Vault:
     def read(self):
         secret = self.find()
         if secret is None:
-            raise ValueError('Webhook secret missing.')
-        return validate_secret(json.loads(secret.value))
+            raise ValueError('Secret missing.')
+        return validate(self.kind, json.loads(secret.value))
 
     def store(self, value):
-        encoded = json.dumps(validate_secret(value), ensure_ascii=False, separators=(',', ':'))
+        encoded = json.dumps(validate(self.kind, value), ensure_ascii=False, separators=(',', ':'))
         old = self.find()
         api = self.client.secrets()
         if old:
-            result = api.update(self.organization, str(old.id), SECRET_NAME, encoded, old.note, [self.project])
+            result = api.update(self.organization, str(old.id), self.name, encoded, old.note, [self.project])
         else:
-            result = api.create(self.organization, SECRET_NAME, encoded, '', [self.project])
+            result = api.create(self.organization, self.name, encoded, '', [self.project])
         # A lost write acknowledgement is never automatically replayed.
         saved = api.get(str(result.data.id)).data
-        if saved.key != SECRET_NAME or saved.value != encoded or str(saved.project_id) != self.project:
+        if saved.key != self.name or saved.value != encoded or str(saved.project_id) != self.project:
             raise ValueError('Read-back verification failed.')

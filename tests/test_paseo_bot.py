@@ -276,31 +276,37 @@ class BotTests(unittest.TestCase):
         self.assertIn('preserve them',prompt)
         self.assertIn(self.body['prompt'],self.bot.prompt(self.body,record,'work'))
 
-    def test_completion_webhooks_capture_each_terminal_state_once(self):
-        for state in ['passed', 'failed', 'blocked']:
-            body = dict(self.body, id='notify-' + state, requester='operator', pr_url='https://github.com/a/b/pull/1')
-            record = self.bot.submit(body)
-            record.update(state=state, machine='VAXPORT', summary='bounded result')
-            self.bot.save(record)
-            self.bot.save(record)
-        rows = self.bot.db.execute('SELECT payload FROM webhook_jobs').fetchall()
-        self.assertEqual(len(rows), 3)
-        payloads = [json.loads(row[0]) for row in rows]
-        self.assertEqual({p['state'] for p in payloads}, {'passed', 'failed', 'blocked'})
-        self.assertTrue(all(p['requester'] == 'operator' and p['pr_url'].endswith('/1') for p in payloads))
-        unknown = self.bot.submit(dict(self.body, id='unknown-task'))
-        unknown.update(state='unknown')
-        self.bot.save(unknown)
-        self.assertEqual(self.bot.db.execute('SELECT count(*) FROM webhook_jobs').fetchone()[0], 3)
-
-    def test_webhook_failure_does_not_change_task_outbox_or_health(self):
+    def test_health_has_no_webhook_key_and_new_database_has_no_webhook_table(self):
+        tables = {row[0] for row in self.bot.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertNotIn('webhook_jobs', tables)
         self.bot.submit(self.body)
-        with patch.object(m.webhook_queue, 'drain', side_effect=RuntimeError('notification failure')):
-            result = self.drive()
-        self.assertEqual(result['state'], 'passed')
-        self.assertEqual(json.loads((self.home/'results/task-1.json').read_text())['state'], 'passed')
+        self.bot.tick()
+        self.assertNotIn('webhook', json.loads((self.home / 'health.json').read_text()))
+        self.assertNotIn('webhook', self.bot.health())
+        self.assertNotIn('webhooks', self.bot.status())
         self.assertTrue(self.bot.health()['healthy'])
-        self.assertEqual(self.bot.db.execute('SELECT count(*) FROM webhook_jobs').fetchone()[0], 1)
+
+    def test_existing_webhook_table_is_left_untouched(self):
+        # Older databases keep their historical webhook_jobs rows; the bot never reads or writes them.
+        with self.bot.db:
+            self.bot.db.execute('CREATE TABLE webhook_jobs(task_id TEXT PRIMARY KEY)')
+            self.bot.db.execute("INSERT INTO webhook_jobs VALUES ('old-task')")
+        self.bot.db.close()
+        self.bot = m.Bot(self.home, self.fake)
+        self.assertEqual(self.bot.db.execute('SELECT task_id FROM webhook_jobs').fetchall(), [('old-task',)])
+
+    def test_submit_producer_accepts_only_cli_or_discord(self):
+        script = ROOT / 'tools/paseo-bot/paseo_bot.py'
+        task = json.dumps(self.body)
+        rejected = subprocess.run([sys.executable, str(script), '--state', str(self.home), 'submit', '--producer', 'grok'],
+                                  input=task.encode('utf-8'), capture_output=True, timeout=20)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn('invalid choice', rejected.stderr.decode('utf-8', 'replace'))
+        accepted = subprocess.run([sys.executable, str(script), '--state', str(self.home), 'submit', '--producer', 'discord'],
+                                  input=task.encode('utf-8'), capture_output=True, timeout=20)
+        self.assertEqual(accepted.returncode, 0, accepted.stdout)
+        origin = self.bot.db.execute('SELECT context FROM task_origins WHERE task_id=?', ('task-1',)).fetchone()
+        self.assertEqual(json.loads(origin[0])['requester'], 'discord')
 
     def test_standby_is_healthy_but_cannot_admit_or_dispatch(self):
         self.bot.submit(self.body)
@@ -724,7 +730,7 @@ class BotTests(unittest.TestCase):
         self.assertEqual(launch['protectedHosts'], ['VAX_COM', 'VAXPORT'])
         self.assertIn('PASEO_BOT_PROTECTED_HOSTS', launch['prompt'])
 
-    def test_draft_pr_publish_runs_before_archive_and_reaches_webhook(self):
+    def test_draft_pr_publish_runs_before_archive(self):
         for t in self.config['projects'][0]['targets']:
             t['publish'] = 'draft-pr'
         m.write_json(self.bot.registry_path, self.config)
@@ -746,8 +752,6 @@ class BotTests(unittest.TestCase):
         self.assertEqual(calls[0]['branch'], 'paseo-bot/task-1')
         self.assertIn('task-1', calls[0]['body'])
         self.assertEqual(calls[1]['stateSha'], 'f' * 64)
-        payload = json.loads(self.bot.db.execute('SELECT payload FROM webhook_jobs').fetchone()[0])
-        self.assertEqual(payload['pr_url'], 'https://github.com/o/r/pull/7')
 
     def test_failed_work_is_never_published(self):
         for t in self.config['projects'][0]['targets']:
@@ -770,12 +774,6 @@ class BotTests(unittest.TestCase):
         self.assertNotIn('archive-workspace', self.fake.cleaned)
         with self.assertRaises(ValueError):
             m.validate_config(dict(self.config, projects=[dict(self.config['projects'][0], targets=[dict(self.target('X'), publish='push')])]))
-
-    def test_webhook_failure_is_visible_in_health(self):
-        self.bot.submit(self.body)
-        with patch.object(m.webhook_queue, 'drain', side_effect=RuntimeError('boom')):
-            self.bot.tick()
-        self.assertEqual(json.loads((self.home/'health.json').read_text())['webhook'], 'error')
 
     def test_permission_wait_never_approved(self):
         self.fake.status = 'permission'

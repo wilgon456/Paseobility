@@ -59,9 +59,11 @@ export function requesterLabel(source: string) {
     (
       {
         gui: "실장님 GUI",
-        grok: "Grok 봇",
+        discord: "Discord",
         cli: "CLI",
         legacy: "이전 작업",
+        // Retired Grok producer: historical rows read as previous work.
+        grok: "이전 작업",
       } as Record<string, string>
     )[source] ?? "출처 미확인"
   );

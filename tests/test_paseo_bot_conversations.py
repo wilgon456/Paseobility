@@ -222,12 +222,12 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(self.c.bot.result('failed-task')['state'], 'failed')
 
     def test_readonly_sync_full_queue_filters_and_provenance(self):
-        self.c.bot.submit(dict(self.step, id='grok-one'), {'requester': 'grok'})
+        self.c.bot.submit(dict(self.step, id='discord-one'), {'requester': 'discord'})
         for i in range(102): self.c.bot.submit(dict(self.step, id='cli-' + str(i)))
         path = self.home / 'queue.sqlite3'; before = path.read_bytes()
-        out = handle(self.home, dict(action='sync', requester='grok', query='Fixture', sort='oldest'), True)
-        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['id'], 'grok-one')
-        self.assertEqual(out['tasks'][0]['requester'], 'grok'); self.assertEqual(out['total'], 103)
+        out = handle(self.home, dict(action='sync', requester='discord', query='Fixture', sort='oldest'), True)
+        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['id'], 'discord-one')
+        self.assertEqual(out['tasks'][0]['requester'], 'discord'); self.assertEqual(out['total'], 103)
         self.assertEqual(path.read_bytes(), before)
         for request in [dict(action='sync', sort='DROP TABLE tasks'), dict(action='sync', group='shell')]:
             with self.assertRaises(ValueError): handle(self.home, request)
@@ -317,14 +317,14 @@ class ConversationTests(unittest.TestCase):
         self.c.remember('session-1', 'reply-message-1', 'fixture')
         self.assertEqual(self.c.db.execute('SELECT count(*) FROM gui_memory').fetchone()[0], 1)
 
-    def test_real_cli_grok_attribution_without_gui_schema_fields(self):
+    def test_real_cli_discord_attribution_without_gui_schema_fields(self):
         script = Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo_bot.py'
-        task = dict(self.step, id='grok-cli')
-        r = subprocess.run([sys.executable, str(script), '--state', str(self.home), 'submit', '--producer', 'grok'],
+        task = dict(self.step, id='discord-cli')
+        r = subprocess.run([sys.executable, str(script), '--state', str(self.home), 'submit', '--producer', 'discord'],
                            input=json.dumps(task).encode('utf-8'), capture_output=True, timeout=20)
         self.assertEqual(r.returncode, 0, r.stdout)
-        out = handle(self.home, dict(action='sync', requester='grok'))
-        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['requester'], 'grok')
+        out = handle(self.home, dict(action='sync', requester='discord'))
+        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['requester'], 'discord')
 
     def age(self, conversation, days):
         old = time.time() - days * 86400
@@ -385,13 +385,13 @@ class ConversationTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.c.runtime_config()
 
     @unittest.skipUnless(sys.platform == 'win32', 'Windows producer byte-stream contract')
-    def test_windows_grok_producer_wrapper(self):
+    def test_windows_discord_producer_wrapper(self):
         script = Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo-bot.ps1'
         r = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
-                            'submit', '-State', str(self.home), '-Producer', 'grok'],
-                           input=json.dumps(dict(self.step, id='grok-powershell')).encode('utf-8'), capture_output=True, timeout=30)
+                            'submit', '-State', str(self.home), '-Producer', 'discord'],
+                           input=json.dumps(dict(self.step, id='discord-powershell')).encode('utf-8'), capture_output=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertEqual(handle(self.home, dict(action='sync', requester='grok'))['filtered'], 1)
+        self.assertEqual(handle(self.home, dict(action='sync', requester='discord'))['filtered'], 1)
 
 
 if __name__ == '__main__': unittest.main()

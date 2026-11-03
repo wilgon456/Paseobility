@@ -9,12 +9,13 @@ authenticated Tailscale SSH without an HTTP listener.
 
 ## Architecture and contract
 
-Grok Bot → trusted CLI intake over Tailscale SSH → SQLite inbox → resident Python
-loop → destination Paseo CLI `run` → JSON file outbox → Grok Bot reads/polls.
-No HTTP listener, webhook callback, Slack client or bot token is needed. File
-intake avoids adding an unauthenticated network surface. SSH authentication and
-the private OS account are the admission boundary: this is a trusted developer
-assistant, not a sandbox for arbitrary untrusted users or repositories.
+Producers (CLI, GUI, Discord gateway — planned) → trusted CLI intake over
+Tailscale SSH → SQLite inbox → resident Python loop → destination Paseo CLI
+`run` → JSON file outbox → producers read/poll results.
+No HTTP listener or Slack client is needed. File intake avoids adding an
+unauthenticated network surface. SSH authentication and the private OS account
+are the admission boundary: this is a trusted developer assistant, not a sandbox
+for arbitrary untrusted users or repositories.
 
 The resident runtime is a deterministic five-second ticker. Models run only for
 admitted tasks, in fresh Paseo agents. A visible manager agent can use
@@ -140,12 +141,13 @@ that same target. Host identity is checked again for every RPC. Running tasks
 retain their admitted target/gates snapshot even if the registry later changes.
 The base is an explicit resolved SHA; no unconditional `origin/main` assumption.
 
-Grok submits a project ID, not an arbitrary repo path or gate command. The JSON
-schema only accepts `id`, `project`, `title`, `prompt`, optional `kind` and optional
-`machine`. `kind` maps `sync→git-sync`, `hard→coding-hard`,
-`refactor→refactor-bulk`, `gpt→gpt-task`. If omitted, bounded keyword rules pick
-refactor/architecture/sync work, otherwise gpt. Explicit kinds always win. Sync
-uses the same worktree/review pipeline and does not authorize a push.
+A task submits a project ID, not an arbitrary repo path or gate command. The
+JSON schema only accepts `id`, `project`, `title`, `prompt`, `kind`, `machine`,
+`pr_url`, `requester`, `model`, `effort`, `modelReason` and `workflow`. `kind`
+maps `sync→git-sync`, `hard→coding-hard`, `refactor→refactor-bulk`,
+`gpt→gpt-task`. If omitted, bounded keyword rules pick refactor/architecture/sync
+work, otherwise gpt. Explicit kinds always win. Sync uses the same
+worktree/review pipeline and does not authorize a push.
 
 ## Run and submit
 
@@ -155,18 +157,18 @@ From a persistent checkout of this branch/version:
 python3 tools/paseo-bot/paseo_bot.py serve
 # Another shell (or a trusted Tailscale SSH session):
 python3 tools/paseo-bot/paseo_bot.py submit --file /absolute/path/task.json
-python3 tools/paseo-bot/paseo_bot.py result grok-example-001
+python3 tools/paseo-bot/paseo_bot.py result example-001
 python3 tools/paseo-bot/paseo_bot.py list
 python3 tools/paseo-bot/paseo_bot.py health
 ```
 
 Use `--state /absolute/private/directory` **before** the subcommand to select a
 separate queue. Do not repurpose HOME. Submission also accepts UTF-8 JSON on
-stdin. Grok can stream task JSON through SSH stdin without shell interpolation:
+stdin. A producer can stream task JSON through SSH stdin without shell interpolation:
 
 ```text
 ssh <trusted-tailnet-host> python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py submit < task.json
-ssh <trusted-tailnet-host> python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py result grok-example-001
+ssh <trusted-tailnet-host> python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py result example-001
 ```
 
 In a private dedicated directory, write a `paseo.json` using the normal workspace
@@ -181,11 +183,10 @@ Create a local workspace for that directory, launch a coordinator agent with the
 MANAGER.md brief, then `paseo script start paseo-bot --workspace <workspace-id>`.
 Keep the runtime checkout pinned while it is running. SIGTERM/SIGINT stops the
 loop after its current bounded RPC; already dispatched agents remain in Paseo.
-`health.json` carries last tick time, PID, `activeTasks` and `webhook` (`ok` or
-`error`; the latter means completion notifications need inspection). It is
-refreshed after every task step. The health CLI marks a tick older than 120
-seconds unhealthy; `status` also counts webhook jobs by state. A heartbeat proves
-the ticker, not provider health.
+`health.json` carries last tick time, PID, `activeTasks` and the ownership
+mode/dispatch state. It is refreshed after every task step. The health CLI marks
+a tick older than 120 seconds unhealthy. A heartbeat proves the ticker, not
+provider health.
 
 A lost connection, bridge timeout or unclassified transport error is not a
 verdict: the task keeps its state and the same step is retried without
@@ -196,8 +197,8 @@ and receipt failures still block immediately.
 ## Results, memory and recovery
 
 SQLite `queue.sqlite3` is authoritative. `results/<task-id>.json` is the durable
-outbox Grok can consume; terminal results are regenerated if publication was
-interrupted. No network delivery is claimed. Grok should poll until `state` is
+outbox a producer can consume; terminal results are regenerated if publication was
+interrupted. No network delivery is claimed. A producer should poll until `state` is
 `passed`, `failed`, `blocked` or `unknown`, then acknowledge consumption in its
 own system. Repeated reads are harmless; there is no exactly-once messaging
 claim. Active states are `queued`, `ready`, `provisioning`, `dispatching`,
@@ -407,8 +408,8 @@ they do not certify every project's gates, deployment, or remote coding provider
   Independent gate `python3 verify.py` passed; only `answer.txt` changed 41→42.
   Controller rechecked the actual gate, HEAD, unchanged source/test and matching
   reviewed/final SHA256. Earlier blocked development receipts remain retained.
-- Real Grok Bot transport wiring, every project's gates, and remote coding E2E
-  remain separate rollout work; see the private report/checklist.
+- Discord gateway transport wiring (planned), every project's gates, and remote
+  coding E2E remain separate rollout work; see the private report/checklist.
 
 ## Windows PowerShell and owner handoff
 

@@ -18,9 +18,6 @@ import sys
 import time
 import uuid
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import webhook_queue
-
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'skills/paseo-multi/scripts'))
 import hosts as fleet
@@ -58,7 +55,7 @@ STAGES = ['preflight', 'work', 'review', 'postflight']
 TERMINAL = {'passed', 'failed', 'blocked', 'unknown', 'closed'}
 # Reported attention states close on their own so the board does not keep stale cards forever.
 CLOSABLE = {'failed', 'blocked', 'unknown'}
-TEST_ID = re.compile(r'(?:^grok-|^plan-|^vaxport-|^pr\d+-proof|smoke|probe|proof|e2e|test)', re.I)
+TEST_ID = re.compile(r'(?:^plan-|^vaxport-|^pr\d+-proof|smoke|probe|proof|e2e|test)', re.I)
 ID = re.compile(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\Z')
 SHA = re.compile(r'[0-9a-f]{40,64}\Z')
 DEFAULT_HOME = Path.home() / '.config/paseo-bot'
@@ -347,7 +344,6 @@ class Bot:
           CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY, task_id TEXT, time REAL NOT NULL, state TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS task_origins(task_id TEXT PRIMARY KEY, context TEXT NOT NULL);
         ''')
-        webhook_queue.initialize(self.db)
         self.db.commit()
         self._busy = set()       # Machines that already run a bot task in this tick.
         self._published = {}     # Outbox files known to match the journal in this process.
@@ -392,7 +388,6 @@ class Bot:
             r = self.result(task_id)
             return {k: r[k] for k in ['version', 'id', 'project', 'state', 'stage', 'machine', 'updatedAt', 'summary', 'reason'] if k in r}
         return {'version': 1, 'health': self.health(), 'queue': dict(self.db.execute('SELECT state,count(*) FROM tasks GROUP BY state')),
-                'webhooks': dict(self.db.execute('SELECT status,count(*) FROM webhook_jobs GROUP BY status')),
                 'tasks': [{'id': i, 'state': s} for i, s in self.db.execute('SELECT id,state FROM tasks ORDER BY rowid')]}
 
     def host(self, machine):
@@ -451,11 +446,8 @@ class Bot:
             record['state'] = 'cleaning'
         record = scrub(dict(record, updatedAt=time.time()))
         with self.db:
-            previous = self.db.execute('SELECT state,body FROM tasks WHERE id=?', (record['id'],)).fetchone()
             self.db.execute('UPDATE tasks SET state=?,record=? WHERE id=?', (record['state'], json.dumps(record), record['id']))
             self.db.execute('INSERT INTO events(task_id,time,state) VALUES (?,?,?)', (record['id'], time.time(), record['state']))
-            if previous and previous[0] != record['state'] and record['state'] in webhook_queue.STATES:
-                webhook_queue.enqueue(self.db, record, json.loads(previous[1]))
         # Regenerated after a crash between the DB commit and outbox publication.
         write_json(self.home / 'results' / (record['id'] + '.json'), record, ascii=True)
         self._published[record['id']] = record['updatedAt']
@@ -986,13 +978,7 @@ class Bot:
                 self.auto_close()
             except (ValueError, OSError, sqlite3.Error):
                 pass
-            webhook = 'ok'
-            try:
-                webhook_queue.drain(self.db, self.home)
-            except Exception:
-                # Notification errors never change task state; they are visible in health.
-                webhook = 'error'
-            self.heartbeat(owner, active, {'webhook': webhook})
+            self.heartbeat(owner, active)
 
     def discover(self):
         old = self.config() if self.registry_path.exists() else {'version': 1, 'projects': []}
@@ -1035,7 +1021,7 @@ def main():
     sub.add_parser('discover')
     submit = sub.add_parser('submit')
     submit.add_argument('--file', type=Path, help='UTF-8 task JSON; omit to read stdin')
-    submit.add_argument('--producer', choices=['cli', 'grok'], default='cli', help='Trusted local producer attribution; not a separate authentication boundary')
+    submit.add_argument('--producer', choices=['cli', 'discord'], default='cli', help='Trusted local producer attribution; not a separate authentication boundary')
     result = sub.add_parser('result')
     result.add_argument('id')
     status = sub.add_parser('status')

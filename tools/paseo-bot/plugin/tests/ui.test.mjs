@@ -37,7 +37,7 @@ test('conversation, confirmed admission, read-only kanban, filters, result and r
     assert.equal(await page.evaluate(()=>window.__actions.filter(a=>a.action==='send'&&a.retryOf==='fixture-4').length),1);
     await page.getByLabel('작업 검색',{exact:true}).fill('');
     await page.getByRole('button',{name:'요청자: 전체',exact:true}).click();
-    await page.getByRole('radio',{name:'Grok 봇',exact:true}).click();
+    await page.getByRole('radio',{name:'Discord',exact:true}).click();
     assert.equal(await page.getByTestId('task-card').count(),1);
     await page.getByLabel('작업 검색',{exact:true}).fill('does-not-exist');
     await page.getByText('조건에 맞는 작업이 없습니다',{exact:true}).waitFor();

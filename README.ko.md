@@ -18,7 +18,7 @@
 
 ---
 
-`tools/paseo-bot`에 상주형 **Paseo bot** v1을 추가했습니다. 연결된 모든 프로젝트의 PC·경로·검증 명령을 등록하고 Grok 작업 큐에서 worktree 실행과 독립 검수를 진행합니다. [Paseo bot 안내](docs/paseo-bot.md).
+`tools/paseo-bot`에 상주형 **Paseo bot** v1을 추가했습니다. 연결된 모든 프로젝트의 PC·경로·검증 명령을 등록하고 내구성 있는 작업 큐에서 worktree 실행과 독립 검수를 진행합니다. [Paseo bot 안내](docs/paseo-bot.md).
 
 ## 시작 전에
 
