@@ -5,6 +5,8 @@ import {pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 const req = JSON.parse(fs.readFileSync(0, 'utf8'));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
+const STOPPED = new Set(['idle','error','closed']);
 let client;
 let stage='connect';
 function endpoint(h) {
@@ -207,6 +209,75 @@ async function main() {
     if(current?.agent?.labels?.paseo_bot_attempt!==req.attempt || current.agent.status!=='idle')throw Error('repair ownership/state');
     await client.sendMessage(req.agentId,req.prompt);
     return {accepted:true};
+  }
+  if(req.action==='stop') {
+    // Interrupt only a bot-owned agent's current turn. The task label is always
+    // required and must match the caller's attempt when supplied.
+    if(typeof req.agentId!=='string' || !req.agentId)throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    await client.cancelAgent(req.agentId);
+    let latest=current;
+    for(let i=0;i<25;i++) {
+      latest=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+      if(!latest?.agent)throw Error('ownership');
+      if(STOPPED.has(latest.agent.status))break;
+      if(i<24)await sleep(200);
+    }
+    return {stopped:true,status:latest.agent.status};
+  }
+  if(req.action==='send') {
+    // Same mechanism as repair, for an explicit owner message (resume).
+    if(typeof req.agentId!=='string' || !req.agentId || typeof req.prompt!=='string'
+       || !req.prompt.trim() || req.prompt.length>40000)throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    if(current.agent.status!=='idle')throw Error('ownership');
+    await client.sendMessage(req.agentId,req.prompt);
+    return {accepted:true};
+  }
+  if(req.action==='logs') {
+    // Read-only tail of the agent timeline. Output is bounded here and scrubbed
+    // again by the runner; raw transport errors never reach the caller.
+    if(typeof req.agentId!=='string' || !req.agentId)throw Error('action');
+    const tail=req.tail===undefined ? 40 : req.tail;
+    if(!Number.isInteger(tail) || tail<1 || tail>200)throw Error('action');
+    if(req.filter!==undefined && req.filter!=='tools')throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    const timeline=await client.fetchAgentTimeline(req.agentId,{direction:'tail',limit:tail,projection:'projected'});
+    if(!timeline || timeline.error || !Array.isArray(timeline.entries))throw Error('schema');
+    const lines=[];
+    for(const entry of timeline.entries) {
+      const item=entry?.item;
+      if(!item || typeof item!=='object')continue;
+      let line='';
+      if(item.type==='user_message')line='user: '+String(item.text ?? '');
+      else if(item.type==='assistant_message')line='assistant: '+String(item.text ?? '');
+      else if(item.type==='tool_call') {
+        const detail=item.detail && typeof item.detail==='object' ? String(item.detail.summary ?? item.detail.text ?? '') : '';
+        line='tool '+String(item.name ?? '')+' ['+String(item.status ?? '')+']'+(detail?' '+detail:'');
+      } else if(item.type==='error')line='error: '+String(item.message ?? '');
+      else if(item.type==='notification')line='notice: '+String(item.message ?? '');
+      else if(item.type==='plan')line='plan: '+String(item.text ?? '');
+      else continue;
+      if(req.filter==='tools' && item.type!=='tool_call')continue;
+      line=line.replace(/\s+/g,' ').trim();
+      if(line)lines.push(line.slice(0,500));
+    }
+    let text=lines.join('\n');
+    if(text.length>20000) {
+      text=text.slice(text.length-20000);
+      const cut=text.indexOf('\n');
+      if(cut>=0)text=text.slice(cut+1);
+    }
+    return {text};
   }
   if(req.action==='launch') {
     stage='profile';

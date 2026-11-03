@@ -43,6 +43,7 @@ export const rowSchema = z.object({
   profile: z.string().default(""),
   model: z.string().default(""),
   stage: z.string().default(""),
+  blockedKind: z.string().default(""),
   requester: z.string().default("legacy"),
   conversationId: z.string().default(""),
   retryOf: z.string().default(""),

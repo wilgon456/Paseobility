@@ -310,9 +310,14 @@ test('slash commands, selections and autocomplete stay bounded', () => {
   assert.deepEqual(definitions, c.commandDefinitions());
   definitions[0].name = 'changed';
   assert.equal(c.commandDefinitions()[0].name, 'task');
-  assert.deepEqual(c.commandDefinitions().map(command => command.name), ['task', 'status', 'resolve']);
+  assert.deepEqual(c.commandDefinitions().map(command => command.name), ['task', 'status', 'cancel', 'pause', 'resume', 'peek', 'resolve']);
   const resolve = c.commandDefinitions().find(command => command.name === 'resolve');
   assert.deepEqual(resolve, {name: 'resolve', description: '확인이 필요한 대화를 다시 열어요.', type: 1, options: []});
+  for (const name of c.CONTROL_COMMANDS) {
+    const command = c.commandDefinitions().find(item => item.name === name);
+    assert.equal(command.type, 1);
+    assert.deepEqual(command.options, [{type: 3, name: 'task', description: '작업 ID (비우면 이 쓰레드의 작업)', required: false, autocomplete: true}]);
+  }
   assert.deepEqual(c.commandOptions({data: {options: [{name: 'text', value: 'go'}, {name: 'project', value: 'paseo'}]}}),
     {text: 'go', project: 'paseo'});
   assert.deepEqual(c.selectionFromOptions({project: 'paseo', model: 'go', effort: 'high', workflow: 'verified'}),
@@ -330,4 +335,87 @@ test('slash commands, selections and autocomplete stay bounded', () => {
   assert.equal(c.threadName('  여러 줄\n 제목  '), '여러 줄 제목');
   assert.equal(c.threadName('x'.repeat(200)).length, 80);
   assert.equal(c.threadName(''), 'Paseo 봇 작업');
+});
+
+test('task control resolution uses the only active task and never guesses', () => {
+  const tasks = [
+    {id: 'a', project: 'paseo', state: 'running'},
+    {id: 'b', project: 'paseo', state: 'passed'},
+    {id: 'c', project: 'docs', state: 'paused'},
+    {id: 'd', project: 'docs', state: 'closed'},
+  ];
+  assert.deepEqual(c.resolveTaskChoice([{id: 'a', state: 'running'}], ''), {taskId: 'a', state: 'one'});
+  assert.deepEqual(c.resolveTaskChoice([{id: 'b', state: 'passed'}], ''), {taskId: '', state: 'none'});
+  assert.deepEqual(c.resolveTaskChoice(tasks, ''), {taskId: '', state: 'many'});
+  assert.deepEqual(c.resolveTaskChoice(tasks, 'a'), {taskId: 'a', state: 'one'});
+  assert.deepEqual(c.resolveTaskChoice(tasks, 'c'), {taskId: 'c', state: 'one'});
+  assert.deepEqual(c.resolveTaskChoice(tasks, 'b'), {taskId: '', state: 'missing'});
+  assert.deepEqual(c.resolveTaskChoice(tasks, 'zzz'), {taskId: '', state: 'missing'});
+  assert.deepEqual(c.resolveTaskChoice(null, null), {taskId: '', state: 'none'});
+  assert.deepEqual(c.resolveTaskChoice(tasks, undefined), {taskId: '', state: 'many'});
+});
+
+test('task autocomplete lists active tasks as id · project · state', () => {
+  const tasks = [
+    {id: 'task-1', project: 'paseo', state: 'running'},
+    {id: 'task-2', project: 'docs', state: 'passed'},
+    {id: 'task-3', project: 'docs', state: 'held'},
+    {id: 7},
+  ];
+  assert.deepEqual(c.taskChoices(tasks, ''), [
+    {name: 'task-1 · paseo · running', value: 'task-1'},
+    {name: 'task-3 · docs · held', value: 'task-3'},
+  ]);
+  assert.deepEqual(c.taskChoices(tasks, 'task-3').map(x => x.value), ['task-3']);
+  assert.deepEqual(c.taskChoices(tasks, 'task-2'), []);
+  assert.equal(c.taskChoices(tasks, '', 1).length, 1);
+  const long = c.taskChoices([{id: 'x'.repeat(80), project: 'p'.repeat(100), state: 'running'}], '');
+  assert.ok(long[0].name.length <= 100);
+  assert.ok(c.taskListText(tasks).includes('task-1'));
+  assert.ok(!c.taskListText(tasks).includes('task-2'));
+  assert.ok(c.taskListText([]).includes('없어요'));
+});
+
+test('cancel confirmation custom ids round-trip and stay inside 100 characters', () => {
+  const short = 'AbCdEf123456';
+  assert.equal(c.formatConfirmId(short), 'pb:cc:AbCdEf123456');
+  assert.equal(c.formatDismissId(short), 'pb:cx:AbCdEf123456');
+  assert.equal(c.parseConfirmId('pb:cc:AbCdEf123456'), short);
+  assert.equal(c.parseDismissId('pb:cx:AbCdEf123456'), short);
+  assert.deepEqual(c.parseCustomId('pb:cc:AbCdEf123456'), {action: 'confirm', short});
+  assert.deepEqual(c.parseCustomId('pb:cx:AbCdEf123456'), {action: 'dismiss', short});
+  for (const bad of ['', 'pb:cc:', 'pb:cc:short', 'pb:cc:AbCdEf12345', 'pb:cc:AbCdEf1234567', 'pb:cc:AbCd f123456', 'pb:approve:plan-1', null, 7]) {
+    assert.equal(c.parseConfirmId(bad), null, String(bad));
+    assert.equal(c.parseDismissId(bad), null, String(bad));
+  }
+  assert.throws(() => c.formatConfirmId('short'));
+  assert.throws(() => c.formatConfirmId('x'.repeat(13)));
+  assert.throws(() => c.formatDismissId('bad key'));
+  const key = c.confirmKey(() => 0);
+  assert.equal(key, 'AAAAAAAAAAAA');
+  assert.equal(c.confirmKey(() => 0.999999).length, 12);
+  assert.match(c.confirmKey(), c.CONFIRM_KEY);
+  const card = c.confirmCard('task-1', short);
+  assert.ok(card.content.includes('task-1'));
+  assert.deepEqual(card.components[0].components.map(button => button.custom_id), ['pb:cc:AbCdEf123456', 'pb:cx:AbCdEf123456']);
+  assert.equal(card.components[0].components[0].label, '취소 확정');
+  for (const button of card.components[0].components) assert.ok(button.custom_id.length <= 100);
+  assert.deepEqual(card.allowed_mentions, {parse: []});
+});
+
+test('peek formatting fences the newest lines under the reply cap', () => {
+  assert.equal(c.peekBlock('hello'), '```\nhello\n```');
+  const long = Array.from({length: 400}, (_, i) => `line ${i} ` + 'y'.repeat(20)).join('\n');
+  const block = c.peekBlock(long);
+  assert.ok(block.length <= c.PEEK_LIMIT, String(block.length));
+  assert.ok(block.startsWith('```\n'));
+  assert.ok(block.endsWith('\n```'));
+  assert.ok(block.includes('line 399 '));
+  assert.ok(!block.includes('line 0 '));
+  const small = c.peekBlock('x'.repeat(5000), 500);
+  assert.ok(small.length <= 500, String(small.length));
+  const fences = c.peekBlock('before ``` after');
+  assert.equal(fences, '```\nbefore `` after\n```');
+  assert.equal(c.peekBlock(''), '```\n\n```');
+  assert.equal(c.peekBlock(null), '```\n\n```');
 });

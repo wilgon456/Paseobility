@@ -137,7 +137,7 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 
 | 파일 | 내용 |
 |---|---|
-| `discord-state.json` | 쓰레드↔대화 매핑, 쓰레드별 마지막 활동 시각·폴링 시각·연속 실패 수·dormant 표시, 대화별 전달한 메시지 ID(각 500개), 카드로 보낸 계획 ID와 메시지 ID, 처리한 Discord 메시지/상호작용 ID(각 5000개, FIFO), RESUME용 세션 |
+| `discord-state.json` | 쓰레드↔대화 매핑, 쓰레드별 마지막 활동 시각·폴링 시각·연속 실패 수·dormant 표시, 대화별 전달한 메시지 ID(각 500개), 카드로 보낸 계획 ID와 메시지 ID, 취소 확인 키(`confirms`, 최대 200개), 처리한 Discord 메시지/상호작용 ID(각 5000개, FIFO), RESUME용 세션 |
 | `discord-gateway.json` | 자식 하트비트 `{pid,lastTickAt,status,lastEventAt}` |
 | `discord-health.json` | 서비스 하트비트(위) |
 
@@ -191,7 +191,17 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 |---|---|
 | `/task text:<필수> [project] [model] [effort] [workflow]` | 채널에 시작 메시지를 남기고 그 메시지에서 쓰레드를 열어 계획을 요청해요. `project`는 활성 프로젝트 자동완성, `model`은 `auto/sol/claude/go`, `effort`는 `auto/low/medium/high`, `workflow`는 `daily/verified` |
 | `/status` | 관리자 상태(건강, 작업 접수 가능 여부, 대기열, 진행 중 작업 수)를 **본인에게만** 보여 줘요 |
+| `/cancel [task]` | 쓰레드의 작업 취소를 물어보는 확인 카드를 본인에게만 띄워요. `취소 확정`을 누르면 큐에 넣어요 |
+| `/pause [task]` | 실행 중인 작업을 멈춰요. 멈춤이 확인된 경우에만 `paused`로 기록해요 |
+| `/resume [task]` | 멈춘 작업을 같은 에이전트로 다시 시작해요 |
+| `/peek [task]` | 작업 에이전트 로그의 끝부분을 코드 블록으로 본인에게만 보여 줘요 |
 | `/resolve` | 추적 중인 쓰레드 안에서만 동작해요. 그 대화의 확인 대기(`needs-review`)를 풀고 쓰레드를 다시 hot으로 만들어요. 확인 대기 중에 버려진 메시지는 다시 보내지 않아요 |
+
+`/cancel` `/pause` `/resume` `/peek`는 **이 서비스가 만든 쓰레드 안에서만**
+동작해요. `task`를 비우면 그 대화의 진행 중(비종료) 작업이 정확히 하나일 때만
+그 작업을 골라요. 둘 이상이면 `id · project · state` 목록과 함께 `task` 값을
+골라 달라고 답하고, 없으면 진행 중인 작업이 없다고 알려 줘요. `task` 자동완성도
+그 대화의 `sync` 결과에서 채워요.
 
 `/task`의 `project`가 `auto`가 아니면 시작 메시지와 쓰레드를 만들기 **전에**
 활성 프로젝트 캐시와 대조해요. 캐시가 비었거나 60초보다 오래됐으면 그 자리에서
@@ -226,6 +236,34 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 - 버튼을 누른 사람이 owner가 아니거나, 다른 길드/채널/쓰레드면 아무 것도
   하지 않고 "권한이 없어요"를 본인에게만 보여 줘요.
 
+## 7.1 작업 제어와 확인 버튼
+
+제어는 작업 레코드를 직접 고치지 않아요. `gui_api.py control`이 대화 범위를
+확인한 뒤 `task_controls` 큐에 `requestId = "d-" + interaction.id`로 넣고,
+러너가 다음 tick에서 한 번만 적용해요.
+
+- `/cancel`은 먼저 확인 카드를 띄워요. 무작위 12자 키를 `discord-state.json`의
+  `confirms`에 `{conversationId, taskId, at}`로 저장하고, 버튼 두 개를 붙여요.
+
+  | 버튼 | `custom_id` | 동작 |
+  |---|---|---|
+  | 취소 확정 | `pb:cc:<12자 키>` | `control op=cancel`을 큐에 넣고 키를 지워요 |
+  | 그만두기 | `pb:cx:<12자 키>` | 아무 것도 하지 않고 키를 지워요 |
+
+  owner만 누를 수 있고, 키는 한 번 쓰면 사라져요. 오래된 키는 200개까지만
+  남겨요.
+- `/pause`와 `/resume`은 확인 없이 바로 큐에 넣어요. `paused`는 멈춤이 실제로
+  확인된 경우에만 기록되고, 확인하지 못하면 작업은 계속 실행돼요(`pause-unverified`).
+- `/peek`은 `gui_api.py peek`으로 그 작업의 현재 에이전트 로그 끝부분을 받아
+  코드 블록으로 감싸 본인에게만 답해요(전체 1900자 이하, 최신 줄 유지).
+- 제어 명령은 모두 먼저 ephemeral로 defer한 뒤 결과를 답해요. 상태 변화는
+  `gui_state`가 `paused`, `held`, 재개, 취소, `blockedKind`별 한국어 알림으로
+  만들어 쓰레드에 게시해요.
+
+계획의 **done-contract**(§3.1 D3)는 **연기**됐어요. 완료를 PR merge, 체크 통과,
+파일 JSON 조건처럼 실시간으로 다시 확인하는 규약은 이 제어 단계에 포함되지
+않아요.
+
 ## 8. 보안 모델
 
 - **입장 경계**: `guildId`, `channelId`, `ownerIds` allowlist, 그리고 비밀
@@ -234,7 +272,8 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
   메시지 아님을 확인해요. 이 서비스가 만든 쓰레드가 아니면 무시해요.
 - **수신기 없음**: 인바운드 HTTP 리스너가 없어요. Discord WebSocket과 REST는
   모두 **나가는** 연결이고, Paseo 쪽은 로컬 `gui_api.py` 호출이에요. 게이트웨이가
-  받아들일 수 있는 동작은 `start/send/approve/reject/status/sync`로 제한돼요.
+  받아들일 수 있는 동작은 `start/send/approve/reject/status/sync/control/peek`로
+  제한돼요.
 - **멘션 금지**: 모든 게시와 수정에 `allowed_mentions: {parse: []}`를 붙여요.
 - **멱등성**: 처리한 Discord 메시지/상호작용 ID를 저장하고, 작업과 대화 ID는
   Discord 메시지 ID에서 만들어요(`d-<id>`). 재시작해도 같은 요청을 다시

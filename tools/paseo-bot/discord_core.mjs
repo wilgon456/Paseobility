@@ -111,8 +111,116 @@ export function formatCustomId(action, planId) {
 
 export function parseCustomId(value) {
   if (typeof value !== 'string' || value.length > 120) return null;
+  const confirm = parseConfirmId(value);
+  if (confirm) return {action: 'confirm', short: confirm};
+  const dismiss = parseDismissId(value);
+  if (dismiss) return {action: 'dismiss', short: dismiss};
   const match = /^pb:(approve|reject):([a-zA-Z0-9][a-zA-Z0-9_.-]{0,79})$/.exec(value);
   return match ? {action: match[1], planId: match[2]} : null;
+}
+
+// ---- owner control custom ids: pb:cc:<12-char key> (confirm) / pb:cx:<key> (dismiss) ----
+
+export const CONFIRM_KEY = /^[A-Za-z0-9]{12}$/;
+
+export function formatConfirmId(short) {
+  if (typeof short !== 'string' || !CONFIRM_KEY.test(short)) throw new Error('confirm id');
+  return `pb:cc:${short}`;
+}
+
+export function parseConfirmId(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^pb:cc:([A-Za-z0-9]{12})$/.exec(value);
+  return match ? match[1] : null;
+}
+
+export function formatDismissId(short) {
+  if (typeof short !== 'string' || !CONFIRM_KEY.test(short)) throw new Error('dismiss id');
+  return `pb:cx:${short}`;
+}
+
+export function parseDismissId(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^pb:cx:([A-Za-z0-9]{12})$/.exec(value);
+  return match ? match[1] : null;
+}
+
+export function confirmKey(random = Math.random) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let out = '';
+  for (let i = 0; i < 12; i += 1) out += alphabet[Math.floor(random() * alphabet.length) % alphabet.length];
+  return out;
+}
+
+export function confirmCard(taskId, short) {
+  const id = typeof taskId === 'string' && PLAN_ID.test(taskId) ? taskId : String(taskId ?? '').slice(0, 80);
+  return {
+    content: `작업 ${id}을(를) 취소할까요?`,
+    components: [{
+      type: 1,
+      components: [
+        {type: 2, style: 4, label: '취소 확정', custom_id: formatConfirmId(short)},
+        {type: 2, style: 2, label: '그만두기', custom_id: formatDismissId(short)},
+      ],
+    }],
+    allowed_mentions: {parse: []},
+  };
+}
+
+// ---- task control helpers (Dori D4/D5) ----
+
+export const CONTROL_COMMANDS = Object.freeze(['cancel', 'pause', 'resume', 'peek']);
+export const PEEK_LIMIT = 1900;
+
+export function resolveTaskChoice(tasks, requested) {
+  const active = (Array.isArray(tasks) ? tasks : []).filter(task =>
+    task && typeof task.id === 'string' && task.id && !TERMINAL_STATES.includes(task.state));
+  const wanted = typeof requested === 'string' ? requested.trim() : '';
+  if (wanted) {
+    const hit = active.find(task => task.id === wanted);
+    return hit ? {taskId: hit.id, state: 'one'} : {taskId: '', state: 'missing'};
+  }
+  if (active.length === 1) return {taskId: active[0].id, state: 'one'};
+  if (!active.length) return {taskId: '', state: 'none'};
+  return {taskId: '', state: 'many'};
+}
+
+export function taskChoices(tasks, typed, limit = 25) {
+  const prefix = typeof typed === 'string' ? typed.trim().toLowerCase() : '';
+  const out = [];
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    if (!task || typeof task.id !== 'string' || !task.id) continue;
+    if (TERMINAL_STATES.includes(task.state)) continue;
+    if (prefix && !task.id.toLowerCase().startsWith(prefix)) continue;
+    const project = typeof task.project === 'string' ? task.project.slice(0, 40) : '';
+    const name = `${task.id.slice(0, 50)} · ${project} · ${String(task.state ?? '')}`.slice(0, 100);
+    out.push({name, value: task.id.slice(0, 80)});
+    if (out.length >= Math.max(0, limit)) break;
+  }
+  return out;
+}
+
+export function taskListText(tasks, limit = 10) {
+  const active = (Array.isArray(tasks) ? tasks : []).filter(task =>
+    task && typeof task.id === 'string' && !TERMINAL_STATES.includes(task.state));
+  if (!active.length) return '이 쓰레드에 진행 중인 작업이 없어요.';
+  return ['어떤 작업일까요? `task` 값으로 골라 주세요.', ...active.slice(0, limit).map(task =>
+    `- ${task.id} · ${task.project ?? ''} · ${task.state ?? ''}`)].join('\n');
+}
+
+// A fenced block that keeps the newest lines inside Discord's 2000-character message.
+export function peekBlock(text, limit = PEEK_LIMIT) {
+  const size = Number.isInteger(limit) && limit >= 100 ? Math.min(limit, MAX_MESSAGE) : PEEK_LIMIT;
+  const value = (typeof text === 'string' ? text : '').replace(/\s+$/, '');
+  const body = value.split('```').join('``');
+  const max = size - 8; // opening and closing fences plus newlines
+  let kept = body;
+  if (body.length > max) {
+    kept = body.slice(body.length - max);
+    const cut = kept.indexOf('\n');
+    if (cut >= 0) kept = kept.slice(cut + 1);
+  }
+  return ('```\n' + kept + '\n```').slice(0, size);
 }
 
 // ---- text ----
@@ -433,6 +541,8 @@ export function isGlobalLimit(headers) {
 
 // ---- slash commands ----
 
+const TASK_OPTION = Object.freeze({type: 3, name: 'task', description: '작업 ID (비우면 이 쓰레드의 작업)', required: false, autocomplete: true});
+
 export const COMMANDS = Object.freeze([
   {
     name: 'task',
@@ -453,6 +563,10 @@ export const COMMANDS = Object.freeze([
     ],
   },
   {name: 'status', description: '봇 상태를 확인해요.', type: 1, options: []},
+  {name: 'cancel', description: '진행 중인 작업을 취소해요.', type: 1, options: [TASK_OPTION]},
+  {name: 'pause', description: '작업을 잠시 멈춰요.', type: 1, options: [TASK_OPTION]},
+  {name: 'resume', description: '멈춘 작업을 다시 시작해요.', type: 1, options: [TASK_OPTION]},
+  {name: 'peek', description: '작업 에이전트의 최근 로그를 봐요.', type: 1, options: [TASK_OPTION]},
   {name: 'resolve', description: '확인이 필요한 대화를 다시 열어요.', type: 1, options: []},
 ]);
 

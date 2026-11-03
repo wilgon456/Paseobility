@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const bridge=fileURLToPath(new URL('./bridge.mjs',import.meta.url));
-function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false}={}) {
+function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false,timeline=null}={}) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bot-bridge-test-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  fs.mkdirSync(path.join(dir,'utils'));
@@ -28,6 +28,13 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  fetchAgents:async()=>({entries:[{agent:{id:'owned',labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree',status:'idle'}}],pageInfo:{hasMore:false}}),
  fetchAgent:async()=>({agent:{id:'owned',status:${JSON.stringify(agentStatus)},lastError:${JSON.stringify(errorText)},labels:{paseo_bot_attempt:'attempt'},workspaceId:'w1',cwd:'/worktree'}}),
  sendMessage:async()=>({accepted:true}),
+ cancelAgent:async()=>({}),
+ fetchAgentTimeline:async()=>({error:null,entries:${JSON.stringify(timeline ?? [
+   {item:{type:'user_message',text:'first request'}},
+   {item:{type:'assistant_message',text:'working on it'}},
+   {item:{type:'tool_call',name:'shell',status:'completed',detail:{summary:'python -m unittest'}}},
+   {item:{type:'assistant_message',text:'final answer'}},
+ ])}}),
  waitForFinish:async()=>({status:${JSON.stringify(agentStatus)},lastMessage:'PASEO_BOT_RESULT={"verdict":"pass"}'}),close:async()=>{}
  }};`);
  fs.writeFileSync(path.join(dir,'index.js'),`import fs from 'node:fs';fs.writeFileSync(process.env.ARGV_FILE,JSON.stringify({argv:process.argv.slice(2),host:process.env.PASEO_HOST,home:process.env.PASEO_HOME,caller:process.env.PASEO_AGENT_ID,workspace:process.env.PASEO_WORKSPACE_ID}));console.log(JSON.stringify({agentId:'owned',cwd:'/worktree'}));`);
@@ -116,4 +123,41 @@ test('model aliases are fixed and unknown providers cannot reach the CLI',t=>{
  const g=JSON.parse(fs.readFileSync(path.join(f.dir,'argv.json'))).argv;
  assert.equal(g[g.indexOf('--model')+1],'opencode-go/deepseek-v4.1-flash');
  assert.equal(g[g.indexOf('--thinking')+1],'high');
+});
+
+test('stop interrupts only the owned agent and reports the inspected status',t=>{
+ const f=fixture(t);
+ const r=f.call({action:'stop',agentId:'owned',attempt:'attempt'});
+ assert.equal(r.ok,true);assert.deepEqual(r.result,{stopped:true,status:'idle'});
+ assert.equal(f.call({action:'stop',agentId:'owned',attempt:'other'}).ok,false);
+ assert.equal(f.call({action:'stop',agentId:''}).ok,false);
+ const stopped=fixture(t,{agentStatus:'timeout'});
+ assert.equal(stopped.call({action:'stop',agentId:'owned',attempt:'attempt'}).result.status,'timeout');
+});
+
+test('send reuses the owned idle agent and rejects foreign or empty requests',t=>{
+ const f=fixture(t);
+ assert.deepEqual(f.call({action:'send',agentId:'owned',attempt:'attempt',prompt:'continue'}).result,{accepted:true});
+ assert.equal(f.call({action:'send',agentId:'owned',attempt:'other',prompt:'continue'}).ok,false);
+ assert.equal(f.call({action:'send',agentId:'owned',attempt:'attempt',prompt:'   '}).ok,false);
+ const busy=fixture(t,{agentStatus:'timeout'});
+ assert.equal(busy.call({action:'send',agentId:'owned',attempt:'attempt',prompt:'continue'}).ok,false);
+});
+
+test('logs return a bounded tail and only known filters',t=>{
+ const many=Array.from({length:120},(_,i)=>({item:{type:'assistant_message',text:'line '+i+' '+'y'.repeat(400)}}));
+ const f=fixture(t,{timeline:many});
+ const r=f.call({action:'logs',agentId:'owned',attempt:'attempt',tail:200});
+ assert.equal(r.ok,true);assert.ok(r.result.text.length<=20000,String(r.result.text.length));
+ assert.ok(r.result.text.endsWith('line 119 '+'y'.repeat(400)));
+ assert.ok(!r.result.text.startsWith('line 0 '));
+ const all=fixture(t).call({action:'logs',agentId:'owned',attempt:'attempt'});
+ assert.ok(all.result.text.includes('tool shell [completed] python -m unittest'));
+ assert.ok(all.result.text.includes('assistant: final answer'));
+ const tools=fixture(t).call({action:'logs',agentId:'owned',attempt:'attempt',filter:'tools'});
+ assert.equal(tools.result.text,'tool shell [completed] python -m unittest');
+ for(const bad of [{tail:0},{tail:201},{tail:1.5},{filter:'reasoning'},{agentId:7}]){
+  assert.equal(f.call({action:'logs',agentId:'owned',attempt:'attempt',...bad}).ok,false,JSON.stringify(bad));
+ }
+ assert.equal(f.call({action:'logs',agentId:'owned',attempt:'other'}).ok,false);
 });

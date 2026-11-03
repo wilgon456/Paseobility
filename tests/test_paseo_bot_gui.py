@@ -137,6 +137,48 @@ class GuiTests(unittest.TestCase):
         for request in [dict(action='serve'), dict(action='status', state='/other'), dict(action='result', id='x', command='whoami'), [], None]:
             with self.assertRaises(ValueError): gui.handle(self.home, request)
 
+    def test_control_and_peek_are_scoped_to_the_admitting_conversation(self):
+        self.bot.submit(self.task, {'requester': 'discord', 'conversationId': 'conv-a'})
+        request = dict(action='control', conversationId='conv-b', taskId=self.task['id'], op='cancel', requestId='d-100')
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, request, True)
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, dict(request, conversationId='conv-a'), False)  # read-only refuses
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, dict(request, conversationId='conv-a', op='shell'), True)
+        accepted = gui.handle(self.home, dict(request, conversationId='conv-a'), True)
+        self.assertEqual(accepted, {'accepted': True, 'controlId': 'd-100', 'state': 'queued'})
+        self.assertEqual(gui.handle(self.home, dict(request, conversationId='conv-a'), True)['controlId'], 'd-100')
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, dict(request, conversationId='conv-a', op='pause'), True)
+
+        peek = dict(action='peek', conversationId='conv-b', taskId=self.task['id'])
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, peek, True)
+        with self.assertRaises(ValueError):
+            gui.handle(self.home, dict(peek, conversationId='conv-a'), False)
+        out = gui.handle(self.home, dict(peek, conversationId='conv-a'), True)
+        self.assertIn('대기열', out['text'])
+
+    def test_control_and_peek_reject_unknown_keys_and_bad_ids(self):
+        self.bot.submit(self.task, {'requester': 'discord', 'conversationId': 'conv-a'})
+        for request in [
+            dict(action='control', conversationId='conv-a', taskId=self.task['id'], op='pause', requestId='d-1', reason='x'),
+            dict(action='peek', conversationId='conv-a', taskId=self.task['id'], filter='tools'),
+            dict(action='control', conversationId='conv-a', taskId='../bad', op='pause', requestId='d-1'),
+            dict(action='control', conversationId='conv-a', taskId=self.task['id'], op='pause', requestId='../bad'),
+            dict(action='peek', conversationId='conv-a', taskId=self.task['id'], tail=0),
+            dict(action='peek', conversationId='conv-a', taskId=self.task['id'], tail=201),
+        ]:
+            with self.assertRaises(ValueError):
+                gui.handle(self.home, request, True)
+
+    def test_sync_exposes_stage_and_blocked_kind(self):
+        record = self.bot.submit(self.task)
+        self.bot.save(dict(record, state='blocked', stage='review', blockedKind='verdict', reason='Agent blocked'))
+        row = gui.handle(self.home, dict(action='sync'))['tasks'][0]
+        self.assertEqual((row['state'], row['stage'], row['blockedKind']), ('blocked', 'review', 'verdict'))
+
     def test_errors_are_generic_and_request_is_bounded(self):
         script = str(ROOT / 'tools/paseo-bot/gui_api.py')
         for payload in [b'{"action":"status","password":"test-never-print"}', b'x' * 200001]:

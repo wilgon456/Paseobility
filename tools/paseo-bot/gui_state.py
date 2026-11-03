@@ -7,9 +7,35 @@ import re
 import subprocess
 import time
 import uuid
-from paseo_bot import Bot, ID, PROFILES, MODEL_CHOICES, EFFORTS, model_alias, route_model, TERMINAL, fleet, lock, private_file, scrub
+from paseo_bot import Bot, ID, PROFILES, MODEL_CHOICES, EFFORTS, model_alias, route_model, TERMINAL, PAUSED, HELD, fleet, lock, private_file, scrub
 
 STAGES = ['preflight', 'work', 'review', 'postflight']
+BLOCKED_NOTICES = {
+    'needs_input': '입력이나 승인이 필요해 멈췄어요.',
+    'capability': '실행 환경을 준비하지 못했어요.',
+    'dependency': '선행 작업이 끝나지 않아 멈췄어요.',
+    'timeout': '시간 제한을 넘겨 멈췄어요.',
+    'evidence': '결과를 확인하지 못해 멈췄어요.',
+    'verdict': '작업자가 진행할 수 없다고 판단했어요.',
+    'cancelled': '요청대로 작업을 취소했어요.',
+    'transient': '연결 문제로 멈췄어요.',
+}
+
+
+def is_resume(record):
+    """A running task that was previously paused at this same stage."""
+    return bool(record.get('resumedAt')) and record.get('pausedStage') == record.get('stage')
+
+
+def notice_signature(record):
+    state, stage = record['state'], record.get('stage', 'queued')
+    if state == 'blocked':
+        return 'blocked:' + str(record.get('blockedKind', '')) + ':' + stage
+    if state in TERMINAL or state in (PAUSED, HELD):
+        return state + ':' + stage
+    if state == 'running' and is_resume(record):
+        return 'resumed:' + stage
+    return 'active:' + stage
 
 
 def uid(prefix):
@@ -424,14 +450,23 @@ class Conversations:
             conversation = origin.get('conversationId')
             if not conversation:
                 continue
-            signature = (record['state'] if record['state'] in TERMINAL else 'active') + ':' + record.get('stage', 'queued')
+            signature = notice_signature(record)
             old = self.db.execute('SELECT signature FROM gui_notices WHERE task_id=?', (task_id,)).fetchone()
             if old and old[0] == signature:
                 continue
             with self.db:
                 self.db.execute('INSERT OR REPLACE INTO gui_notices VALUES (?,?)', (task_id, signature))
-                labels = {'preflight':'작업을 준비하고 있어요.', 'work':'작업을 진행하고 있어요.', 'review':'변경 내용을 확인하고 있어요.', 'postflight':'마지막으로 확인하고 있어요.'}
-                text = {'passed':'작업과 확인을 마쳤어요.', 'failed':'작업에 실패했어요.', 'blocked':'작업이 멈췄어요.', 'unknown':'진행 상태를 확인하지 못했어요. 중복으로 실행하지 않을게요.'}.get(record['state'], labels.get(record.get('stage'),''))
+                labels = {'preflight':'작업을 준비하고 있어요.', 'work':'작업을 진행하고 있어요.', 'review':'변경 내용을 확인하고 있어요.',
+                          'postflight':'마지막으로 확인하고 있어요.', 'paused':'작업을 잠시 멈췄어요.', 'held':'작업을 대기열에서 보류했어요.'}
+                if record['state'] == 'blocked':
+                    text = BLOCKED_NOTICES.get(record.get('blockedKind'), '작업이 멈췄어요.')
+                elif record['state'] == 'closed' and record.get('closedFrom') == 'cancelled':
+                    text = BLOCKED_NOTICES['cancelled']
+                elif record['state'] == 'running' and is_resume(record):
+                    text = '작업을 다시 시작했어요.'
+                else:
+                    text = {'passed':'작업과 확인을 마쳤어요.', 'failed':'작업에 실패했어요.', 'unknown':'진행 상태를 확인하지 못했어요. 중복으로 실행하지 않을게요.'}.get(
+                        record['state'], labels.get(record['state']) or labels.get(record.get('stage'), ''))
                 if record['state'] in TERMINAL:
                     detail = record.get('summary') if record['state'] == 'passed' else record.get('reason') or record.get('summary')
                     if detail:

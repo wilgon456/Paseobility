@@ -232,6 +232,33 @@ class ConversationTests(unittest.TestCase):
         for request in [dict(action='sync', sort='DROP TABLE tasks'), dict(action='sync', group='shell')]:
             with self.assertRaises(ValueError): handle(self.home, request)
 
+    def test_control_and_blocked_kind_notices_are_announced_once(self):
+        task = self.c.bot.submit(dict(self.step, id='notice-task'), {'conversationId': 'session-1'})
+
+        def count(needle):
+            return self.c.db.execute(
+                "SELECT count(*) FROM gui_messages WHERE conversation='session-1' AND role='system' AND instr(text,?)>0",
+                (needle,)).fetchone()[0]
+
+        def announce(record, needle):
+            self.c.bot.save(dict(self.c.bot.result('notice-task'), **record))
+            self.c.tick_notices()
+            self.c.tick_notices()
+            self.assertEqual(count(needle), 1, needle)
+
+        announce(dict(state='paused', pausedFrom='running', pausedAt=time.time(), pausedStage='work', stage='work'),
+                 '작업을 잠시 멈췄어요.')
+        announce(dict(state='running', resumedAt=time.time(), stage='work'), '작업을 다시 시작했어요.')
+        announce(dict(state='held', stage='work'), '작업을 대기열에서 보류했어요.')
+        labels = {'needs_input': '입력이나 승인이 필요해 멈췄어요.', 'capability': '실행 환경을 준비하지 못했어요.',
+                  'dependency': '선행 작업이 끝나지 않아 멈췄어요.', 'timeout': '시간 제한을 넘겨 멈췄어요.',
+                  'evidence': '결과를 확인하지 못해 멈췄어요.', 'verdict': '작업자가 진행할 수 없다고 판단했어요.',
+                  'transient': '연결 문제로 멈췄어요.', 'cancelled': '요청대로 작업을 취소했어요.'}
+        for kind, label in labels.items():
+            announce(dict(state='blocked', blockedKind=kind, stage='work', reason='fixture ' + kind), label)
+        self.assertEqual(self.c.db.execute("SELECT count(*) FROM tasks WHERE id='notice-task'").fetchone()[0], 1)
+        self.assertEqual(task['id'], 'notice-task')
+
     def test_results_are_delivered_to_origin_conversation_once(self):
         plan, digest = self.plan(); task = self.c.approve('session-1', plan, digest)['taskIds'][0]
         self.c.bot.save(dict(self.c.bot.result(task), state='passed', summary='Gate passed'))

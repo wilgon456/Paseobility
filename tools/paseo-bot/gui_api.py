@@ -25,6 +25,8 @@ def handle(home, request, allow_submit=False):
         raise ValueError('Invalid request')
     action = request.get('action')
     allowed = {'status': {'action', 'offset'}, 'result': {'action', 'id'}, 'submit': {'action', 'task'},
+               'control': {'action', 'conversationId', 'taskId', 'op', 'requestId'},
+               'peek': {'action', 'conversationId', 'taskId', 'tail'},
                'sync': {'action', 'offset', 'conversationId', 'before', 'query', 'project', 'machine', 'requester', 'scope', 'group', 'sort'},
                'create': {'action', 'requestId'}, 'send': {'action', 'conversationId', 'messageId', 'text', 'retryOf', 'selection'},
                'start': {'action', 'requestId', 'messageId', 'text', 'selection'},
@@ -63,6 +65,33 @@ def handle(home, request, allow_submit=False):
             if bot.db.execute("SELECT 1 FROM sqlite_master WHERE name='gui_conversations'").fetchone():
                 raise ValueError('GUI v2 requires an approved manager plan')
             return scrub(bot.submit(request['task']))
+        finally:
+            bot.db.close()
+    if action in ('control', 'peek'):
+        if not allow_submit:
+            raise ValueError('Read-only bridge')
+        conversation = request.get('conversationId')
+        task_id = request.get('taskId')
+        if not isinstance(conversation, str) or not ID.fullmatch(conversation):
+            raise ValueError('Invalid conversation')
+        if not isinstance(task_id, str) or not ID.fullmatch(task_id):
+            raise ValueError('Invalid ID')
+        bot = Bot(home)
+        try:
+            origin = bot.db.execute('SELECT context FROM task_origins WHERE task_id=?', (task_id,)).fetchone()
+            # A chat control may only touch a task admitted from that same conversation.
+            if not origin or json.loads(origin[0]).get('conversationId') != conversation:
+                raise ValueError('Task scope')
+            if action == 'control':
+                op = request.get('op')
+                request_id = request.get('requestId')
+                if op not in ('cancel', 'pause', 'resume'):
+                    raise ValueError('Invalid control op')
+                if not isinstance(request_id, str) or not ID.fullmatch(request_id):
+                    raise ValueError('Invalid request ID')
+                out = bot.control(task_id, op, request_id, {'conversationId': conversation})
+                return {'accepted': True, 'controlId': out['controlId'], 'state': out['state']}
+            return {'text': bot.peek(task_id, request.get('tail', 40))['text']}
         finally:
             bot.db.close()
     dbpath = home / 'queue.sqlite3'

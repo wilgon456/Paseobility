@@ -71,7 +71,7 @@ async function readToken() {
 }
 
 function emptyState() {
-  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, review: {}, seenMessages: [], seenInteractions: [], gateway: {}};
+  return {version: STATE_VERSION, threads: {}, delivered: {}, cards: {}, review: {}, confirms: {}, seenMessages: [], seenInteractions: [], gateway: {}};
 }
 
 function newThread(conversationId) {
@@ -125,6 +125,13 @@ function normalizeState(value) {
     }
   }
   const session = value.gateway && typeof value.gateway === 'object' ? value.gateway : {};
+  const confirms = {};
+  for (const [key, record] of Object.entries(value.confirms ?? {}).slice(-200)) {
+    if (!core.CONFIRM_KEY.test(key) || !record || typeof record !== 'object') continue;
+    if (typeof record.conversationId !== 'string' || !record.conversationId) continue;
+    if (typeof record.taskId !== 'string' || !record.taskId) continue;
+    confirms[key] = {conversationId: record.conversationId, taskId: record.taskId, at: Number(record.at) || 0};
+  }
   const seen = (list, cap) => (Array.isArray(list) ? list.filter(id => typeof id === 'string').slice(-cap) : []);
   return {
     version: STATE_VERSION,
@@ -132,6 +139,7 @@ function normalizeState(value) {
     delivered,
     cards,
     review,
+    confirms,
     seenMessages: seen(value.seenMessages, 5000),
     seenInteractions: seen(value.seenInteractions, 5000),
     gateway: {
@@ -431,6 +439,31 @@ async function latestPlan(conversationId, planId) {
 async function handleComponent(interaction, parsed) {
   const thread = core.trackedThread(config, state.threads, interaction.channel_id);
   if (!thread) return;
+  if (parsed.action === 'confirm' || parsed.action === 'dismiss') {
+    const entry = state.confirms[parsed.short];
+    if (!entry || entry.conversationId !== thread.conversationId) {
+      await interactionFollowUp(interaction, {content: '만료된 확인이에요. /cancel 로 다시 요청해 주세요.', components: []}).catch(() => {});
+      return;
+    }
+    delete state.confirms[parsed.short];
+    saveState();
+    if (parsed.action === 'dismiss') {
+      await interactionFollowUp(interaction, {content: '취소하지 않았어요.', components: []}).catch(() => {});
+      return;
+    }
+    try {
+      await gui({action: 'control', conversationId: entry.conversationId, taskId: entry.taskId, op: 'cancel', requestId: `d-${interaction.id}`});
+    } catch (error) {
+      noteError(`control:${entry.taskId}`, error);
+      await interactionFollowUp(interaction, {content: '취소 요청을 접수하지 못했어요. 상태를 확인해 주세요.', components: []}).catch(() => {});
+      return;
+    }
+    const record = state.threads[interaction.channel_id];
+    if (record) record.lastActivityAt = Date.now();
+    saveState();
+    await interactionFollowUp(interaction, {content: `취소 요청을 접수했어요. (${entry.taskId})`, components: []}).catch(() => {});
+    return;
+  }
   let plan = null;
   try {
     plan = await latestPlan(thread.conversationId, parsed.planId);
@@ -512,6 +545,79 @@ async function handleStatusCommand(interaction) {
   }
 }
 
+// ---- task controls: /cancel /pause /resume /peek (Dori D4/D5) ----
+
+const taskCache = new Map();
+
+async function threadTasks(conversationId, fresh = false) {
+  const cached = taskCache.get(conversationId);
+  if (!fresh && cached && Date.now() - cached.at < 60000) return cached.tasks;
+  const synced = await gui({action: 'sync', conversationId, scope: conversationId});
+  const tasks = Array.isArray(synced?.tasks) ? synced.tasks : [];
+  taskCache.set(conversationId, {at: Date.now(), tasks});
+  return tasks;
+}
+
+async function resolveThreadTask(interaction, requested) {
+  const thread = core.trackedThread(config, state.threads, interaction.channel_id);
+  if (!thread) return {error: '스레드 안에서만 쓸 수 있어요.'};
+  let tasks;
+  try {
+    tasks = await threadTasks(thread.conversationId, true);
+  } catch (error) {
+    noteError(`tasks:${thread.conversationId}`, error);
+    return {error: '작업 목록을 가져오지 못했어요. 잠시 후 다시 시도해 주세요.'};
+  }
+  const choice = core.resolveTaskChoice(tasks, typeof requested === 'string' ? requested : '');
+  if (choice.state === 'one') return {thread, taskId: choice.taskId};
+  if (choice.state === 'none') return {error: '이 쓰레드에 진행 중인 작업이 없어요.'};
+  if (choice.state === 'many') return {error: core.taskListText(tasks)};
+  return {error: `작업을 찾지 못했어요: ${String(requested).slice(0, 80)}`};
+}
+
+async function handleControlCommand(interaction, name) {
+  const options = core.commandOptions(interaction);
+  const picked = await resolveThreadTask(interaction, options.task);
+  if (picked.error) {
+    await interactionFollowUp(interaction, {content: picked.error.slice(0, core.MAX_MESSAGE)}).catch(() => {});
+    return;
+  }
+  const {thread, taskId} = picked;
+  if (name === 'cancel') {
+    let short = core.confirmKey();
+    while (state.confirms[short]) short = core.confirmKey();
+    state.confirms[short] = {conversationId: thread.conversationId, taskId, at: Date.now()};
+    const keys = Object.keys(state.confirms);
+    for (const key of keys.slice(0, Math.max(0, keys.length - 200))) delete state.confirms[key];
+    saveState();
+    await interactionFollowUp(interaction, core.confirmCard(taskId, short)).catch(() => {});
+    return;
+  }
+  if (name === 'peek') {
+    try {
+      const out = await gui({action: 'peek', conversationId: thread.conversationId, taskId, tail: 40});
+      await interactionFollowUp(interaction, {content: core.peekBlock(typeof out?.text === 'string' ? out.text : '')});
+    } catch (error) {
+      noteError(`peek:${taskId}`, error);
+      await interactionFollowUp(interaction, {content: '로그를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.'}).catch(() => {});
+    }
+    return;
+  }
+  const op = name;
+  try {
+    await gui({action: 'control', conversationId: thread.conversationId, taskId, op, requestId: `d-${interaction.id}`});
+  } catch (error) {
+    noteError(`control:${taskId}`, error);
+    await interactionFollowUp(interaction, {content: '요청을 접수하지 못했어요. 상태를 확인해 주세요.'}).catch(() => {});
+    return;
+  }
+  const text = op === 'pause' ? `멈춤 요청을 접수했어요. 확인되면 알려드릴게요. (${taskId})`
+    : `재개 요청을 접수했어요. (${taskId})`;
+  const record = state.threads[interaction.channel_id];
+  if (record) record.lastActivityAt = Date.now();
+  await interactionFollowUp(interaction, {content: text}).catch(() => {});
+}
+
 // Local-only: clears the hold and revives the thread. It never resubmits the
 // message that was dropped while the hold was active.
 async function handleResolveCommand(interaction) {
@@ -542,9 +648,22 @@ async function ensureProjects() {
 }
 
 async function handleAutocomplete(interaction) {
-  const projects = projectCache();
+  const name = interaction.data?.name;
   const focused = (interaction.data?.options ?? []).find(option => option?.focused === true);
-  const choices = core.autocompleteChoices(projects, typeof focused?.value === 'string' ? focused.value : '');
+  const typed = typeof focused?.value === 'string' ? focused.value : '';
+  if (core.CONTROL_COMMANDS.includes(name)) {
+    const thread = core.trackedThread(config, state.threads, interaction.channel_id);
+    let tasks = [];
+    if (thread) {
+      const cached = taskCache.get(thread.conversationId);
+      if (cached && Date.now() - cached.at < 60000) tasks = cached.tasks;
+      else threadTasks(thread.conversationId).catch(() => {});
+    }
+    await interactionCallback(interaction, {type: 8, data: {choices: core.taskChoices(tasks, typed)}});
+    return;
+  }
+  const projects = projectCache();
+  const choices = core.autocompleteChoices(projects, typed);
   // Answer inside the 3 s budget; a cold cache returns an empty list instead of waiting.
   await interactionCallback(interaction, {type: 8, data: {choices}});
   if (!projects.length) refreshProjects().catch(() => {});
@@ -588,7 +707,7 @@ async function handleInteraction(interaction) {
       return;
     }
     try {
-      await interactionCallback(interaction, {type: 5, data: name === 'status' ? {flags: 64} : {}});
+      await interactionCallback(interaction, {type: 5, data: (name === 'status' || core.CONTROL_COMMANDS.includes(name)) ? {flags: 64} : {}});
     } catch (error) {
       noteError('command-ack', error);
       return;
@@ -596,6 +715,7 @@ async function handleInteraction(interaction) {
     queue(async () => {
       if (name === 'status') await handleStatusCommand(interaction);
       else if (name === 'task') await handleTaskCommand(interaction);
+      else if (core.CONTROL_COMMANDS.includes(name)) await handleControlCommand(interaction, name);
       else await interactionFollowUp(interaction, {content: '알 수 없는 명령이에요.'}).catch(() => {});
     });
   }
@@ -701,6 +821,7 @@ async function outboundTick() {
         saveState();
         continue;
       }
+      taskCache.set(record.conversationId, {at: Date.now(), tasks: Array.isArray(synced.tasks) ? synced.tasks : []});
       record.sync = core.syncSummary(synced);
       try {
         await deliver(threadId, record, synced);

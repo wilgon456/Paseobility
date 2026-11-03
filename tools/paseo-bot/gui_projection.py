@@ -6,7 +6,7 @@ import time
 from gui_state import project_list
 from paseo_bot import MODELS, model_alias, route_model, scrub
 
-GROUPS = {'waiting': ['queued', 'ready'], 'running': ['dispatching', 'running', 'repairing'],
+GROUPS = {'waiting': ['queued', 'held', 'ready'], 'running': ['dispatching', 'running', 'paused', 'repairing'],
           'attention': ['blocked', 'unknown'], 'success': ['passed'], 'failed': ['failed'], 'closed': ['closed']}
 
 
@@ -76,6 +76,7 @@ def snapshot(db, home, request, writable, read_json):
         tasks.append(dict(id=task_id, state=state, title=body.get('title', task_id), project=body['project'],
                           machine=record.get('machine', body.get('machine', '')), profile=record.get('profile', ''), model=model if model in MODELS else '',
                           stage=record.get('stage', ''), createdAt=record.get('createdAt', 0),
+                          blockedKind=record.get('blockedKind', ''),
                           workflow=record.get('workflow', body.get('workflow', 'verified')),
                           updatedAt=record.get('updatedAt', record.get('createdAt', 0)),
                           requester=context.get('requester', 'legacy'), conversationId=context.get('conversationId', ''),

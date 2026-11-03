@@ -39,6 +39,13 @@ class Fake:
         self.cleanup_failure = None
         self.branch_status = 'deleted'
         self.verified_work = True
+        self.stops = []
+        self.sends = []
+        self.logs = []
+        self.log_text = ''
+        self.observes = 0
+        self.stop_fails = False
+        self.stop_status = 'idle'
 
     def __call__(self, host, action, **kw):
         if action == 'discover':
@@ -67,6 +74,18 @@ class Fake:
             if self.fail_repair:
                 raise ValueError('acknowledgement unknown')
             return {'accepted': True}
+        if action == 'stop':
+            self.stops.append(kw)
+            if self.stop_fails:
+                raise ValueError('stop failed')
+            self.status = self.stop_status
+            return {'stopped': True, 'status': self.stop_status}
+        if action == 'send':
+            self.sends.append(kw)
+            return {'accepted': True}
+        if action == 'logs':
+            self.logs.append(kw)
+            return {'text': self.log_text}
         if action == 'launch':
             self.launches.append(kw)
             if self.fail_launch:
@@ -74,6 +93,7 @@ class Fake:
             i = len(self.launches)
             return {'agentId': 'agent' + str(i), 'workspaceId': kw['workspaceId'], 'cwd': '/repo' if kw['workspaceId'] == 'workspace1' else '/worktree', 'profile': kw['profile']}
         if action == 'observe':
+            self.observes += 1
             stage = self.launches[-1]['title'].split()[-1]
             e = {'verdict': 'pass', 'summary': 'Verified fixture', 'branch': 'main' if stage == 'preflight' else 'paseo-bot/task-1', 'head': 'a' * 40, 'cwd': '/repo' if stage == 'preflight' else '/worktree', 'gates': [{'command': 'python -m unittest', 'exitCode': 1 if self.bad_gate else 0}], 'files': ['file.py'], 'snapshot': 'b' * 64}
             if stage == 'preflight':
@@ -409,6 +429,298 @@ class BotTests(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout)['state'], 'queued')
         r = subprocess.run(command+['result','task-1'], capture_output=True, encoding='utf-8')
         self.assertEqual(json.loads(r.stdout)['id'], 'task-1')
+
+    def running_task(self):
+        self.bot.submit(self.body)
+        for _ in range(4):
+            self.bot.tick()
+        result = self.bot.result('task-1')
+        self.assertEqual((result['state'], result['stage']), ('running', 'work'))
+        self.fake.status = 'timeout'
+        return result
+
+    def control_row(self, control_id):
+        row = self.bot.db.execute('SELECT state,result FROM task_controls WHERE id=?', (control_id,)).fetchone()
+        self.assertIsNotNone(row)
+        return row
+
+    def test_control_queue_is_idempotent_and_rejects_conflicts(self):
+        self.bot.submit(self.body)
+        first = self.bot.control('task-1', 'pause', 'ctl-1')
+        self.assertEqual((first['controlId'], first['state']), ('ctl-1', 'queued'))
+        self.assertEqual(self.bot.control('task-1', 'pause', 'ctl-1')['controlId'], 'ctl-1')
+        with self.assertRaises(ValueError):
+            self.bot.control('task-1', 'cancel', 'ctl-1')
+        with self.assertRaises(ValueError):
+            self.bot.control('missing-task', 'pause', 'ctl-2')
+        with self.assertRaises(ValueError):
+            self.bot.control('task-1', 'shell', 'ctl-3')
+        with self.assertRaises(ValueError):
+            self.bot.control('task-1', 'pause', '../bad')
+
+    def test_cancel_queued_and_held_closes_without_an_agent(self):
+        self.bot.submit(self.body)
+        self.bot.control('task-1', 'cancel', 'cancel-queued')
+        self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual((r['state'], r['closedFrom'], r['closedReason']), ('closed', 'cancelled', 'cancelled by owner'))
+        self.assertEqual(self.control_row('cancel-queued'), ('applied', 'cancelled'))
+        self.assertEqual(self.fake.stops, [])
+
+        self.bot.submit(dict(self.body, id='task-2'))
+        self.bot.control('task-2', 'pause', 'pause-held')
+        self.bot.tick()
+        self.assertEqual(self.bot.result('task-2')['state'], 'held')
+        self.bot.control('task-2', 'cancel', 'cancel-held')
+        self.bot.tick()
+        r = self.bot.result('task-2')
+        self.assertEqual((r['state'], r['closedFrom']), ('closed', 'cancelled'))
+        self.assertEqual(self.control_row('cancel-held'), ('applied', 'cancelled'))
+        self.assertEqual(self.fake.stops, [])
+
+    def test_cancel_running_stops_then_uses_the_blocked_cleanup_path(self):
+        self.running_task()
+        self.bot.control('task-1', 'cancel', 'cancel-running')
+        self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual((r['state'], r['blockedKind'], r['reason']), ('cleaning', 'cancelled', 'Cancelled by owner.'))
+        self.assertEqual(self.control_row('cancel-running'), ('applied', 'cancelled'))
+        self.assertEqual(len(self.fake.stops), 1)
+        self.assertEqual(self.fake.stops[0]['agentId'], r['runs'][-1]['agentId'])
+        for _ in range(3):
+            self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual(r['state'], 'blocked')
+        self.assertIn('snapshot-workspace', self.fake.cleaned)
+
+    def test_cancel_is_rejected_while_dispatching_or_cleaning(self):
+        self.fake.fail_launch = True
+        self.bot.submit(self.body)
+        self.bot.tick(); self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'dispatching')
+        self.bot.control('task-1', 'cancel', 'cancel-dispatch')
+        self.bot.apply_controls()
+        self.assertEqual(self.control_row('cancel-dispatch'), ('rejected', 'dispatch-in-flight'))
+        self.assertEqual(self.bot.result('task-1')['state'], 'dispatching')
+
+        self.fake.fail_launch = False
+        self.bot.submit(dict(self.body, id='task-2'))
+        for _ in range(4):
+            self.bot.tick()
+        r = self.bot.result('task-2')
+        self.assertEqual((r['state'], r['stage']), ('running', 'work'))
+        r.update(state='cleaning', cleanup={'phase': 'snapshot', 'resultState': 'blocked'})
+        self.bot.save(r)
+        self.bot.control('task-2', 'cancel', 'cancel-clean')
+        self.bot.apply_controls()
+        self.assertEqual(self.control_row('cancel-clean'), ('rejected', 'cleanup-in-progress'))
+        self.assertEqual(self.bot.result('task-2')['state'], 'cleaning')
+
+    def test_pause_running_is_confirmed_only_after_idle_and_is_not_stepped(self):
+        self.running_task()
+        self.bot.control('task-1', 'pause', 'pause-1')
+        self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual((r['state'], r['pausedFrom'], r['pausedStage']), ('paused', 'running', 'work'))
+        self.assertIn('pausedAt', r)
+        self.assertEqual(self.control_row('pause-1'), ('applied', 'paused'))
+        self.assertEqual(len(self.fake.stops), 1)
+        observes = self.fake.observes
+        for _ in range(3):
+            self.bot.tick()
+        self.assertEqual(self.fake.observes, observes)
+        self.assertEqual(self.bot.result('task-1')['state'], 'paused')
+        self.assertEqual(json.loads((self.home / 'health.json').read_text())['activeTasks'], ['task-1'])
+
+    def test_pause_unverified_keeps_running_and_other_states_reject(self):
+        self.running_task()
+        self.fake.stop_status = 'timeout'
+        self.bot.control('task-1', 'pause', 'pause-unverified')
+        self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'running')
+        self.assertEqual(self.control_row('pause-unverified'), ('rejected', 'pause-unverified'))
+
+        self.fake.fail_launch = True
+        self.bot.submit(dict(self.body, id='task-2'))
+        self.bot.tick(); self.bot.tick()
+        self.assertEqual(self.bot.result('task-2')['state'], 'dispatching')
+        self.bot.control('task-2', 'resume', 'resume-running')
+        self.bot.apply_controls()
+        self.assertEqual(self.control_row('resume-running'), ('rejected', 'not-paused'))
+
+    def test_paused_keeps_the_machine_and_held_frees_it(self):
+        self.config['projects'][0]['targets'] = [self.target('MAC_MINI')]
+        m.write_json(self.bot.registry_path, self.config)
+        self.bot.submit(self.body)
+        self.bot.submit(dict(self.body, id='task-2'))
+        for _ in range(4):
+            self.bot.tick()
+        self.assertEqual((self.bot.result('task-1')['state'], self.bot.result('task-2')['state']), ('running', 'queued'))
+        self.fake.status = 'timeout'
+        self.bot.control('task-1', 'pause', 'pause-busy')
+        launches = len(self.fake.launches)
+        self.bot.tick()
+        for _ in range(2):
+            self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'paused')
+        self.assertEqual(self.bot.result('task-2')['state'], 'queued')
+        self.assertEqual(len(self.fake.launches), launches)
+        self.assertEqual(json.loads((self.home / 'health.json').read_text())['activeTasks'], ['task-1'])
+
+    def test_held_queued_task_frees_the_machine_without_an_agent(self):
+        self.config['projects'][0]['targets'] = [self.target('MAC_MINI')]
+        m.write_json(self.bot.registry_path, self.config)
+        self.bot.submit(self.body)
+        self.bot.submit(dict(self.body, id='task-2'))
+        self.bot.control('task-1', 'pause', 'pause-queued')
+        self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'held')
+        self.assertEqual(self.bot.result('task-2')['state'], 'ready')
+        self.assertEqual(self.bot.result('task-2')['machine'], 'MAC_MINI')
+        health = json.loads((self.home / 'health.json').read_text())
+        self.assertNotIn('task-1', health['activeTasks'])
+        self.bot.control('task-1', 'resume', 'resume-held')
+        self.bot.tick()
+        self.assertEqual(self.bot.result('task-1')['state'], 'queued')
+        self.assertEqual(self.control_row('resume-held'), ('applied', 'queued'))
+
+    def test_resume_sends_to_the_same_agent_and_excludes_paused_time(self):
+        self.running_task()
+        self.bot.control('task-1', 'pause', 'pause-2')
+        self.bot.tick()
+        r = self.bot.result('task-1')
+        r['pausedAt'] = time.time() - 120
+        self.bot.save(r)
+        started = r['phaseStartedAt']
+        self.fake.status = 'timeout'
+        self.bot.control('task-1', 'resume', 'resume-1')
+        self.bot.tick()
+        r = self.bot.result('task-1')
+        self.assertEqual(r['state'], 'running')
+        self.assertIn('resumedAt', r)
+        self.assertAlmostEqual(r['phaseStartedAt'], started + 120, delta=10)
+        self.assertEqual(self.control_row('resume-1'), ('applied', 'resumed'))
+        self.assertEqual(len(self.fake.sends), 1)
+        self.assertEqual(self.fake.sends[0]['agentId'], r['runs'][-1]['agentId'])
+        self.assertIn('Continue the same work stage', self.fake.sends[0]['prompt'])
+        self.assertIn('PASEO_BOT_RESULT=<JSON>', self.fake.sends[0]['prompt'])
+
+    def test_auto_close_ignores_paused_and_held_tasks(self):
+        self.bot.submit(self.body)
+        self.bot.submit(dict(self.body, id='task-2'))
+        stale = time.time() - 90000
+        self.bot.save(dict(self.bot.result('task-1'), state='paused', updatedAt=stale))
+        self.bot.save(dict(self.bot.result('task-2'), state='held', updatedAt=stale))
+        self.assertEqual(self.bot.auto_close(now=time.time()), [])
+        self.assertEqual((self.bot.result('task-1')['state'], self.bot.result('task-2')['state']), ('paused', 'held'))
+
+    def test_every_blocked_path_sets_a_valid_typed_kind(self):
+        def tick_bot(name, prepare, expected):
+            home = Path(self.temp.name) / ('blocked-' + name)
+            fake = Fake()
+            bot = m.Bot(home, fake)
+            bot.host = lambda label: {'label': label, 'serverId': 'srv-' + label}
+            config = {'version': 1, 'projects': [{'id': 'any-project', 'targets': [self.target('MAC_MINI')]}]}
+            if name == 'timeout':
+                config['phaseTimeoutSeconds'] = 0
+            m.write_json(bot.registry_path, config)
+            prepare(bot, fake)
+            for _ in range(20):
+                bot.tick()
+            result = bot.result('task-1')
+            status = bot.status('task-1')
+            bot.db.close()
+            with self.subTest(name=name):
+                self.assertEqual(result['state'], 'blocked')
+                self.assertIn(result.get('blockedKind'), m.BLOCKED_KINDS)
+                self.assertEqual(result.get('blockedKind'), expected)
+                self.assertEqual(status.get('blockedKind'), expected)
+                outbox = json.loads((home / 'results/task-1.json').read_text())
+                self.assertEqual(outbox.get('blockedKind'), expected)
+
+        def submit(bot, fake):
+            bot.submit(dict(self.body))
+        def permission(bot, fake):
+            submit(bot, fake); fake.status = 'permission'
+        def deadline(bot, fake):
+            submit(bot, fake); fake.status = 'timeout'
+        def capability(bot, fake):
+            submit(bot, fake)
+            original = bot.rpc
+            def rpc(host, action, **kw):
+                if action == 'launch':
+                    raise m.BridgeFailure('profile', 'provider-unavailable')
+                return original(host, action, **kw)
+            bot.rpc = rpc
+        def dependency(bot, fake):
+            bot.submit(dict(self.body, id='task-0'))
+            bot.save(dict(bot.result('task-0'), state='failed', reason='Parent failed'))
+            bot.submit(dict(self.body, id='task-1'), {'dependsOn': ['task-0']})
+        def evidence(bot, fake):
+            bot.submit(dict(self.body, workflow='daily')); fake.verified_work = False
+        def verdict(bot, fake):
+            submit(bot, fake); fake.work_verdict = 'blocked'
+        def cancelled(bot, fake):
+            bot.submit(dict(self.body))
+            for _ in range(4):
+                bot.tick()
+            fake.status = 'timeout'
+            bot.control('task-1', 'cancel', 'cancel-kind')
+
+        tick_bot('needs_input', permission, 'needs_input')
+        tick_bot('timeout', deadline, 'timeout')
+        tick_bot('capability', capability, 'capability')
+        tick_bot('dependency', dependency, 'dependency')
+        tick_bot('evidence', evidence, 'evidence')
+        tick_bot('verdict', verdict, 'verdict')
+        tick_bot('cancelled', cancelled, 'cancelled')
+
+    def test_peek_is_read_only_bounded_scrubbed_and_explains_absent_agents(self):
+        self.bot.submit(self.body)
+        out = self.bot.peek('task-1')
+        self.assertEqual(out['state'], 'queued')
+        self.assertIn('대기열', out['text'])
+        self.assertEqual(self.fake.logs, [])
+
+        self.running_task()
+        secret = 'ghp_' + 'A' * 30
+        self.fake.log_text = 'old\n' + ('line\n' * 1000) + 'token=' + secret + '\nlast line'
+        out = self.bot.peek('task-1', 5)
+        self.assertLessEqual(len(out['text']), 3500)
+        self.assertIn('last line', out['text'])
+        self.assertNotIn(secret, out['text'])
+        self.assertEqual(self.fake.logs[-1]['tail'], 5)
+        self.assertEqual(self.fake.logs[-1]['agentId'], self.bot.result('task-1')['runs'][-1]['agentId'])
+        for bad in (0, 201, '5', True):
+            with self.assertRaises(ValueError):
+                self.bot.peek('task-1', bad)
+        with self.assertRaises(ValueError):
+            self.bot.peek('missing-task')
+
+        original = self.fake.__call__
+        def broken(host, action, **kw):
+            if action == 'logs':
+                raise ValueError('logs unavailable')
+            return original(host, action, **kw)
+        self.bot.rpc = broken
+        out = self.bot.peek('task-1')
+        self.assertIn('가져오지 못했어요', out['text'])
+
+    def test_control_cli_enqueues_and_prints_the_control_id(self):
+        self.bot.submit(self.body)
+        script = ROOT / 'tools/paseo-bot/paseo_bot.py'
+        for command, action in [('pause', 'pause'), ('resume', 'resume'), ('cancel', 'cancel')]:
+            r = subprocess.run([sys.executable, str(script), '--state', str(self.home), command, self.body['id'], '--reason', 'owner test'],
+                               capture_output=True, encoding='utf-8', timeout=20)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            out = json.loads(r.stdout)
+            self.assertTrue(out['controlId'].startswith('cli-'))
+            row = self.bot.db.execute('SELECT action,state FROM task_controls WHERE id=?', (out['controlId'],)).fetchone()
+            self.assertEqual(row[:2], (action, 'queued'))
+        r = subprocess.run([sys.executable, str(script), '--state', str(self.home), 'peek', self.body['id'], '--tail', '10'],
+                           capture_output=True, encoding='utf-8', timeout=20)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('text', json.loads(r.stdout))
 
     @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell integration')
     def test_powershell_file_and_pipeline_unicode_intake(self):

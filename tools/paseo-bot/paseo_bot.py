@@ -55,6 +55,11 @@ STAGES = ['preflight', 'work', 'review', 'postflight']
 TERMINAL = {'passed', 'failed', 'blocked', 'unknown', 'closed'}
 # Reported attention states close on their own so the board does not keep stale cards forever.
 CLOSABLE = {'failed', 'blocked', 'unknown'}
+# Owner controls: paused keeps the machine and its agent, held is a queued task paused before dispatch.
+PAUSED = 'paused'
+HELD = 'held'
+CONTROL_ACTIONS = ('cancel', 'pause', 'resume')
+BLOCKED_KINDS = ('needs_input', 'capability', 'dependency', 'timeout', 'evidence', 'verdict', 'cancelled', 'transient')
 TEST_ID = re.compile(r'(?:^plan-|^vaxport-|^pr\d+-proof|smoke|probe|proof|e2e|test)', re.I)
 ID = re.compile(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}\Z')
 SHA = re.compile(r'[0-9a-f]{40,64}\Z')
@@ -220,6 +225,18 @@ def scrub(value):
     return value
 
 
+def tail_text(value, limit=3500):
+    """Keep the most recent lines of already-scrubbed text within a hard cap."""
+    text = scrub(value) if isinstance(value, str) else ''
+    if len(text) <= limit:
+        return text
+    text = text[-limit:]
+    cut = text.find('\n')
+    if cut >= 0:
+        text = text[cut + 1:]
+    return text[:limit]
+
+
 def private_dir(path):
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     info = path.lstat()
@@ -343,6 +360,8 @@ class Bot:
           CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, digest TEXT NOT NULL, body TEXT NOT NULL, state TEXT NOT NULL, record TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY, task_id TEXT, time REAL NOT NULL, state TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS task_origins(task_id TEXT PRIMARY KEY, context TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS task_controls(id TEXT PRIMARY KEY, task_id TEXT NOT NULL, action TEXT NOT NULL,
+            payload TEXT NOT NULL, state TEXT NOT NULL, created REAL NOT NULL, applied REAL, result TEXT);
         ''')
         self.db.commit()
         self._busy = set()       # Machines that already run a bot task in this tick.
@@ -386,7 +405,8 @@ class Bot:
     def status(self, task_id=None):
         if task_id:
             r = self.result(task_id)
-            return {k: r[k] for k in ['version', 'id', 'project', 'state', 'stage', 'machine', 'updatedAt', 'summary', 'reason'] if k in r}
+            return {k: r[k] for k in ['version', 'id', 'project', 'state', 'stage', 'machine', 'blockedKind',
+                                      'updatedAt', 'summary', 'reason'] if k in r}
         return {'version': 1, 'health': self.health(), 'queue': dict(self.db.execute('SELECT state,count(*) FROM tasks GROUP BY state')),
                 'tasks': [{'id': i, 'state': s} for i, s in self.db.execute('SELECT id,state FROM tasks ORDER BY rowid')]}
 
@@ -461,6 +481,160 @@ class Bot:
             raise ValueError('Only failed, blocked or unknown tasks can be closed.')
         r.update(closedFrom=r['state'], closedAt=time.time(), closedReason=str(reason)[:200], state='closed')
         return self.save(r)
+
+    def control(self, task_id, action, control_id, payload=None):
+        """Durable owner intent. The runner applies it inside tick under its lock."""
+        if not isinstance(control_id, str) or not ID.fullmatch(control_id):
+            raise ValueError('Invalid control ID.')
+        if action not in CONTROL_ACTIONS:
+            raise ValueError('Control action must be cancel, pause or resume.')
+        if not isinstance(task_id, str) or not ID.fullmatch(task_id):
+            raise ValueError('Invalid task ID.')
+        self.result(task_id)
+        encoded = json.dumps(scrub(payload or {}), sort_keys=True, ensure_ascii=False)
+        with self.db:
+            self.db.execute('INSERT OR IGNORE INTO task_controls VALUES (?,?,?,?,?,?,NULL,NULL)',
+                            (control_id, task_id, action, encoded, 'queued', time.time()))
+        row = self.db.execute('SELECT id,task_id,action,payload,state,created,applied,result FROM task_controls WHERE id=?',
+                              (control_id,)).fetchone()
+        if row[1] != task_id or row[2] != action:
+            raise ValueError('Control ID already belongs to a different request.')
+        return {'controlId': row[0], 'taskId': row[1], 'action': row[2], 'payload': json.loads(row[3]),
+                'state': row[4], 'created': row[5], 'applied': row[6], 'result': row[7]}
+
+    def apply_controls(self):
+        """Apply every queued control exactly once, before stepping tasks."""
+        rows = self.db.execute("SELECT id,task_id,action,payload FROM task_controls WHERE state='queued' ORDER BY created,rowid").fetchall()
+        for control_id, task_id, action, payload in rows:
+            try:
+                result = self._apply_control(task_id, action, json.loads(payload or '{}'))
+            except (ValueError, KeyError, TypeError, OSError) as error:
+                log_event(status='control-error', control=control_id, task=task_id, action=action, error=describe(error))
+                result = 'control-failed'
+            rejected = {'dispatch-in-flight', 'cleanup-in-progress', 'pause-unverified', 'resume-unverified',
+                        'not-pausable', 'not-paused', 'not-cancellable', 'resume-unavailable', 'control-failed'}
+            with self.db:
+                self.db.execute('UPDATE task_controls SET state=?,applied=?,result=? WHERE id=? AND state=?',
+                                ('rejected' if result in rejected else 'applied', time.time(), result, control_id, 'queued'))
+            log_event(status='control', control=control_id, task=task_id, action=action, result=result)
+
+    def _apply_control(self, task_id, action, payload):
+        r = self.result(task_id)
+        state = r['state']
+        if action == 'cancel':
+            if state in TERMINAL:
+                return 'not-cancellable'
+            if state == 'dispatching':
+                return 'dispatch-in-flight'  # never race a launch
+            if state == 'cleaning':
+                return 'cleanup-in-progress'
+            if state in ('queued', HELD):
+                r.update(state='closed', closedFrom='cancelled', closedAt=time.time(), closedReason='cancelled by owner')
+                self.save(r)
+                return 'cancelled'
+            run = (r.get('runs') or [None])[-1]
+            if run and run.get('agentId'):
+                try:
+                    h = self.host(r['machine'])
+                    if h['serverId'] != r['serverId']:
+                        raise ValueError('Registered server identity changed.')
+                    self.rpc(h, 'stop', agentId=run['agentId'], attempt=run.get('attempt'))
+                except (ValueError, KeyError, OSError) as error:
+                    log_event(status='control-stop-failed', task=task_id, error=describe(error))
+            r.update(state='blocked', blockedKind='cancelled', reason='Cancelled by owner.')
+            self.save(r)
+            return 'cancelled'
+        if action == 'pause':
+            if state == 'running':
+                run = (r.get('runs') or [None])[-1]
+                if not run or not run.get('agentId'):
+                    return 'pause-unverified'
+                try:
+                    h = self.host(r['machine'])
+                    if h['serverId'] != r['serverId']:
+                        raise ValueError('Registered server identity changed.')
+                    self.rpc(h, 'stop', agentId=run['agentId'], attempt=run.get('attempt'))
+                    observed = self.rpc(h, 'observe', agentId=run['agentId'], attempt=run['attempt'])
+                except (ValueError, KeyError, OSError) as error:
+                    log_event(status='control-pause-unverified', task=task_id, error=describe(error))
+                    return 'pause-unverified'
+                if not isinstance(observed, dict) or observed.get('status') != 'idle':
+                    return 'pause-unverified'
+                r.update(state='paused', pausedFrom='running', pausedAt=time.time(), pausedStage=r.get('stage'))
+                self.save(r)
+                return 'paused'
+            if state == 'queued':
+                r.update(state=HELD)
+                self.save(r)
+                return 'held'
+            return 'not-pausable'
+        if action == 'resume':
+            if state == 'paused':
+                run = (r.get('runs') or [None])[-1]
+                if not run or not run.get('agentId'):
+                    return 'resume-unavailable'
+                stage = r.get('stage', 'work')
+                prompt = ('The owner resumed this task. Continue the same ' + str(stage) +
+                          ' stage from where you stopped and finish with exactly one PASEO_BOT_RESULT=<JSON> line as instructed before.')
+                try:
+                    h = self.host(r['machine'])
+                    if h['serverId'] != r['serverId']:
+                        raise ValueError('Registered server identity changed.')
+                    self.rpc(h, 'send', agentId=run['agentId'], attempt=run.get('attempt'), prompt=prompt)
+                except (ValueError, KeyError, OSError) as error:
+                    log_event(status='control-resume-unverified', task=task_id, error=describe(error))
+                    return 'resume-unverified'
+                paused_at = r.get('pausedAt') or time.time()
+                shift = max(0.0, time.time() - paused_at)
+                r['phaseStartedAt'] = (r.get('phaseStartedAt') or paused_at) + shift
+                r.update(state='running', resumedAt=time.time())
+                self.save(r)
+                return 'resumed'
+            if state == HELD:
+                r.update(state='queued')
+                self.save(r)
+                return 'queued'
+            return 'not-paused'
+        return 'control-failed'
+
+    def _state_explanation(self, r):
+        labels = {'queued': '대기열에 있어요. 아직 실행할 에이전트가 없어요.',
+                  HELD: '대기열에서 보류 중이라 실행할 에이전트가 없어요.',
+                  'ready': '아직 에이전트를 시작하기 전이에요.',
+                  'provisioning': '작업 공간을 준비 중이라 아직 볼 로그가 없어요.',
+                  'dispatching': '에이전트를 시작하는 중이에요.',
+                  PAUSED: '일시 정지 상태예요. 재개하면 같은 에이전트가 이어서 해요.',
+                  'repairing': '응답 형식을 바로잡는 중이에요.',
+                  'cleaning': '작업 공간을 정리하는 중이에요.',
+                  'passed': '작업을 마쳤어요.', 'failed': '작업에 실패했어요.',
+                  'blocked': '작업이 멈춰 있어요.', 'unknown': '진행 상태를 확인하지 못했어요.',
+                  'closed': '닫힌 작업이에요.'}
+        text = labels.get(r['state'], '이 작업에는 확인할 에이전트가 없어요.')
+        detail = r.get('reason') or r.get('summary')
+        if detail:
+            text += '\n' + str(detail)[:1000]
+        return scrub(text)
+
+    def peek(self, task_id, tail=40):
+        """Read-only tail of the current run agent's timeline; safe to call outside the lock."""
+        if type(tail) is not int or not 1 <= tail <= 200:
+            raise ValueError('Peek tail must be 1..200 lines.')
+        r = self.result(task_id)
+        run = (r.get('runs') or [None])[-1]
+        if not run or not run.get('agentId'):
+            return {'taskId': task_id, 'state': r['state'], 'text': self._state_explanation(r)}
+        try:
+            h = self.host(r['machine'])
+            if h['serverId'] != r['serverId']:
+                raise ValueError('Registered server identity changed.')
+            data = self.rpc(h, 'logs', agentId=run['agentId'], attempt=run.get('attempt'), tail=tail)
+            text = tail_text(data.get('text', '') if isinstance(data, dict) else '')
+            if not text.strip():
+                text = '(최근 로그가 비어 있어요.)'
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            log_event(status='peek-error', task=task_id, error=describe(error))
+            text = self._state_explanation(r) + '\n(에이전트 로그를 가져오지 못했어요.)'
+        return {'taskId': task_id, 'state': r['state'], 'text': text}
 
     def auto_close(self, now=None):
         now = now or time.time()
@@ -677,6 +851,8 @@ class Bot:
         return True
 
     def step(self, body, r):
+        if r['state'] in (PAUSED, HELD):
+            return r  # Owner control: never observe or advance a paused/held task.
         if r['state'] == 'queued':
             routed = self.route(body, self._busy)
             if not routed:
@@ -699,7 +875,7 @@ class Bot:
                 r['cleanup'].update(phase='done', status='failed', reason='Cleanup could not be confirmed; preserve remaining data and inspect privately.')
                 r['state'] = r['cleanup']['resultState']
                 if r.get('workflow') == 'daily' and r['state'] == 'passed':
-                    r.update(state='blocked', reason='Daily evidence or cleanup could not be confirmed; workspace retained for inspection.')
+                    r.update(state='blocked', blockedKind='evidence', reason='Daily evidence or cleanup could not be confirmed; workspace retained for inspection.')
                 return self.save(r)
         if r['state'] == 'repairing':
             r.update(state='unknown', reason='Receipt repair acknowledgement missing; inspect existing agent. No automatic replay.')
@@ -775,7 +951,7 @@ class Bot:
                     self.save(r)
                     raise error
                 if isinstance(error, BridgeFailure) and error.stage in ['connect', 'identity', 'profile']:
-                    r.update(state='blocked', reason='Pre-launch '+error.stage+' check failed ('+error.reason+'); no agent creation was attempted.')
+                    r.update(state='blocked', blockedKind='capability', reason='Pre-launch '+error.stage+' check failed ('+error.reason+'); no agent creation was attempted.')
                 # CLI/receipt failures remain dispatching for reconciliation.
                 self.save(r)
                 return r
@@ -805,7 +981,7 @@ class Bot:
                 raise StatusCheckFailed('Agent placement changed; inspect task ownership.')
             if observed['status'] == 'timeout':
                 if time.time() - r['phaseStartedAt'] > self.config().get('phaseTimeoutSeconds', 7200):
-                    r.update(state='blocked', reason='Phase deadline exceeded; the bot captures evidence, then archives the workspace (stopping its agent) and removes the worktree.')
+                    r.update(state='blocked', blockedKind='timeout', reason='Phase deadline exceeded; the bot captures evidence, then archives the workspace (stopping its agent) and removes the worktree.')
                 return self.save(r)
             if body.get('workflow') != 'daily' and observed['status'] == 'error' and observed.get('errorKind') in ('quota', 'model-unavailable'):
                 next_model = fallback_model(run.get('modelAlias', r.get('model')), observed['errorKind'])
@@ -818,7 +994,7 @@ class Bot:
                 r.update(state='unknown', reason='Agent closed without a result receipt; stale run record closed.')
                 return self.save(r)
             if observed['status'] != 'idle':
-                r.update(state='blocked', reason='Agent error or permission wait; no automatic approval.')
+                r.update(state='blocked', blockedKind='needs_input', reason='Agent error or permission wait; no automatic approval.')
                 return self.save(r)
             lines = [x[len('PASEO_BOT_RESULT='):] for x in observed.get('message', '').splitlines() if x.startswith('PASEO_BOT_RESULT=')]
             try:
@@ -854,7 +1030,10 @@ class Bot:
                 r.update(state='ready', hostFetchRetry=True, reason='needs-host-fetch; retrying preflight once with fetch allowed.')
                 return self.save(r)
             if not self.validate_evidence(e, r, stage):
-                r.update(state='failed' if e['verdict'] == 'fail' else 'blocked', reason=e.get('summary', 'Agent did not pass.'))
+                if e['verdict'] == 'fail':
+                    r.update(state='failed', reason=e.get('summary', 'Agent did not pass.'))
+                else:
+                    r.update(state='blocked', blockedKind='verdict', reason=e.get('summary', 'Agent did not pass.'))
             else:
                 r['evidence'][stage] = e
                 stages = ['preflight', 'work'] if body.get('workflow') == 'daily' else STAGES
@@ -894,7 +1073,8 @@ class Bot:
             record.update(state='unknown', reason='Receipt repair outcome unknown; inspect the recorded agent before follow-up.')
             self.save(record)
         elif record['state'] not in ['running', 'dispatching']:
-            record.update(state='blocked', reason=expired or 'Routing, registry or result validation failed. Inspect task evidence privately.')
+            record.update(state='blocked', blockedKind='transient' if expired else 'capability',
+                          reason=expired or 'Routing, registry or result validation failed. Inspect task evidence privately.')
             self.save(record)
         elif expired or isinstance(error, StatusCheckFailed):
             # Only the status check failed; the agent may still be working. 'unknown' starts no
@@ -904,7 +1084,7 @@ class Bot:
             self.save(record)
         else:
             # The agent finished but its receipt failed validation: a visible verdict.
-            record.update(state='blocked', reason='Result receipt validation failed; the bot captures evidence, then archives the workspace. Nothing is relaunched.')
+            record.update(state='blocked', blockedKind='evidence', reason='Result receipt validation failed; the bot captures evidence, then archives the workspace. Nothing is relaunched.')
             self.save(record)
 
     def protected_hosts(self):
@@ -931,9 +1111,12 @@ class Bot:
                 self.heartbeat(owner, [])
                 return
             grace = self.config().get('transientGraceSeconds', 900) if self.registry_path.exists() else 900
+            # Durable owner controls are applied exactly once before any task steps.
+            self.apply_controls()
             rows = self.db.execute('SELECT body,record FROM tasks ORDER BY rowid').fetchall()
             # One active bot task per machine: different machines progress in parallel,
-            # while a busy machine never receives a second bot worktree.
+            # while a busy machine never receives a second bot worktree. A paused task
+            # keeps its machine; a held (pre-dispatch) task has no machine yet.
             self._busy = {json.loads(e).get('machine') for _, e in rows
                           if json.loads(e)['state'] not in TERMINAL and json.loads(e)['state'] != 'queued'} - {None}
             active = []
@@ -941,11 +1124,16 @@ class Bot:
                 record = json.loads(encoded)
                 if record['state'] in TERMINAL:
                     continue
+                if record['state'] in (PAUSED, HELD):
+                    # Paused is still this machine's active task; held freed the queue slot.
+                    if record['state'] == PAUSED:
+                        active.append(record['id'])
+                    continue
                 origin = self.db.execute('SELECT context FROM task_origins WHERE task_id=?', (record['id'],)).fetchone()
                 dependencies = json.loads(origin[0]).get('dependsOn', []) if origin else []
                 parents = [self.result(i)['state'] for i in dependencies]
                 if any(s in TERMINAL and s != 'passed' for s in parents):
-                    self.save(dict(record, state='blocked', reason='A prerequisite did not pass; dependent task was not dispatched.'))
+                    self.save(dict(record, state='blocked', blockedKind='dependency', reason='A prerequisite did not pass; dependent task was not dispatched.'))
                     continue
                 if any(s != 'passed' for s in parents):
                     continue
@@ -1033,6 +1221,13 @@ def main():
     close = sub.add_parser('close')
     close.add_argument('id')
     close.add_argument('--reason', default='closed by owner')
+    for name in CONTROL_ACTIONS:
+        control = sub.add_parser(name)
+        control.add_argument('id')
+        control.add_argument('--reason', default='')
+    peek = sub.add_parser('peek')
+    peek.add_argument('id')
+    peek.add_argument('--tail', type=int, default=40)
     sub.add_parser('list')
     sub.add_parser('tick')
     sub.add_parser('serve')
@@ -1055,6 +1250,11 @@ def main():
         elif args.command == 'close':
             with lock(bot.home):
                 out = bot.close(args.id, args.reason)
+        elif args.command in CONTROL_ACTIONS:
+            payload = {'reason': args.reason} if args.reason else {}
+            out = bot.control(args.id, args.command, 'cli-' + uuid.uuid4().hex[:20], payload)
+        elif args.command == 'peek':
+            out = bot.peek(args.id, args.tail)
         elif args.command == 'list':
             out = [{'id': i, 'state': s} for i, s in bot.db.execute('SELECT id,state FROM tasks ORDER BY rowid')]
         elif args.command == 'health':

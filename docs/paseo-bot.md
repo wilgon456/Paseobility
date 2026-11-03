@@ -159,6 +159,10 @@ python3 tools/paseo-bot/paseo_bot.py serve
 # Another shell (or a trusted Tailscale SSH session):
 python3 tools/paseo-bot/paseo_bot.py submit --file /absolute/path/task.json
 python3 tools/paseo-bot/paseo_bot.py result example-001
+python3 tools/paseo-bot/paseo_bot.py cancel example-001 --reason 'owner asked'
+python3 tools/paseo-bot/paseo_bot.py pause example-001
+python3 tools/paseo-bot/paseo_bot.py resume example-001
+python3 tools/paseo-bot/paseo_bot.py peek example-001 --tail 40
 python3 tools/paseo-bot/paseo_bot.py list
 python3 tools/paseo-bot/paseo_bot.py health
 ```
@@ -202,8 +206,8 @@ outbox a producer can consume; terminal results are regenerated if publication w
 interrupted. No network delivery is claimed. A producer should poll until `state` is
 `passed`, `failed`, `blocked` or `unknown`, then acknowledge consumption in its
 own system. Repeated reads are harmless; there is no exactly-once messaging
-claim. Active states are `queued`, `ready`, `provisioning`, `dispatching`,
-`running`, `repairing` and `cleaning`.
+claim. Active states are `queued`, `held`, `ready`, `provisioning`, `dispatching`,
+`running`, `paused`, `repairing` and `cleaning`.
 The additional `cleaning` state precedes final publication whenever the task
 created a worktree. On `passed`, `failed` or `blocked`, the bot captures a Git
 binary patch relative to preflight HEAD, including untracked and ignored files,
@@ -222,7 +226,13 @@ outcomes remain unreconciled rather than automatically destroying work.
 The version-1 result contains task/project ID, state, machine/server ID, branch,
 worktree/workspace ID, per-phase profile/provider/model/agent receipts, verification
 evidence, summary/reason, timestamps, `deployment: not-run` and
-`delivery: file-outbox`. Raw provider output/stderr is never copied to outbox.
+`delivery: file-outbox`. A `blocked` result also carries `blockedKind`, one of
+`needs_input` (agent error or permission wait), `capability` (pre-launch
+identity/profile/provider check), `dependency` (a prerequisite did not pass),
+`timeout` (phase deadline), `evidence` (receipt/evidence/cleanup could not be
+confirmed), `verdict` (the agent returned blocked), `cancelled` (owner cancel) or
+`transient` (an outage exhausted the retry window). Raw provider output/stderr is
+never copied to outbox.
 Only one strict `PASEO_BOT_RESULT=<JSON>` final response is accepted per turn.
 A missing/invalid receipt gets at most one durable format-correction follow-up
 to that same idle, owned agent; evidence is recomputed read-only. Failed gates,
@@ -242,6 +252,39 @@ zero/multiple matches become `unknown`, never an automatic second launch.
 Restart resumes recorded agents and phases. Unknown receipt, identity drift,
 permission wait, invalid JSON, incomplete gates or deadlines never becomes pass.
 Timeout leaves agents/worktrees intact; nothing automatically kills them.
+
+### Task control (cancel, pause, resume, peek)
+
+Owners can control a non-terminal task without racing the runner. The GUI bridge
+and Discord do not mutate task records: they append a durable row to
+`task_controls` (`id`, `task_id`, `action`, `payload`, `state`, `created`,
+`applied`, `result`), and the resident runner applies queued rows inside `tick()`
+under its existing lock, before stepping tasks. `id` is a caller-supplied
+idempotency key: resubmitting the same id for the same task and action returns
+the existing row, while a different task or action under that id is rejected.
+`state` moves `queued` → `applied` or `rejected`, and `result` records why
+(`cancelled`, `paused`, `held`, `resumed`, `dispatch-in-flight`,
+`cleanup-in-progress`, `pause-unverified`, `not-pausable`, `not-paused`).
+
+| Action | Behavior |
+|---|---|
+| `cancel` | `queued`/`held` become `closed` (`closedFrom: cancelled`, `closedReason: cancelled by owner`). `ready`/`provisioning`/`running`/`paused`/`repairing` stop the current run agent (best effort) and become `blocked` with `blockedKind: cancelled`, so the normal evidence-and-archive cleanup runs. `dispatching` is rejected as `dispatch-in-flight` and `cleaning` as `cleanup-in-progress`; retry after the stage settles. |
+| `pause` | `running` sends `stop`, re-observes the same owned agent, and records `paused` (`pausedFrom`, `pausedAt`, `pausedStage`) only when its status is `idle`. Otherwise it rejects `pause-unverified` and leaves the task running. `queued` becomes `held`; other states reject `not-pausable`. |
+| `resume` | `paused` sends a continuation prompt to the same agent, returns to `running`, and shifts `phaseStartedAt` by the paused duration so the phase deadline excludes paused time. `held` returns to `queued`; other states reject `not-paused`. |
+
+`paused` is not terminal and keeps its machine busy, but it is never observed or
+advanced. `held` is a pre-dispatch pause: it frees the machine and starts no
+agent. `auto_close` never closes `paused` or `held`. `peek` is read-only, may run
+outside the runner lock, and returns the scrubbed tail of the current agent
+timeline (3 500 characters, newest lines kept) or an explanation of the task's
+state when no agent exists.
+
+CLI: `cancel|pause|resume <id> [--reason]` prints the enqueued control id, and
+`peek <id> [--tail N]` prints the scrubbed log tail.
+
+The plan's **done-contract** work (§3.1 D3: re-verified completion evidence such
+as PR merge, passing checks or a JSON file condition) is **deferred** and is not
+implemented by this control layer.
 
 ### Temporary outages and failed status checks
 
@@ -428,6 +471,10 @@ Get-Content -Raw -Encoding UTF8 'C:\path\task.json' | & $Bot submit
 & $Bot status
 & $Bot status 'task-id'
 & $Bot result 'task-id'
+& $Bot cancel 'task-id' -Reason 'owner asked'
+& $Bot pause 'task-id'
+& $Bot resume 'task-id'
+& $Bot peek 'task-id' -Tail 40
 ```
 
 Use `-State` for a nondefault queue and `-Python` for a specific interpreter.
