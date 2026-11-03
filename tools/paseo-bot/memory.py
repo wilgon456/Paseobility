@@ -1658,7 +1658,9 @@ class MemoryCurator:
     def _evidence(self, job, context, op):
         """Task jobs keep their workflow; conversation items are owner only when restated."""
         if job['kind'] == 'task':
-            return context.get('workflow') or 'daily'
+            # Only an independently reviewed task counts as verified; daily and read-only
+            # inspect results are self-checked evidence.
+            return 'verified' if context.get('workflow') == 'verified' else 'daily'
         if op.get('scope') == 'owner' and context.get('ownerMessages'):
             return 'owner'
         return 'owner' if derived_from_owner(op.get('text') or '', context) else 'daily'
@@ -1674,6 +1676,7 @@ class MemoryCurator:
                 raise ValueError('Item already has a pending update')
 
     def apply_op(self, job, context, op, retire_count=0):
+        op = normalize_op(op)
         if not isinstance(op, dict) or op.get('op') not in ('add', 'update', 'retire', 'confirm'):
             raise ValueError('Unknown op')
         normalized = self.validate_op(job, context, op)

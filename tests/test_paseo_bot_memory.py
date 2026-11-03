@@ -297,6 +297,20 @@ class CuratorTests(MemoryTestCase):
         self.assertEqual(self.fake.created[0]['workspaceId'], None)
         self.assertEqual(self.curator.config()['mode'], 'auto')
 
+    def test_inspect_task_facts_are_stored_with_daily_evidence(self):
+        self.task(workflow='inspect', summary='테스트 명령은 npm test 예요.')
+        self.run_job([{'op': 'add', 'scope': 'project', 'project': 'fixture', 'kind': 'command',
+                       'text': '단위 테스트는 저장소 루트에서 npm test 로 실행한다.'}])
+        items = self.store.items(project='fixture', status='active')
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['evidence'], 'daily')
+
+    def test_nested_op_spelling_is_applied(self):
+        self.task()
+        self.run_job([{'add': {'scope': 'project', 'project': 'fixture', 'kind': 'fact',
+                               'text': '빌드 산출물은 dist 폴더에 생성된다.'}}])
+        self.assertEqual(len(self.store.items(project='fixture', status='active')), 1)
+
     def test_response_parsing_requires_one_marker_job_id_and_at_most_five_ops(self):
         good = 'PASEO_MEMORY_RESPONSE=' + json.dumps({'jobId': 'task-t1', 'ops': []})
         self.assertEqual(memory.parse_ops('note\n' + good), [])
