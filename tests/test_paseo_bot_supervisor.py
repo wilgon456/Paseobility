@@ -283,3 +283,26 @@ class SupervisorRunTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PowerShellWrapperParameters(unittest.TestCase):
+    """PowerShell automatic variables are read-only; a parameter with one of
+    these names makes the whole wrapper fail on Windows (e.g. $Pid)."""
+    RESERVED = {'pid', 'host', 'input', 'args', 'error', 'home', 'psitem', 'this', 'matches',
+                'event', 'eventargs', 'sender', 'profile', 'pwd', 'shellid', 'true', 'false', 'null',
+                'executioncontext', 'myinvocation', 'psboundparameters', 'lastexitcode', 'stacktrace'}
+
+    def test_wrapper_parameters_do_not_shadow_automatic_variables(self):
+        import re
+        text = (Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo-bot.ps1').read_text(encoding='utf-8-sig')
+        block = text[text.index('param(') + len('param'):]
+        depth, end = 0, len(block)
+        for i, ch in enumerate(block):
+            depth += ch == '('
+            depth -= ch == ')'
+            if depth == 0:
+                end = i
+                break
+        names = {n.lower() for n in re.findall(r'\]\s*\$([A-Za-z_][A-Za-z0-9_]*)', block[:end])}
+        self.assertTrue(names)
+        self.assertFalse(names & self.RESERVED, sorted(names & self.RESERVED))

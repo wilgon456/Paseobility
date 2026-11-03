@@ -538,8 +538,8 @@ Get-Content -Raw -Encoding UTF8 'C:\path\task.json' | & $Bot submit
 & $Bot cancel 'task-id' -Reason 'owner asked'
 & $Bot pause 'task-id'
 & $Bot resume 'task-id'
-& $Bot permit-allow 'task-id' -Pid 'abc123def456'
-& $Bot permit-deny 'task-id' -Pid 'abc123def456'
+& $Bot permit-allow 'task-id' -PermissionKey 'abc123def456'
+& $Bot permit-deny 'task-id' -PermissionKey 'abc123def456'
 & $Bot peek 'task-id' -Tail 40
 ```
 

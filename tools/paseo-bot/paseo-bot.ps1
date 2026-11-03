@@ -8,7 +8,7 @@ param(
   [string]$State = (Join-Path $env:USERPROFILE '.config\paseo-bot'),
   [string]$Python,
   [string]$Reason,
-  [string]$Pid,
+  [string]$PermissionKey,
   [int]$Tail,
   [switch]$Apply,
   [ValidateSet('cli','discord')][string]$Producer = 'cli',
@@ -47,8 +47,8 @@ end {
     if ($File) { $argv += @('--file',$File) }
     if ($Command -in @('close','cancel','pause','resume','permit-allow','permit-deny') -and $Reason) { $argv += @('--reason',$Reason) }
     if ($Command -in @('permit-allow','permit-deny')) {
-      if (!$Pid) { throw 'permit-allow and permit-deny need -Pid' }
-      $argv += @('--pid',$Pid)
+      if (!$PermissionKey) { throw 'permit-allow and permit-deny need -PermissionKey' }
+      $argv += @('--pid',$PermissionKey)
     }
     if ($Command -eq 'peek' -and $PSBoundParameters.ContainsKey('Tail')) { $argv += @('--tail',[string]$Tail) }
     if ($Command -eq 'submit') { $argv += @('--producer',$Producer) }
