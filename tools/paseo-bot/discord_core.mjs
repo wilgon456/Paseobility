@@ -10,6 +10,13 @@ export function acceptMessage(config, event, parentId) {
 export function acceptInteraction(config, event, parentId) {
   return !!(config?.enabled && event?.guild_id === config.guildId && (event.channel_id === config.channelId || parentId === config.channelId) && config.ownerIds.includes(event.member?.user?.id) && !event.member?.user?.bot);
 }
+export async function conversationForMessage(config, message, text, createThread) {
+  if(message.channel_id!==config.channelId)return message.channel_id;
+  const name=String(text || '새 대화').replace(/\s+/g,' ').trim().slice(0,90) || '새 대화';
+  const thread=await createThread(message.id,name);
+  if(!SNOWFLAKE.test(thread?.id || ''))throw Error('Discord thread creation failed');
+  return thread.id;
+}
 export function chunkText(text, limit = MAX_MESSAGE) {
   const result = []; let rest = String(text);
   while (rest.length > limit) {
