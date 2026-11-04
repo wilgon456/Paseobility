@@ -203,7 +203,7 @@ class ChildTests(unittest.TestCase):
                 self.stdin = FakeStdin()
 
         config = discord_serve.parse_config(dict(BASE))
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch.object(discord_serve, 'find_runtime', return_value=(['node'], Path('/fake/client.js'))):
             child = discord_serve.spawn_gateway(config, Path(tmp), popen=Popen)
             discord_serve.deliver(child, 'sentinel-token-value')
         self.assertNotIn('sentinel-token-value', ' '.join(seen['command']))

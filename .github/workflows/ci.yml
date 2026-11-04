@@ -32,12 +32,6 @@ jobs:
           npm --prefix plugin run typecheck
           npm --prefix plugin test
 
-      - name: Bot GUI dependencies, types and UI/transport tests
-        run: |
-          npm ci --prefix tools/paseo-bot/plugin
-          npm --prefix tools/paseo-bot/plugin run typecheck
-          npm --prefix tools/paseo-bot/plugin test
-
       - name: Validation dependency (CI only)
         run: python -m pip install PyYAML==6.0.3
 
@@ -56,11 +50,8 @@ jobs:
       - name: Paseo Multi adapter syntax
         run: node --check skills/paseo-multi/scripts/rpc.mjs
 
-      - name: Paseo bot bridge contracts
-        run: node --test tools/paseo-bot/bridge.test.mjs
-
-      - name: Paseo bot Discord core contracts
-        run: node --test tools/paseo-bot/discord_core.test.mjs
+      - name: Paseo bot relay contracts
+        run: node --test tools/paseo-bot/relay.test.mjs
 
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py
@@ -129,15 +120,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix plugin test
 
-      - name: Bot GUI dependencies, types and UI/transport tests
-        run: |
-          npm ci --prefix tools/paseo-bot/plugin
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm --prefix tools/paseo-bot/plugin run typecheck
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm --prefix tools/paseo-bot/plugin test
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Validation dependency (CI only)
         run: python -m pip install PyYAML==6.0.3
 
@@ -183,11 +165,8 @@ jobs:
       - name: Paseo Multi adapter syntax
         run: node --check skills/paseo-multi/scripts/rpc.mjs
 
-      - name: Paseo bot bridge contracts
-        run: node --test tools/paseo-bot/bridge.test.mjs
-
-      - name: Paseo bot Discord core contracts
-        run: node --test tools/paseo-bot/discord_core.test.mjs
+      - name: Paseo bot relay contracts
+        run: node --test tools/paseo-bot/relay.test.mjs
 
       - name: Catalog and skill frontmatter
         run: python scripts/validate-skills.py

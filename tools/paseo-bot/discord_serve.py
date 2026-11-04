@@ -16,7 +16,7 @@ import signal
 import subprocess
 import sys
 import time
-from paseo_bot import describe, lock, log_event, private_file, stop_requested, write_json
+from service_utils import describe, lock, log_event, private_file, stop_requested, write_json
 
 SNOWFLAKE = re.compile(r'\d{16,22}\Z')
 TOOL = Path(__file__).resolve().parent
@@ -81,12 +81,23 @@ def read_secret(config, run=subprocess.run):
     return token
 
 
+def find_runtime():
+    """Find the same installed Paseo client runtime as paseo-multi."""
+    skill = Path.home() / '.agents/skills/paseo-multi/scripts'
+    if not (skill / 'hosts.py').is_file():
+        skill = TOOL.parents[1] / 'skills/paseo-multi/scripts'
+    sys.path.insert(0, str(skill))
+    import hosts as fleet
+    return fleet.runtime()
+
+
 def spawn_gateway(config, state, popen=subprocess.Popen):
-    """Start the Node child with an open stdin pipe; no token in argv or env."""
-    command = [config['node'], str(TOOL / 'discord_gateway.mjs'), '--state', str(state)]
-    env = dict(os.environ, PASEO_BOT_PYTHON=sys.executable)
+    """Start the gateway without placing the token in argv or environment."""
+    launch, module = find_runtime()
+    env = dict(os.environ, ELECTRON_RUN_AS_NODE='1', PASEO_MULTI_HOST_CLIENT_MODULE=str(module))
+    command = launch + [str(TOOL / 'discord_gateway.mjs'), '--state', str(state)]
     return popen(command, cwd=str(TOOL), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
-                 stderr=None, env=env)
+                 stderr=None, env=env, **({'creationflags': 0x08000000} if os.name == 'nt' else {}))
 
 
 def deliver(child, token):

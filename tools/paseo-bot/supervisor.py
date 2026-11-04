@@ -1,30 +1,4 @@
-"""Opt-in resident supervisor for the bot runtime (dispatcher, GUI and Discord services) on Windows, macOS and Linux.
-
-`run` stays resident and keeps `paseo_bot.py serve`, `gui_serve.py serve` and
-`discord_serve.py serve` alive:
-
-- Exit: restarted about one second later. Exits shortly after a start count as
-  consecutive failures and back off (1, 2, 4 ... 300 s); a long healthy run
-  resets the count. A service that is already running is adopted, never duplicated.
-- Hang: once a service has proven it ticks, a heartbeat older than
-  `--stale-seconds` (default 900; longer than any single bot RPC) restarts it.
-- Stop: a restart first asks the service to stop through `<state>/<name>.stop`
-  and waits up to 30 s, so a write is never cut in half; only then is it killed.
-- Alert: five consecutive fast failures or a hang raise an alert in
-  `supervisor.json` (the GUI projection reports the host as unhealthy) and a
-  desktop notification.
-
-The operating system's own service manager keeps the supervisor itself alive:
-
-- macOS: a per-user launchd agent with KeepAlive (`install`; no admin rights).
-- Linux: a systemd user service with Restart=always (`install`).
-- Windows: the PaseoBotGuardian service (`guardian/`, one UAC consent) or, without
-  admin rights, a logon task that repeats every minute (`install`).
-
-On Windows run it with pythonw.exe: the services are console python.exe processes
-created with CREATE_NO_WINDOW, so they and their children (node, git, the Paseo
-CLI) never flash a console window, even with Windows Terminal as the default.
-"""
+"""Supervise the Discord relay under the existing Guardian or user service."""
 import argparse
 import hashlib
 import json
@@ -40,7 +14,7 @@ import sys
 import time
 from xml.sax.saxutils import escape
 
-SERVICES = ('paseo_bot', 'gui_serve', 'discord_serve')
+SERVICES = ('discord_serve',)
 HEALTHY_SECONDS = 300
 MAX_DELAY = 300
 POLL_SECONDS = 1.0
@@ -110,7 +84,7 @@ def task_xml(user, pythonw, script, state, tool, start_boundary):
     return f'''<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Paseo bot resident supervisor (no console). Restarts the dispatcher and GUI service within seconds with crash-loop backoff and hang detection. The repeating trigger starts nothing while the supervisor runs. Remove with: paseo-bot.ps1 supervise uninstall -Apply</Description>
+    <Description>Paseo bot resident supervisor (no console). Restarts the Discord relay within seconds with crash-loop backoff and hang detection. The repeating trigger starts nothing while the supervisor runs. Remove with: paseo-bot.ps1 supervise uninstall -Apply</Description>
   </RegistrationInfo>
   <Principals>
     <Principal id="Author">
@@ -225,23 +199,8 @@ def read_json(path, default):
 
 
 def heartbeat(state, name, pid):
-    """Last tick time written by the running service, or None when unknown."""
-    if name == 'paseo_bot':
-        health = read_json(state / 'health.json', {})
-        return health.get('lastTickAt') if health.get('pid') == pid else None
-    if name == 'discord_serve':
-        # The Discord service parents a Node child; its own health file carries its pid.
-        health = read_json(state / 'discord-health.json', {})
-        return health.get('lastTickAt') if health.get('pid') == pid else None
-    try:
-        db = sqlite3.connect(f'file:{state / "queue.sqlite3"}?mode=ro', uri=True, timeout=2)
-        try:
-            row = db.execute("SELECT value FROM gui_meta WHERE key='heartbeat'").fetchone()
-        finally:
-            db.close()
-        return json.loads(row[0]).get('lastTickAt') if row else None
-    except (sqlite3.Error, ValueError, TypeError):
-        return None
+    health = read_json(state / 'discord-health.json', {})
+    return health.get('lastTickAt') if health.get('pid') == pid else None
 
 
 TOAST = r'''
@@ -542,7 +501,13 @@ def write_status(path, data):
     tmp = path.with_name(path.name + '.tmp')
     with private_open(tmp, 'w') as f:
         f.write(json.dumps(data, sort_keys=True))
-    os.replace(tmp, path)
+    for attempt in range(6):
+        try:
+            os.replace(tmp, path)
+            break
+        except PermissionError:
+            if attempt == 5: raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def run(args):
@@ -569,7 +534,7 @@ def run(args):
         request = args.state / RESTART_REQUEST
         if request.exists():
             request.unlink(missing_ok=True)
-            log('restart requested; stopping services at this idle boundary')
+            log('restart requested; stopping relay')
             for service in services:
                 service.stop(now, 'restart requested', counts=False)
         for service in services:
@@ -694,30 +659,14 @@ def status(args):
     return out
 
 
-def idle(state):
-    """True when the dispatcher has no active task and no GUI request is in flight."""
-    health = read_json(state / 'health.json', {})
-    if health.get('activeTasks') or health.get('activeTask'):
-        return False
-    db = sqlite3.connect(f'file:{state / "queue.sqlite3"}?mode=ro', uri=True)
-    try:
-        return not db.execute("SELECT 1 FROM gui_jobs WHERE state IN ('prepared','waiting') LIMIT 1").fetchone()
-    except sqlite3.OperationalError:
-        return True  # no GUI tables yet
-    finally:
-        db.close()
 
 
 def restart(args):
-    """Ask the resident supervisor to restart both services at an idle boundary (e.g. after a code update)."""
+    """Ask the resident supervisor to restart the relay (e.g. after a code update)."""
     before = read_json(args.state / 'supervisor.json', None)
     if not before:
         raise ValueError('Supervisor status unavailable')
     deadline = time.time() + args.timeout
-    while not idle(args.state):
-        if time.time() > deadline:
-            return dict(restarted=False, reason='busy')
-        time.sleep(5)
     (args.state / RESTART_REQUEST).write_text('1', encoding='utf-8')
     old = {n: s.get('pid') for n, s in before['services'].items()}
     deadline = time.time() + STOP_GRACE_SECONDS * 2 + 30

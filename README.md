@@ -18,7 +18,7 @@ Twelve reusable skills for projects, browsers, artifacts and computers connected
 
 ---
 
-A first resident **Paseo bot** manager is available under `tools/paseo-bot`: project registry across connected machines, durable task intake, worktree dispatch and independent review. See [Paseo bot v1](docs/paseo-bot.md).
+The **Paseo Discord bot** under `tools/paseo-bot` relays each conversation to a full-access Paseo agent. See [Paseo bot](docs/paseo-bot.md).
 
 ## At a glance
 
