@@ -104,7 +104,7 @@ def handle(home, request, allow_submit=False):
         try:
             return c.set_manager(profile) if profile is not None else c.manager_info()
         finally:
-            c.db.close()
+            c.close()
     if action in ['create', 'start', 'send', 'approve', 'reject', 'remember', 'resolve']:
         if not allow_submit:
             raise ValueError('Read-only bridge')

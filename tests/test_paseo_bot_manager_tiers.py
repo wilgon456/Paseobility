@@ -81,7 +81,7 @@ class ManagerTierTests(unittest.TestCase):
         self.step = dict(project='fixture', title='Fixture task', prompt='Make the bounded change', kind='gpt')
 
     def tearDown(self):
-        self.c.db.close()
+        self.c.close()
         self.tmp.cleanup()
 
     def runtime(self, spare):
