@@ -926,7 +926,7 @@ class BotTests(unittest.TestCase):
     def test_prompt_allows_branch_and_pr_but_merge_deploy_only_when_asked(self):
         text = self.bot.prompt(self.body, {'target': {'repo': '/r', 'defaultBranch': 'main', 'gates': []}, 'branch': 'b', 'evidence': {}}, 'work')
         for phrase in ['open a PR when the task needs one', 'ONLY when the task text explicitly asks', 'stop at the PR',
-                       'never print secrets', 'never post to Slack', 'protected runtimes', 'summary in Korean']:
+                       'never print secrets', 'never post to Slack', 'protected runtimes', 'shown to the owner as-is', 'polite 해요체', 'no file:line citations']:
             self.assertIn(phrase, text)
         self.assertNotIn('Do not deploy, merge, push, commit', text)
         self.assertNotIn('ERP', text)

@@ -379,7 +379,19 @@ class ConversationTests(unittest.TestCase):
         task = self.c.bot.result(plan_id + '-1')
         self.assertEqual(task['workflow'], 'inspect')
         texts = [r[0] for r in self.c.db.execute("SELECT text FROM gui_messages WHERE conversation='session-1' AND role='system'")]
-        self.assertIn('읽기 전용 확인이라 바로 시작할게요.', texts)
+        self.assertEqual(texts, [])  # the manager's own reply already says it is checking
+
+    def test_inspect_answer_is_shown_as_a_reply(self):
+        plan_id, _ = self.reply_with('ask-3', [dict(self.step, workflow='inspect')])
+        task_id = plan_id + '-1'
+        record = json.loads(self.c.db.execute('SELECT record FROM tasks WHERE id=?', (task_id,)).fetchone()[0])
+        record.update(state='passed', stage='inspect', summary='테스트 명령은 `npm test`예요.')
+        with self.c.db:
+            self.c.db.execute('UPDATE tasks SET state=?,record=? WHERE id=?', ('passed', json.dumps(record), task_id))
+        self.c.tick_notices()
+        text, payload = self.c.db.execute("SELECT text,payload FROM gui_messages WHERE conversation='session-1' AND role='system' ORDER BY time DESC LIMIT 1").fetchone()
+        self.assertEqual(text, '테스트 명령은 `npm test`예요.')
+        self.assertTrue(json.loads(payload)['answer'])
 
     def test_owner_selected_workflow_overrides_the_manager(self):
         plan_id, state = self.reply_with('ask-2', [dict(self.step, workflow='inspect')], selection={'workflow': 'daily'})

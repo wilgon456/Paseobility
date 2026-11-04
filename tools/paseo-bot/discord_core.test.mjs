@@ -118,9 +118,10 @@ test('plan cards render tasks with approve and reject buttons', () => {
     {type: 2, style: 3, label: '접수', custom_id: 'pb:approve:plan-1'},
     {type: 2, style: 4, label: '거절', custom_id: 'pb:reject:plan-1'},
   ]}]);
-  for (const needed of ['paseo', 'VAX_COM', '모델 auto (sol)', '일반 변경', '일반 작업 기본 모델', '버튼 수정']) {
+  for (const needed of ['paseo', 'VAX_COM', '모델 sol', '일반 변경', '버튼 수정']) {
     assert.ok(card.content.includes(needed), needed);
   }
+  assert.ok(!card.content.includes('일반 작업 기본 모델'));
   assert.deepEqual(card.allowed_mentions, {parse: []});
   assert.ok(card.content.length <= 2000);
   assert.throws(() => c.planCard({id: '../bad'}));
@@ -135,24 +136,24 @@ test('plan cards render tasks with approve and reject buttons', () => {
 test('plan cards preview prompts, dependencies and stay inside 2000 characters', () => {
   const base = {project: 'paseo', model: 'auto', resolvedModel: 'sol', workflow: 'daily', title: '작업'};
   const long = c.planCard({id: 'plan-preview', tasks: [{...base, prompt: 'a'.repeat(400)}]});
-  assert.ok(long.content.includes('   요청: ' + 'a'.repeat(300) + '…'));
+  assert.ok(long.content.includes('> ' + 'a'.repeat(300) + '…'));
   assert.ok(!long.content.includes('a'.repeat(301)));
   const short = c.planCard({id: 'plan-short', tasks: [{...base, prompt: '짧은 요청'}]});
-  assert.ok(short.content.includes('   요청: 짧은 요청'));
-  assert.ok(!short.content.includes('요청: 짧은 요청…'));
+  assert.ok(short.content.includes('> 짧은 요청'));
+  assert.ok(!short.content.includes('> 짧은 요청…'));
   const multiline = c.planCard({id: 'plan-lines', tasks: [{...base, prompt: 'first\nsecond\r\nthird\tfourth'}]});
-  assert.ok(multiline.content.includes('   요청: first second third fourth'));
+  assert.ok(multiline.content.includes('> first second third fourth'));
   const deps = c.planCard({id: 'plan-deps', tasks: [{...base, prompt: 'p'}, {...base, prompt: 'q', dependsOn: [0]}]});
-  assert.ok(deps.content.includes('   선행: 1'));
-  assert.ok(!deps.content.includes('   선행: 0'));
+  assert.ok(deps.content.includes('먼저 끝낼 작업: 1'));
+  assert.ok(!deps.content.includes('먼저 끝낼 작업: 0'));
   const noPrompt = c.planCard({id: 'plan-empty', tasks: [{...base, prompt: '   '}]});
-  assert.ok(!noPrompt.content.includes('요청:'));
+  assert.ok(!noPrompt.content.includes('\n> '));
   const many = c.planCard({id: 'plan-many', tasks: Array.from({length: 12}, (_, i) => ({
     ...base, title: 'task ' + i, modelReason: '기본', prompt: 'p'.repeat(600),
   }))});
   assert.ok(many.content.length <= 2000, String(many.content.length));
   assert.ok(many.content.endsWith('(일부 생략)'));
-  assert.ok(many.content.includes('   요청: ' + 'p'.repeat(80)));
+  assert.ok(many.content.includes('> ' + 'p'.repeat(80)));
 });
 
 test('activity tiers are hot, warm or dormant from activity and sync state', () => {
@@ -240,6 +241,7 @@ test('outbound diff posts only undelivered manager and notice messages', () => {
   assert.equal(c.formatOutbound(pending[0]), '답변');
   assert.equal(c.formatOutbound(pending[1]), '• 작업을 진행하고 있어요.');
   assert.equal(c.formatOutbound({role: 'user', text: 'echo'}), 'echo');
+  assert.equal(c.formatOutbound({role: 'system', text: '답이에요', payload: {answer: true}}), '답이에요');
   const pr = c.formatOutbound({id: 's3', role: 'system', text: '끝', payload: {prUrl: 'https://github.com/o/r/pull/7'}});
   assert.ok(pr.endsWith('\nhttps://github.com/o/r/pull/7'));
   const unsafe = c.formatOutbound({role: 'system', text: '끝', payload: {prUrl: 'https://evil.example/pull/7'}});

@@ -348,8 +348,8 @@ export function chunkText(text, limit = MAX_MESSAGE) {
 export function modelLabel(task) {
   const alias = typeof task?.model === 'string' && task.model ? task.model : 'auto';
   const resolved = typeof task?.resolvedModel === 'string' ? task.resolvedModel : '';
-  if (alias === 'auto') return resolved ? `auto (${resolved})` : 'auto';
-  return alias;
+  if (alias === 'auto') return resolved ? `모델 ${resolved}` : '모델 자동';
+  return `모델 ${alias}`;
 }
 
 export function promptPreview(task, limit = PROMPT_PREVIEW) {
@@ -361,23 +361,22 @@ export function promptPreview(task, limit = PROMPT_PREVIEW) {
 
 function planLines(plan, previewLimit) {
   const tasks = Array.isArray(plan?.tasks) ? plan.tasks : [];
-  const lines = [`계획 ${tasks.length}개 작업`];
+  // Phone-first: title, one meta line, the request as a quote. Internal routing reasons stay out.
+  const lines = [tasks.length > 1 ? `**작업 계획 · ${tasks.length}개**` : '**작업 계획**'];
   tasks.forEach((task, index) => {
     if (!task || typeof task !== 'object') return;
-    const bits = [`${index + 1}. ${task.project ?? '?'}`];
-    if (typeof task.machine === 'string' && task.machine) bits.push(task.machine);
-    bits.push(`모델 ${modelLabel(task)}`);
+    const title = typeof task.title === 'string' && task.title.trim() ? task.title.trim().slice(0, 200) : '작업';
+    lines.push('', tasks.length > 1 ? `**${index + 1}. ${title}**` : `**${title}**`);
+    const bits = [task.project ?? '?'];
     bits.push({inspect: '확인만', daily: '일반 변경', verified: '중요 변경'}[task.workflow ?? 'verified'] ?? String(task.workflow));
+    if (typeof task.machine === 'string' && task.machine) bits.push(task.machine);
+    bits.push(modelLabel(task));
     lines.push(bits.join(' · '));
-    const title = typeof task.title === 'string' ? task.title.trim() : '';
-    if (title) lines.push('   ' + title.slice(0, 200));
-    const reason = typeof task.modelReason === 'string' ? task.modelReason.trim() : '';
-    if (reason) lines.push('   이유: ' + reason.slice(0, 300));
     const preview = promptPreview(task, previewLimit);
-    if (preview) lines.push('   요청: ' + preview);
+    if (preview) lines.push('> ' + preview);
     if (Array.isArray(task.dependsOn) && task.dependsOn.length) {
       const dependencies = task.dependsOn.filter(value => Number.isInteger(value) && value >= 0).map(value => value + 1);
-      if (dependencies.length) lines.push('   선행: ' + dependencies.join(', '));
+      if (dependencies.length) lines.push('먼저 끝낼 작업: ' + dependencies.join(', '));
     }
   });
   return lines;
@@ -436,7 +435,7 @@ const PR_URL = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/
 
 export function formatOutbound(message) {
   const text = typeof message?.text === 'string' ? message.text.trim() : '';
-  const prefix = message?.role === 'system' ? '• ' : '';
+  const prefix = message?.role === 'system' && message?.payload?.answer !== true ? '• ' : '';
   const body = prefix + text;
   const prUrl = typeof message?.payload?.prUrl === 'string' && PR_URL.test(message.payload.prUrl) ? message.payload.prUrl : '';
   return prUrl && !body.includes(prUrl) ? `${body}\n${prUrl}` : body;

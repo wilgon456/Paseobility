@@ -24,6 +24,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hosts as fleet
 import safety
 
+# How every owner-facing text reads: shown as-is in Discord, usually on a phone.
+OWNER_STYLE = ('Write it in Korean, polite 해요체, for someone reading on a phone in Discord. '
+               'Start with the direct answer or outcome in one or two short sentences. If more is needed, add at most '
+               '5 short lines starting with "- ", one point per line. Put commands, file names and code in backticks. '
+               'Never one long paragraph, no circled numbers, no file:line citations, no list of what you did not run, '
+               'no git status or internal process notes; mention a limitation only when it changes what the owner should do. ')
 PROFILES = {'sync': 'git-sync', 'hard': 'coding-hard', 'refactor': 'refactor-bulk', 'gpt': 'gpt-task'}
 # Stable aliases are the only user-selectable providers/models. Profiles carry host-local permissions.
 # sol is the default, claude is reserved for the hardest work and go for lightweight work.
@@ -985,7 +991,7 @@ class Bot:
             'Do not change the configured gate commands or bot state/registry. '
             'Never update, reinstall, stop or restart Paseo (app, CLI or daemon) on a host listed in PASEO_BOT_PROTECTED_HOSTS: '
             'the Paseo bot runs there and would lose its client mid-task. Leave that host out and report it as needing a manual update. '
-            'Finish with exactly one line PASEO_BOT_RESULT=<JSON object>, no secrets or raw logs. Write the JSON summary in Korean for the owner. '
+            'Finish with exactly one line PASEO_BOT_RESULT=<JSON object>, no secrets or raw logs. The JSON summary is shown to the owner as-is: ' + OWNER_STYLE +
             'JSON requires verdict (pass/fail/blocked), summary, branch, head (full git SHA), cwd (absolute path), gates (array of {command,exitCode}), files (array of changed paths). '
             'Safety rules: never delete the filesystem root or your home directory, never run a fork bomb, never format or overwrite a disk, '
             'never pipe a downloaded script into a shell, never force-push main or master, never drop a database, and never read private credential files. '
@@ -1010,8 +1016,9 @@ class Bot:
                            'change branches, install dependencies, run builds, tests or the configured gates, commit, push or call external services. '
                            'Read files and use read-only commands only (git status/log/show/diff, ls, cat, grep and similar). '
                            'Run git status --short before and after; if anything changed, report blocked. '
-                           'Put the complete answer for the owner in summary, in Korean, with the file paths (and line numbers when useful) it is based on; '
-                           'say clearly what you could not confirm. If answering would require changing or running something, say so in summary instead of doing it. '
+                           'Put the answer to the question in summary (the owner reads it as the reply); keep evidence such as file paths and '
+                           'line numbers in your own log, not in summary. Say what you could not confirm only if it matters for the answer. '
+                           'If answering would require changing or running something, say so in summary instead of doing it. '
                            'Return cwd=the repo path, branch=the current branch name, head=the current HEAD SHA, files=[] and gates=[].')
         elif stage == 'preflight':
             # This agent inspects the source checkout, never the requested change.
