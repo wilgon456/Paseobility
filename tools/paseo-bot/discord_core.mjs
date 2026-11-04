@@ -425,6 +425,25 @@ export function planOutcome(plan) {
   return `${planSummary(plan).slice(0, MAX_MESSAGE - 200)}\n\n${label}`.slice(0, MAX_MESSAGE);
 }
 
+// A plan decision notice repeats what the edited card already says. It is skipped only when
+// this surface posted that card; without a card the notice is the only trace of the decision.
+export function shownOnCard(message, cards) {
+  const planId = message?.payload?.planOutcome;
+  return typeof planId === 'string' && PLAN_ID.test(planId) && !!cards && Object.hasOwn(cards, planId);
+}
+
+// A conversation the service never unblocks by itself is announced once per stuck state.
+export const STUCK_NOTICES = Object.freeze({
+  'job-unknown': '방금 보낸 메시지가 관리자에게 전달됐는지 확인하지 못했어요. 두 번 실행되지 않도록 다시 보내지 않았어요. `/resolve`를 누른 뒤 다시 보내 주세요.',
+  'manager-missing': '이 대화의 관리자를 찾지 못했어요. `/resolve`를 누르면 새 관리자로 이어서 대화해요.',
+});
+
+export function stuckTransition(shown, stuck) {
+  const current = typeof stuck === 'string' && Object.hasOwn(STUCK_NOTICES, stuck) ? stuck : '';
+  const before = typeof shown === 'string' ? shown : '';
+  return {post: current && current !== before ? STUCK_NOTICES[current] : '', next: current};
+}
+
 export function planCardEdit(plan) {
   return {content: planOutcome(plan), components: [], allowed_mentions: {parse: []}};
 }

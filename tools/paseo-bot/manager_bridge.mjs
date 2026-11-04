@@ -42,6 +42,35 @@ function createBackgroundWorkspace(prefix, cli, cwd) {
     });
   });
 }
+// Refused before any effect on the manager: the caller knows nothing was sent and may retry.
+// Every other failure keeps meaning "outcome unknown, never resend automatically".
+class Refused extends Error {}
+// Paseo collects the runtime of an agent that stayed idle for about an hour: it turns
+// "closed" but keeps its history and resumes from persistence. Neither state has a turn in flight.
+const RESTING = new Set(["idle", "closed"]);
+async function owned() {
+  const current = await client.fetchAgent({
+    agentId: req.agentId,
+    timeout: 10000,
+  });
+  if (
+    !current?.agent ||
+    current.agent.archivedAt ||
+    current.agent.labels?.paseo_bot_gui !== req.session
+  )
+    throw new Refused("ownership");
+  return current;
+}
+// An action that needs a live runtime reloads a collected one first. Archived agents never get
+// here (owned() refused them), so the refresh cannot unarchive anything.
+async function ready(current) {
+  if (current.agent.status === "closed") {
+    await client.refreshAgent(req.agentId);
+    current = await owned();
+  }
+  if (current.agent.status !== "idle") throw new Refused("busy");
+  return current;
+}
 async function main() {
   const module = process.env.PASEO_MULTI_HOST_CLIENT_MODULE;
   if (!client) {
@@ -180,16 +209,7 @@ async function main() {
       return { id, workspaceId: created?.agent?.workspaceId || null };
     });
   }
-  const current = await client.fetchAgent({
-    agentId: req.agentId,
-    timeout: 10000,
-  });
-  if (
-    !current?.agent ||
-    current.agent.archivedAt ||
-    current.agent.labels?.paseo_bot_gui !== req.session
-  )
-    throw Error("ownership");
+  let current = await owned();
   if (req.action === "permits") {
     const pending = Array.isArray(current.agent.pendingPermissions)
       ? current.agent.pendingPermissions
@@ -217,29 +237,29 @@ async function main() {
     return { result: req.decision };
   }
   if (req.action === "archive") {
-    // Only an idle manager owned by this conversation is archived.
-    if (current.agent.status !== "idle") throw Error("busy");
+    // Only a manager with no turn in flight is archived. A collected runtime ("closed") has none.
+    if (!RESTING.has(current.agent.status)) throw new Refused("busy");
     await client.archiveAgent(req.agentId);
     return { archived: true };
   }
   if (req.action === "tune") {
     // Per-turn tier switch (chat model ↔ planner model) on the same conversation.
-    if (current.agent.status !== "idle") throw Error("busy");
     if (typeof req.model !== "string" || !req.model || typeof req.thinking !== "string" || !req.thinking)
-      throw Error("action");
+      throw new Refused("action");
+    current = await ready(current);
     await client.setAgentModel(req.agentId, req.model);
     await client.setAgentThinkingOption(req.agentId, req.thinking);
     return { tuned: true };
   }
   if (req.action === "claim") {
-    // A pre-created idle spare becomes this conversation's manager by relabelling.
-    if (current.agent.status !== "idle") throw Error("busy");
-    if (typeof req.to !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(req.to)) throw Error("action");
+    // A pre-created spare becomes this conversation's manager by relabelling.
+    if (typeof req.to !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(req.to)) throw new Refused("action");
+    current = await ready(current);
     await client.updateAgent(req.agentId, { labels: { paseo_bot_gui: req.to } });
     return { claimed: true };
   }
   if (req.action === "send") {
-    if (current.agent.status !== "idle") throw Error("busy");
+    current = await ready(current);
     await client.sendMessage(req.agentId, req.prompt);
     return { accepted: true };
   }
@@ -277,11 +297,12 @@ async function main() {
   throw Error("action");
 }
 const FAILED = '{"ok":false,"error":"Manager transport unavailable; outcome may be unknown."}';
+const refusal = (error) => JSON.stringify({ ok: false, refused: error.message });
 if (!SERVE) {
   try {
     process.stdout.write(JSON.stringify({ ok: true, result: await main() }));
-  } catch {
-    process.stdout.write(FAILED);
+  } catch (error) {
+    process.stdout.write(error instanceof Refused ? refusal(error) : FAILED);
     process.exitCode = 1;
   } finally {
     await client?.close().catch(() => {});
@@ -295,7 +316,12 @@ if (!SERVE) {
     try {
       req = JSON.parse(line);
       out = JSON.stringify({ ok: true, result: await main() });
-    } catch {
+    } catch (error) {
+      if (error instanceof Refused) {
+        // The connection answered; only the request was refused.
+        process.stdout.write(refusal(error) + "\n");
+        continue;
+      }
       out = FAILED;
       // A failed call may mean a dead connection: reconnect (and re-verify identity) next time.
       await client?.close().catch(() => {});

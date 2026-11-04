@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/paseo-bot'))
-from gui_state import Conversations
+from gui_state import Conversations, ManagerRefused, bridge_result
 from gui_api import handle
 from paseo_bot import write_json
 
@@ -28,6 +28,7 @@ class FakeDaemon:
         self.agents = {}
         self.replies = []
         self.count = 0
+        self.refuse = {}  # action -> reason the bridge refuses with before touching the manager
 
     def __call__(self, config, action, **kw):
         self.calls.append(dict(action=action, provider=config.get('provider'), model=config.get('model'),
@@ -39,6 +40,8 @@ class FakeDaemon:
             return {'id': agent, 'workspaceId': 'ws'}
         if action == 'recover':
             return {'agents': [{'id': a} for a, v in self.agents.items() if v['label'] == kw['session'] and not v['archived']]}
+        if action in self.refuse:
+            raise ManagerRefused(self.refuse[action])
         owned = self.agents.get(kw.get('agentId'))
         if not owned or owned['label'] != kw['session'] or owned['archived']:
             raise ValueError('ownership')
@@ -68,7 +71,9 @@ def reply(request_id, text, tasks=(), **extra):
     return 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId=request_id, reply=text, tasks=list(tasks), **extra))
 
 
-class ManagerTierTests(unittest.TestCase):
+class ManagerHarness(unittest.TestCase):
+    """Shared state directory, fake daemon and helpers; holds no tests of its own."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name) / 'state'
@@ -98,6 +103,8 @@ class ManagerTierTests(unittest.TestCase):
         self.c.send(conversation, message, text)
         self.c.tick()  # creation rides along with the first request
 
+
+class ManagerTierTests(ManagerHarness):
     def test_first_turn_creates_the_manager_on_the_chat_tier(self):
         self.start()
         created = self.fake.actions('create')
@@ -236,3 +243,97 @@ class ManagerTierTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ManagerRefusalTests(ManagerHarness):
+    """A manager the bridge refuses before sending (collected, busy, gone) never strands a request."""
+
+    def test_refused_send_goes_back_to_the_queue_not_unknown(self):
+        self.start()
+        self.fake.replies.append(reply('m1', '안녕하세요'))
+        self.c.tick()
+        self.fake.refuse['send'] = 'busy'
+        self.c.send('session-1', 'm2', '두 시간 뒤 다시 묻기')
+        self.c.tick()
+        self.assertEqual(self.job_state('m2'), 'queued')  # nothing was sent, so it may be retried
+        self.assertEqual(self.c.conversation('session-1')['agentId'], 'agent-1')
+        del self.fake.refuse['send']
+        self.c.tick()
+        self.assertEqual(self.job_state('m2'), 'waiting')
+        self.fake.replies.append(reply('m2', '네'))
+        self.c.tick()
+        self.assertEqual(self.job_state('m2'), 'done')
+
+    def test_manager_gone_elsewhere_continues_with_a_fresh_manager(self):
+        self.start()
+        self.fake.replies.append(reply('m1', '안녕하세요'))
+        self.c.tick()
+        self.fake.refuse['send'] = 'ownership'
+        self.c.send('session-1', 'm2', '이어서')
+        self.c.tick()
+        self.assertEqual(self.job_state('m2'), 'queued')
+        self.assertIsNone(self.c.conversation('session-1')['agentId'])
+        del self.fake.refuse['send']
+        self.c.tick()  # a new manager rides along with the queued request and replays the chat
+        created = self.fake.actions('create')[-1]
+        self.assertEqual(created['session'], 'session-1')
+        self.assertIn('Earlier messages in THIS conversation', created['prompt'])
+        self.assertIn('GUI_REQUEST_ID=m2', created['prompt'])
+
+    def test_manager_refusing_past_the_bound_is_replaced(self):
+        self.start()
+        self.fake.replies.append(reply('m1', '안녕하세요'))
+        self.c.tick()
+        self.fake.refuse['send'] = 'busy'
+        self.c.send('session-1', 'm2', '이어서')
+        with self.c.db:
+            self.c.db.execute('UPDATE gui_jobs SET created=created-? WHERE id=?', (self.c.MANAGER_STUCK_SECONDS + 5, 'm2'))
+        self.c.tick()
+        self.assertEqual(self.job_state('m2'), 'queued')
+        self.assertIsNone(self.c.conversation('session-1')['agentId'])
+
+    def test_refused_tune_keeps_the_request_queued(self):
+        self.start(text='fixture에 기능 추가해줘')
+        self.fake.replies.append(reply('m1', '계획을 세울게요.', escalate='plan'))
+        self.c.tick()
+        self.fake.refuse['tune'] = 'busy'
+        self.c.tick()
+        self.assertEqual(self.job_state('m1.plan'), 'queued')
+        self.assertEqual(self.fake.actions('send')[-1:], [])  # the creation turn only
+
+    def test_unusable_spare_is_archived_and_the_thread_still_starts(self):
+        self.runtime(spare=True)
+        self.c.tick()
+        self.fake.refuse['claim'] = 'busy'
+        self.c.create('session-1')
+        self.c.send('session-1', 'm1', '안녕')
+        self.c.tick()  # refused claim: spare retired; the conversation creates its own manager
+        del self.fake.refuse['claim']
+        self.assertTrue(self.fake.agents['agent-1']['archived'])
+        created = [c for c in self.fake.actions('create') if c['session'] == 'session-1']
+        self.assertEqual(len(created), 1)
+        self.assertIn('GUI_REQUEST_ID=m1', created[0]['prompt'])
+
+    def test_plan_decision_notices_name_their_plan(self):
+        self.start(text='fixture에 기능 추가해줘')
+        self.fake.replies.append(reply('m1', '계획을 세울게요.', escalate='plan'))
+        self.c.tick()
+        self.c.tick()
+        self.fake.replies.append(reply('m1.plan', '이렇게 진행할게요.', [self.step]))
+        self.c.tick()
+        plan_id = self.c.db.execute('SELECT id FROM gui_plans').fetchone()[0]
+        self.c.reject('session-1', plan_id)
+        text, payload = self.c.db.execute("SELECT text,payload FROM gui_messages WHERE role='system' ORDER BY time DESC LIMIT 1").fetchone()
+        self.assertEqual(json.loads(payload), {'planOutcome': plan_id})
+        self.assertTrue(text.startswith('계획을 거절했어요.'))
+
+    def test_bridge_replies_separate_refusal_from_unknown(self):
+        self.assertEqual(bridge_result({'ok': True, 'result': {'accepted': True}}), {'accepted': True})
+        with self.assertRaises(ManagerRefused) as refused:
+            bridge_result({'ok': False, 'refused': 'busy'})
+        self.assertEqual(refused.exception.reason, 'busy')
+        self.assertEqual(ManagerRefused('bad reason!').reason, 'refused')
+        for unknown in ({'ok': False, 'error': 'transport'}, {'ok': True}, None, []):
+            with self.assertRaises(ValueError) as error:
+                bridge_result(unknown)
+            self.assertNotIsInstance(error.exception, ManagerRefused)

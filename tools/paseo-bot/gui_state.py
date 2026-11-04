@@ -139,6 +139,23 @@ def valid_id(value):
     return value
 
 
+class ManagerRefused(ValueError):
+    """The bridge refused before touching the manager: nothing was sent, so a retry is safe."""
+
+    def __init__(self, reason):
+        self.reason = reason if isinstance(reason, str) and reason.isidentifier() else 'refused'
+        super().__init__('Manager refused: ' + self.reason)
+
+
+def bridge_result(reply):
+    """Map one bridge reply to its result, ManagerRefused, or the unknown-outcome ValueError."""
+    if isinstance(reply, dict) and reply.get('ok') is False and 'refused' in reply:
+        raise ManagerRefused(reply['refused'])
+    if not isinstance(reply, dict) or not reply.get('ok') or 'result' not in reply:
+        raise ValueError('Manager outcome unavailable; do not automatically resend.')
+    return reply['result']
+
+
 def manager_rpc(config, action, **data):
     launch, module = fleet.runtime()
     env = dict(os.environ, ELECTRON_RUN_AS_NODE='1', PASEO_MULTI_HOST_CLIENT_MODULE=str(module),
@@ -148,11 +165,11 @@ def manager_rpc(config, action, **data):
                        text=True, encoding='utf-8', capture_output=True, env=env, timeout=65)
     try:
         reply = json.loads(r.stdout)
-        if r.returncode or not reply.get('ok'):
-            raise ValueError()
-        return reply['result']
-    except (ValueError, KeyError):
+    except ValueError:
         raise ValueError('Manager outcome unavailable; do not automatically resend.') from None
+    if r.returncode and not (isinstance(reply, dict) and 'refused' in reply):
+        raise ValueError('Manager outcome unavailable; do not automatically resend.')
+    return bridge_result(reply)
 
 
 class ResidentManagerRPC:
@@ -211,13 +228,11 @@ class ResidentManagerRPC:
             if line is None:
                 raise ValueError('closed')
             reply = json.loads(line)
-            if not reply.get('ok'):
-                raise ValueError('refused')
-            return reply['result']
         except (OSError, ValueError, KeyError, _queue.Empty):
             if not isinstance(self.proc, subprocess.Popen) or self.proc.poll() is not None:
                 self.close()
             raise ValueError('Manager outcome unavailable; do not automatically resend.') from None
+        return bridge_result(reply)
 
 
 MANAGER_NAME = re.compile(r'[a-z][a-z0-9-]{0,19}\Z')
@@ -430,7 +445,7 @@ class Conversations:
                     self.bot._submit(task, origin, commit=False)
                 self.db.execute('UPDATE gui_plans SET state=? WHERE id=?', ('approved', plan_id))
                 if not auto:  # an auto-started check was already announced by the manager's reply
-                    self.message(conversation, 'system', str(len(ids)) + '개 작업을 접수했어요. 진행 상황은 여기서 알려드릴게요.', {'taskIds': ids})
+                    self.message(conversation, 'system', str(len(ids)) + '개 작업을 접수했어요. 진행 상황은 여기서 알려드릴게요.', {'taskIds': ids, 'planOutcome': plan_id})
                 self.db.commit()
                 return {'taskIds': ids}
             except Exception:
@@ -442,7 +457,9 @@ class Conversations:
         with self.db:
             changed = self.db.execute('UPDATE gui_plans SET state=? WHERE id=? AND conversation=? AND state=?', ('cancelled', valid_id(plan_id), conversation, 'pending')).rowcount
             if changed:
-                self.message(conversation, 'system', '계획을 취소했습니다. 바꿀 내용을 대화로 알려주세요.')
+                # A surface that already shows the decision on the plan card (Discord) skips this
+                # notice by its planOutcome; one that drops decided plans (the GUI) shows it.
+                self.message(conversation, 'system', '계획을 거절했어요. 바꿀 내용을 대화로 알려주세요.', {'planOutcome': plan_id})
         return {'accepted': True}
 
     def remember(self, conversation, message_id, project):
@@ -583,6 +600,23 @@ class Conversations:
         log_event(status='manager-tuned', conversation=conversation, tier=tier, profile=name,
                   tuneMs=int((time.time() - began) * 1000))
 
+    def send_refused(self, conversation, job_id, reason):
+        """The bridge refused before sending: the request goes back to the queue, never to 'unknown'."""
+        created = self.db.execute('SELECT created FROM gui_jobs WHERE id=?', (job_id,)).fetchone()
+        # A manager that keeps refusing while the daemon reports it idle (for example an errored
+        # runtime) would hold the request forever; after a bounded wait it is replaced instead.
+        stuck = reason == 'busy' and created and time.time() - created[0] > self.MANAGER_STUCK_SECONDS
+        with self.db:
+            self.db.execute("UPDATE gui_jobs SET state='queued' WHERE id=? AND state='prepared'", (job_id,))
+            if reason == 'ownership' or stuck:
+                # The manager was archived or relabelled elsewhere: continue with a fresh one that
+                # replays this conversation, exactly as after an idle archive.
+                self.db.execute('UPDATE gui_conversations SET agent_id=NULL,status=? WHERE id=?', ('new', conversation))
+                self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('revive:' + conversation, '1'))
+                for key in ('tier:', 'profile:'):
+                    self.db.execute('DELETE FROM gui_meta WHERE key=?', (key + conversation,))
+        log_event(status='manager-send-refused', conversation=conversation, reason=reason, replaced=bool(stuck) or reason != 'busy')
+
     def retire_manager(self, config, conversation, agent):
         """The owner switched profiles: archive this idle manager; the next turn starts a new one."""
         self.rpc(config, 'archive', session=conversation, agentId=agent)
@@ -595,6 +629,7 @@ class Conversations:
 
     # ---- spare manager: a pre-created idle manager that a new thread claims instantly ----
 
+    MANAGER_STUCK_SECONDS = 120
     SPARE_MAX_AGE = 6 * 3600
     SPARE_RETRY = 600
 
@@ -650,7 +685,17 @@ class Conversations:
             return None
         self._set_meta('spare', None)
         try:
+            # A spare older than the daemon's idle collection is "closed"; the bridge reloads it.
             self.rpc(config, 'claim', session=spare['label'], agentId=spare['agentId'], to=conversation)
+        except ManagerRefused as refused:
+            # Never relabelled: this spare cannot serve (busy or gone). Retire it so it is not left
+            # behind, and let the conversation create its manager normally.
+            log_event(status='manager-spare-unusable', conversation=conversation, reason=refused.reason)
+            try:
+                self.rpc(config, 'archive', session=spare['label'], agentId=spare['agentId'])
+            except (ValueError, KeyError, OSError, subprocess.SubprocessError):
+                pass
+            return None
         except (ValueError, OSError, subprocess.SubprocessError):
             # The relabel may have landed: adopt it by the new label, otherwise create normally.
             try:
@@ -658,6 +703,7 @@ class Conversations:
             except (ValueError, KeyError, OSError, subprocess.SubprocessError):
                 matches = []
             if len(matches) != 1 or matches[0]['id'] != spare['agentId']:
+                log_event(status='manager-spare-claim-unknown', conversation=conversation)
                 return None
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('profile:' + conversation, name))
@@ -905,21 +951,27 @@ class Conversations:
                 found = self.rpc(config, 'find', session=conversation, agentId=agent, marker=marker)['found']
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('waiting' if found else 'unknown', job_id))
+                if not found:
+                    log_event(status='manager-job-unknown', conversation=conversation)
                 return
             if state == 'unknown':
                 return  # Shown as stuck in the GUI until the operator resolves it.
             if state == 'queued' and current['status'] == 'idle':
                 tier = None
-                if config.get('managers'):
-                    if self.conversation_manager(config, conversation) != self.manager_name(config):
-                        self.retire_manager(config, conversation, agent)
-                        return  # the next tick starts (or claims) a manager of the new profile
-                    tier = self.job_tier(job_id, kind)
-                    self.tune(config, conversation, agent, tier)
-                envelope = self.envelope(conversation, job_id, kind, prompt, tier)
-                with self.db:
-                    self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', job_id))
-                self.rpc(config, 'send', session=conversation, agentId=agent, prompt=envelope)
+                try:
+                    if config.get('managers'):
+                        if self.conversation_manager(config, conversation) != self.manager_name(config):
+                            self.retire_manager(config, conversation, agent)
+                            return  # the next tick starts (or claims) a manager of the new profile
+                        tier = self.job_tier(job_id, kind)
+                        self.tune(config, conversation, agent, tier)
+                    envelope = self.envelope(conversation, job_id, kind, prompt, tier)
+                    with self.db:
+                        self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', job_id))
+                    self.rpc(config, 'send', session=conversation, agentId=agent, prompt=envelope)
+                except ManagerRefused as refused:
+                    self.send_refused(conversation, job_id, refused.reason)
+                    return
                 created_at = self.db.execute('SELECT created FROM gui_jobs WHERE id=?', (job_id,)).fetchone()
                 log_event(status='manager-sent', conversation=conversation, path='send',
                           queuedMs=int((time.time() - (created_at[0] if created_at else time.time())) * 1000))
@@ -934,7 +986,7 @@ class Conversations:
                 except (ValueError, KeyError, TypeError):
                     with self.db:
                         self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('invalid', job_id))
-                        self.message(conversation, 'system', '봇의 응답을 안전하게 확인하지 못했습니다. 작업은 접수하지 않았습니다. 내용을 다시 알려주세요.')
+                        self.message(conversation, 'system', '봇의 답을 안전하게 확인하지 못했어요. 작업은 접수하지 않았어요. 내용을 다시 알려 주세요.')
                 # A turn can end with a request still queued; deny it before the next tick.
                 if current.get('pendingPermissions') != 0:
                     self.deny_manager_permissions(config, conversation, agent)

@@ -123,6 +123,7 @@ function normalizeState(value) {
       failures: Number.isInteger(record.failures) && record.failures >= 0 ? record.failures : 0,
       dormant: record.dormant === true,
       sync: core.syncSummary(record.sync),
+      stuckNotice: typeof record.stuckNotice === 'string' ? record.stuckNotice : '',
     };
   }
   const delivered = {};
@@ -1039,6 +1040,12 @@ async function deliver(threadId, record, synced) {
   const conversationId = record.conversationId;
   const messages = core.undelivered(synced?.messages, state.delivered[conversationId]);
   for (const message of messages) {
+    if (core.shownOnCard(message, state.cards)) {
+      // The edited plan card below carries this decision; posting it again would repeat it.
+      state.delivered[conversationId] = core.cappedAppend(state.delivered[conversationId], [message.id], 500);
+      saveState();
+      continue;
+    }
     const text = core.formatOutbound(message);
     if (!text.trim()) continue;
     const permission = message?.payload?.permission;
@@ -1104,6 +1111,12 @@ async function deliver(threadId, record, synced) {
       touch(record);
       saveState();
     }
+  }
+  const stuck = core.stuckTransition(record.stuckNotice, synced?.stuck);
+  if (stuck.post) await postMessage(threadId, stuck.post);
+  if (stuck.next !== (record.stuckNotice || '')) {
+    record.stuckNotice = stuck.next;
+    saveState();
   }
   // A pending card whose plan left the 10-plan window for a day is expired, not polled forever.
   const listed = new Set((Array.isArray(synced?.plans) ? synced.plans : []).map(plan => plan?.id));

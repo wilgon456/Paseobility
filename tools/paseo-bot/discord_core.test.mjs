@@ -539,3 +539,22 @@ test('manager command shows and switches the manager profile', () => {
   assert.match(c.managerText({...info, changed: false}, true), /^이미 Codex 관리자를/);
   assert.match(c.managerText(null), /잡담·질문: \?/);
 });
+
+test('plan decisions already shown on a posted card are not posted again', () => {
+  const cards = {'plan-abc': {conversationId: 'd-1', messageId: '1', state: 'pending'}};
+  assert.equal(c.shownOnCard({role: 'system', text: '계획을 거절했어요.', payload: {planOutcome: 'plan-abc'}}, cards), true);
+  // Without its card here the notice is the only trace of the decision, so it is still posted.
+  assert.equal(c.shownOnCard({role: 'system', text: '계획을 거절했어요.', payload: {planOutcome: 'plan-zzz'}}, cards), false);
+  assert.equal(c.shownOnCard({role: 'system', text: '작업과 확인을 마쳤어요.', payload: {}}, cards), false);
+  assert.equal(c.shownOnCard({role: 'system', text: 'x', payload: {planOutcome: '__proto__'}}, cards), false);
+});
+
+test('a stuck conversation is announced once per stuck state', () => {
+  const first = c.stuckTransition('', 'job-unknown');
+  assert.ok(first.post.includes('/resolve'));
+  assert.equal(first.next, 'job-unknown');
+  assert.deepEqual(c.stuckTransition('job-unknown', 'job-unknown'), {post: '', next: 'job-unknown'});
+  assert.deepEqual(c.stuckTransition('job-unknown', ''), {post: '', next: ''});
+  assert.ok(c.stuckTransition('job-unknown', 'manager-missing').post.includes('관리자를 찾지 못했어요'));
+  assert.deepEqual(c.stuckTransition(undefined, 'not-a-state'), {post: '', next: ''});
+});

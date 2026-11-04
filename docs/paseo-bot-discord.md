@@ -250,6 +250,10 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
   처리는 그 뒤에 해요.
 - 계획이 `pending`을 벗어나면(approved/cancelled/superseded) 카드에서 버튼을
   없애고 결과 문구로 바꿔요.
+- 접수·거절 알림(`payload.planOutcome`)은 그 계획 카드를 이 서비스가 올렸을 때
+  보내지 않아요. 카드가 이미 결과를 보여 주기 때문이에요. 카드가 없으면(올리기
+  실패 등) 알림이 결정을 남기는 유일한 흔적이라 그대로 보내요. GUI는 결정된
+  계획을 목록에서 빼므로 알림을 보여 줘요.
 - 버튼을 누른 사람이 owner가 아니거나, 다른 길드/채널/쓰레드면 아무 것도
   하지 않고 "권한이 없어요"를 본인에게만 보여 줘요.
 
@@ -370,9 +374,25 @@ AI가 쓴 기억 중 **중요한 항목만** Discord 버튼으로 승인해요. 
   보관하고, 만들기에 실패하면 10분 뒤에 다시 시도해요.
 - **즉시 감지:** `gui_serve`는 대기 중에도 0.2초마다 새 요청을 확인해서, 다음
   주기까지 기다리지 않고 바로 처리해요.
+- **쉬던 관리자:** Paseo 데몬은 한 시간쯤 쓰지 않은 에이전트의 런타임을 거둬요
+  (상태 `closed`, 대화 기록은 남아요). 관리자 다리는 `send`·`tune`·`claim` 전에
+  `closed` 관리자를 `refreshAgent`로 다시 불러오고, `archive`는 불러오지 않고
+  바로 보관해요. 보관됐거나 라벨이 다른 에이전트는 불러오지 않아요.
+- **보내기 전 거절:** 다리가 관리자를 건드리기 전에 거절하면(`busy`·`ownership`
+  ·`action`) `{"ok":false,"refused":…}`로 답하고 Python은 `ManagerRefused`를
+  받아요. 아무 것도 보내지 않았으니 요청은 `unknown`이 아니라 `queued`로
+  돌아가요. `ownership`이거나 `busy`가 2분을 넘으면 새 관리자로 이어 가요
+  (최근 대화 12개를 넘겨줘요). 그 밖의 실패는 지금처럼 "결과 모름, 다시 보내지
+  않음"이에요.
+- **예비 관리자 인계 실패:** 인계가 거절되면 그 예비 관리자를 보관하고 대화는
+  관리자를 새로 만들어요(`manager-spare-unusable`). 남겨 두지 않아요.
+- **멈춘 대화 안내:** `sync`의 `stuck`이 `job-unknown`이나 `manager-missing`이
+  되면 스레드에 한 번 알리고 `/resolve`를 안내해요. 같은 상태로는 다시 알리지
+  않고, 풀리면 기록을 지워요(`stuckNotice`).
 - **로그:** `manager-tuned`(tier, tuneMs), `manager-escalated`,
   `manager-spare-ready`(createMs), `manager-spare-claimed`, `manager-retired`,
-  `manager-profile-set`.
+  `manager-profile-set`, `manager-send-refused`(reason, replaced),
+  `manager-spare-unusable`, `manager-spare-claim-unknown`, `manager-job-unknown`.
 
 ## 8. 보안 모델
 

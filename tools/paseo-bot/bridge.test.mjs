@@ -40,7 +40,7 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  }};`);
  fs.writeFileSync(path.join(dir,'index.js'),`import fs from 'node:fs';fs.writeFileSync(process.env.ARGV_FILE,JSON.stringify({argv:process.argv.slice(2),host:process.env.PASEO_HOST,home:process.env.PASEO_HOME,caller:process.env.PASEO_AGENT_ID,workspace:process.env.PASEO_WORKSPACE_ID}));console.log(JSON.stringify({agentId:'owned',cwd:'/worktree'}));`);
  return {dir,call(req){
-  const r=spawnSync(process.execPath,[bridge],{input:JSON.stringify({host:{endpoint:'tcp://fixture.invalid:1234?password=DO_NOT_PRINT_SECRET',serverId:'srv-fixture'},...req}),env:{...process.env,PASEO_MULTI_HOST_CLIENT_MODULE:module,PASEO_HOME:'conflicting-home',PASEO_AGENT_ID:'parent',PASEO_WORKSPACE_ID:'parent-workspace',ARGV_FILE:path.join(dir,'argv.json'),PERMIT_FILE:path.join(dir,'permit.json')},encoding:'utf8',timeout:5000});
+  const r=spawnSync(process.execPath,[bridge],{input:JSON.stringify({host:{endpoint:'tcp://fixture.invalid:1234?password=DO_NOT_PRINT_SECRET',serverId:'srv-fixture'},...req}),env:{...process.env,PASEO_MULTI_HOST_CLIENT_MODULE:module,PASEO_HOME:'conflicting-home',PASEO_AGENT_ID:'parent',PASEO_WORKSPACE_ID:'parent-workspace',ARGV_FILE:path.join(dir,'argv.json'),PERMIT_FILE:path.join(dir,'permit.json')},encoding:'utf8',timeout:20000});  // above stop's own 5 s status wait
   assert.ok(!r.stdout.includes('DO_NOT_PRINT_SECRET'));
   return JSON.parse(r.stdout);
  }};
