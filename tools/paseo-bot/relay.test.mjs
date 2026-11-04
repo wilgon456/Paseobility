@@ -97,8 +97,20 @@ test('provider replacement moves a heartbeat and preserves remaining runs',async
   assert.equal(created[0].target.agentId,f.relay.map.t.agentId);assert.equal(created[0].maxRuns,2);assert.deepEqual(deleted,['routine-old']);assert.equal(fs.readFileSync(path.join(f.dir,'home','ROUTINES.md'),'utf8'),'routine-new');
 });
 test('a quiet watchdog heartbeat never sends a Discord message',async t=>{
-  const f=fixture(t),id=await f.relay.input('t','one');f.entries[id]=[entry(1,'\n\n---\n\n__PASEO_BOT_WATCH_NOTHING__')];await f.relay.poll('t');
+  const f=fixture(t),id=await f.relay.input('t','one');f.entries[id]=[entry(1,'\n\n***\n___\n\n__PASEO_BOT_WATCH_NOTHING__')];await f.relay.poll('t');
   assert.deepEqual(f.output,[]);assert.equal(f.relay.map.t.delivered,1);
+});
+test('assistant replies lose leading separators and surrounding whitespace',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');
+  f.entries[id]=[
+    Object.assign(entry(1,'\n\n---\n\n첫 번째 답변\n\n'),{turnId:'one'}),
+    Object.assign(entry(2,'  ***  \r\n___\n---\n\n두 번째\n---\n본문  '),{turnId:'two'}),
+    Object.assign(entry(3,'\n___\n***\n---\n  '),{turnId:'three'}),
+    Object.assign(entry(4,'  ---제목은 유지  '),{turnId:'four'}),
+  ];
+  await f.relay.poll('t');await f.relay.poll('t');
+  assert.deepEqual(f.output.map(x=>x[1]),['첫 번째 답변','두 번째\n---\n본문','---제목은 유지']);
+  assert.equal(f.relay.map.t.delivered,4);
 });
 test('file requests deliver bytes to their thread and remain pending on transport failure',async t=>{
   const f=fixture(t),id=await f.relay.input('t','one');const file=path.join(f.dir,'picture.png');fs.writeFileSync(file,Buffer.from([1,2,3]));

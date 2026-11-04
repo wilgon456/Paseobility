@@ -59,6 +59,9 @@ export async function routedClient(origin,serverId) {
   try { await client.connect(); return client; } catch(e) { await client.close().catch(()=>{});throw e; }
 }
 const resting = status => ['idle','closed','error'].includes(status);
+function normalizeAssistantText(text) {
+  return text.trim().replace(/^(?:(?:-{3,}|\*{3,}|_{3,})[ \t]*(?:\r\n|\n|\r|$)\s*)+/,'').trim();
+}
 export class Relay {
   constructor({client,stateDir,home,source,config={},send,typing=()=>{},remoteClient=routedClient}) {
     this.client=client; this.file=path.join(stateDir,'threads.json'); const state=loadState(this.file);this.map=state.threads;this.lastSeen=state.lastSeen;
@@ -167,7 +170,7 @@ export class Relay {
     const page=await this.timeline(agent.id,record.scan);
     const entries=page.entries || [];
     let pending=null,turn=null,scanned=record.delivered;
-    const flush=async()=>{if(!pending)return;const text=pending.item.text.trim().replace(/^(?:---\s*)+/,'');if(text!=='__PASEO_BOT_WATCH_NOTHING__')await this.sendOutput(thread,pending.item.text,{agentId:agent.id,seq:pending.seqEnd});record.delivered=Math.max(record.delivered,pending.seqEnd);this.persist();pending=null;};
+    const flush=async()=>{if(!pending)return;const text=normalizeAssistantText(pending.item.text);if(text && text!=='__PASEO_BOT_WATCH_NOTHING__')await this.sendOutput(thread,text,{agentId:agent.id,seq:pending.seqEnd});record.delivered=Math.max(record.delivered,pending.seqEnd);this.persist();pending=null;};
     for(const entry of entries){
       if(!Number.isSafeInteger(entry.seqEnd) || entry.seqEnd<=record.delivered)continue;
       if(entry.item?.type==='user_message' || (entry.turnId && turn && entry.turnId!==turn))await flush();
