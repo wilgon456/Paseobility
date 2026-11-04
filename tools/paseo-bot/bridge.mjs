@@ -5,6 +5,8 @@ import {pathToFileURL} from 'node:url';
 import {spawn} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 const req = JSON.parse(fs.readFileSync(0, 'utf8'));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
+const STOPPED = new Set(['idle','error','closed']);
 let client;
 let stage='connect';
 function endpoint(h) {
@@ -200,13 +202,117 @@ async function main() {
     const error = typeof lastError === 'string' ? lastError : (typeof lastError?.message === 'string' ? lastError.message : '');
     const quota = /(?:rate[ _-]?limit|usage limit|quota exceeded|insufficient.quota|too many requests|\b429\b|credit balance|out of credits)/i.test(error);
     const unavailable = /(?:model.{0,60}(?:not found|not available|unsupported|does not exist)|(?:unknown|invalid) model)/i.test(error);
-    return {status:r.status,message:r.lastMessage ?? '',errorKind:final.agent.status === 'error' ? (quota?'quota':unavailable?'model-unavailable':'other') : '',workspaceId:current.agent.workspaceId,cwd:current.agent.cwd};
+    return {status:r.status,message:r.lastMessage ?? '',errorKind:final.agent.status === 'error' ? (quota?'quota':unavailable?'model-unavailable':'other') : '',workspaceId:current.agent.workspaceId,cwd:current.agent.cwd,pendingPermissions:Array.isArray(final.agent.pendingPermissions) ? Math.min(final.agent.pendingPermissions.length,20) : null};
   }
   if(req.action==='repair') {
     const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
     if(current?.agent?.labels?.paseo_bot_attempt!==req.attempt || current.agent.status!=='idle')throw Error('repair ownership/state');
     await client.sendMessage(req.agentId,req.prompt);
     return {accepted:true};
+  }
+  if(req.action==='stop') {
+    // Interrupt only a bot-owned agent's current turn. The task label is always
+    // required and must match the caller's attempt when supplied.
+    if(typeof req.agentId!=='string' || !req.agentId)throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    await client.cancelAgent(req.agentId);
+    let latest=current;
+    for(let i=0;i<25;i++) {
+      latest=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+      if(!latest?.agent)throw Error('ownership');
+      if(STOPPED.has(latest.agent.status))break;
+      if(i<24)await sleep(200);
+    }
+    return {stopped:true,status:latest.agent.status};
+  }
+  if(req.action==='send') {
+    // Same mechanism as repair, for an explicit owner message (resume).
+    if(typeof req.agentId!=='string' || !req.agentId || typeof req.prompt!=='string'
+       || !req.prompt.trim() || req.prompt.length>40000)throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    if(current.agent.status!=='idle')throw Error('ownership');
+    await client.sendMessage(req.agentId,req.prompt);
+    return {accepted:true};
+  }
+  if(req.action==='logs') {
+    // Read-only tail of the agent timeline. Output is bounded here and scrubbed
+    // again by the runner; raw transport errors never reach the caller.
+    if(typeof req.agentId!=='string' || !req.agentId)throw Error('action');
+    const tail=req.tail===undefined ? 40 : req.tail;
+    if(!Number.isInteger(tail) || tail<1 || tail>200)throw Error('action');
+    if(req.filter!==undefined && req.filter!=='tools' && req.filter!=='commands')throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    const timeline=await client.fetchAgentTimeline(req.agentId,{direction:'tail',limit:tail,projection:'projected'});
+    if(!timeline || timeline.error || !Array.isArray(timeline.entries))throw Error('schema');
+    const lines=[];
+    for(const entry of timeline.entries) {
+      const item=entry?.item;
+      if(!item || typeof item!=='object')continue;
+      let line='';
+      if(item.type==='user_message')line='user: '+String(item.text ?? '');
+      else if(item.type==='assistant_message')line='assistant: '+String(item.text ?? '');
+      else if(item.type==='tool_call') {
+        const detail=item.detail && typeof item.detail==='object' ? String(item.detail.summary ?? item.detail.text ?? '') : '';
+        line='tool '+String(item.name ?? '')+' ['+String(item.status ?? '')+']'+(detail?' '+detail:'');
+      } else if(item.type==='error')line='error: '+String(item.message ?? '');
+      else if(item.type==='notification')line='notice: '+String(item.message ?? '');
+      else if(item.type==='plan')line='plan: '+String(item.text ?? '');
+      else continue;
+      if(req.filter==='tools' && item.type!=='tool_call')continue;
+      if(req.filter==='commands') {
+        // Safety scanning: only the command input of shell-like tools, never tool
+        // output or file contents an agent merely read.
+        if(item.type!=='tool_call' || !/shell|bash|exec|command|terminal|powershell|pwsh|cmd/i.test(String(item.name ?? '')))continue;
+        const input=item.detail && typeof item.detail==='object' ? String(item.detail.summary ?? '') : '';
+        line=input;
+      }
+      line=line.replace(/\s+/g,' ').trim();
+      if(line)lines.push(line.slice(0,500));
+    }
+    let text=lines.join('\n');
+    if(text.length>20000) {
+      text=text.slice(text.length-20000);
+      const cut=text.indexOf('\n');
+      if(cut>=0)text=text.slice(cut+1);
+    }
+    return {text};
+  }
+  if(req.action==='permits') {
+    // Pending approval requests for a bot-owned agent, bounded for chat display.
+    if(typeof req.agentId!=='string' || !req.agentId)throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    const pending=Array.isArray(current.agent.pendingPermissions) ? current.agent.pendingPermissions : [];
+    return pending.slice(0,20).map(p=>({
+      id:String(p?.id ?? '').slice(0,200),
+      name:String(p?.name ?? '').slice(0,200),
+      description:String(p?.description ?? '').slice(0,1000),
+    })).filter(p=>p.id);
+  }
+  if(req.action==='permit') {
+    // Answer exactly one pending request. The id and decision are validated
+    // against the live agent before anything is sent to the provider.
+    if(typeof req.agentId!=='string' || !req.agentId || typeof req.requestId!=='string' || !req.requestId)throw Error('action');
+    if(req.decision!=='allow' && req.decision!=='deny')throw Error('action');
+    const current=await client.fetchAgent({agentId:req.agentId,timeout:10000});
+    if(!current?.agent)throw Error('ownership');
+    const label=current.agent.labels?.paseo_bot_attempt;
+    if(typeof label!=='string' || !label || (req.attempt && label!==req.attempt))throw Error('ownership');
+    const pending=Array.isArray(current.agent.pendingPermissions) ? current.agent.pendingPermissions : [];
+    if(!pending.some(p=>p?.id===req.requestId))throw Error('permission');
+    await client.respondToPermission(req.agentId,req.requestId,{behavior:req.decision});
+    return {result:req.decision};
   }
   if(req.action==='launch') {
     stage='profile';
@@ -239,7 +345,11 @@ async function main() {
     if(!entry?.enabled || entry.status!=='ready')throw Error('provider unavailable');
     // Bot agents always run in the provider's most permissive mode when offered: no approval prompts.
     const permissive={codex:'full-access',claude:'bypassPermissions',opencode:'build'}[p.provider];
-    const mode=permissive && entry.modes?.some(m=>m.id===permissive) ? permissive : (p.modeId ?? entry.defaultModeId);
+    // Read-only inspection: the provider's narrowest offered mode; the runner denies any approval request.
+    const readOnly={codex:'auto',claude:'plan',opencode:'plan'}[p.provider];
+    const mode=req.readOnly===true
+      ? (readOnly && entry.modes?.some(m=>m.id===readOnly) ? readOnly : (p.modeId ?? entry.defaultModeId))
+      : (permissive && entry.modes?.some(m=>m.id===permissive) ? permissive : (p.modeId ?? entry.defaultModeId));
     if(mode && !entry.modes?.some(m=>m.id===mode))throw Error('unknown mode');
     const argv=['run','--no-wait','--json','--provider',p.provider,'--model',p.model,'--cwd',req.repo,'--title',req.title,'--label','paseo_bot_attempt='+req.attempt];
     if(p.thinkingOptionId)argv.push('--thinking',p.thinkingOptionId);
@@ -277,7 +387,7 @@ async function main() {
 }
 try {process.stdout.write(JSON.stringify({ok:true,result:await main()}));}
 catch(e) {
-  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt','project receipt','pagination','action','ownership','cleanup terminal create','cleanup terminal capture','cleanup helper error','cleanup terminal timeout','cleanup terminal close','cleanup receipt']);
+  const known=new Set(['identity','connection','profile','profile unsupported','provider unavailable','unknown mode','launch','launch outcome unknown','schema','receipt','workspace receipt','project receipt','pagination','action','ownership','permission','cleanup terminal create','cleanup terminal capture','cleanup helper error','cleanup terminal timeout','cleanup terminal close','cleanup receipt']);
   // Fixed diagnostic vocabulary only. Never return raw transport/CLI messages.
   const reason=known.has(e?.message)?e.message.replaceAll(' ','-'):'operation';
   process.stdout.write(JSON.stringify({ok:false,stage,reason,error:'Paseo operation failed; inspect private configuration.'}));process.exitCode=1;

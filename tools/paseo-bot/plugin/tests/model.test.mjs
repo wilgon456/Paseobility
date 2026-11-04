@@ -1,12 +1,21 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {laneOf,requesterLabel,safePr,duration,relativeTime,modelLabel,stageProgress} from '../shared/model.ts';
+import {laneOf,requesterLabel,safePr,duration,relativeTime,modelLabel,stageProgress,stateLabel,blockedKindLabel} from '../shared/model.ts';
 import {rowSchema,selectionSchema,taskSchema,workflowSchema} from '../shared/contracts.ts';
 test('authoritative state groups never confuse active review with attention',()=>{
   assert.equal(laneOf('running'),'running');assert.equal(laneOf('repairing'),'running');assert.equal(laneOf('blocked'),'attention');assert.equal(laneOf('new-unknown-state'),'attention');assert.equal(laneOf('passed'),'success');
 });
+test('paused and held states keep their labels and lanes',()=>{
+  assert.equal(stateLabel('paused'),'일시 정지');assert.equal(stateLabel('held'),'보류');assert.equal(stateLabel('new-unknown-state'),'new-unknown-state');
+  assert.equal(stateLabel('waiting-permission'),'권한 확인');assert.equal(laneOf('waiting-permission'),'running');
+  assert.equal(laneOf('paused'),'running');assert.equal(laneOf('held'),'waiting');
+  assert.equal(blockedKindLabel('needs_input'),'입력 필요');assert.equal(blockedKindLabel('cancelled'),'취소됨');assert.equal(blockedKindLabel('safety'),'안전 차단');assert.equal(blockedKindLabel('unknown-kind'),'');
+  assert.equal(rowSchema.parse({id:'r1',state:'paused',title:'t',project:'p',updatedAt:1}).blockedKind,'');
+  assert.equal(rowSchema.parse({id:'r2',state:'blocked',title:'t',project:'p',updatedAt:1,blockedKind:'verdict'}).blockedKind,'verdict');
+  assert.equal(rowSchema.parse({id:'r3',state:'blocked',title:'t',project:'p',updatedAt:1,blockedKind:'safety'}).blockedKind,'safety');
+});
 test('producer badges and temporal labels preserve unknowns',()=>{
-  assert.equal(requesterLabel('grok'),'Grok 봇');assert.equal(requesterLabel('legacy'),'이전 작업');assert.equal(duration(100,220),'2분 0초');assert.equal(relativeTime(0),'기록 없음');
+  assert.equal(requesterLabel('grok'),'이전 작업');assert.equal(requesterLabel('discord'),'Discord');assert.equal(requesterLabel('legacy'),'이전 작업');assert.equal(requesterLabel('someday-new-producer'),'출처 미확인');assert.equal(duration(100,220),'2분 0초');assert.equal(relativeTime(0),'기록 없음');
 });
 test('PR actions only allow literal HTTPS GitHub pull URLs',()=>{
   assert.equal(safePr('https://github.com/wilgon456/Paseobility/pull/34'),'https://github.com/wilgon456/Paseobility/pull/34');for(const url of ['javascript:alert(1)','file:///tmp/a','https://github.com@evil.test/a/b/pull/1','https://github.com/a/b/pull/1?token=x'])assert.equal(safePr(url),'');

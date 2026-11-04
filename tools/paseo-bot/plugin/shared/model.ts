@@ -1,8 +1,11 @@
 export const stateLabels: Record<string, string> = {
   queued: "대기",
+  held: "보류",
   ready: "준비",
   dispatching: "배정 중",
   running: "실행 중",
+  "waiting-permission": "권한 확인",
+  paused: "일시 정지",
   repairing: "응답 확인 중",
   passed: "검증 통과",
   failed: "실패",
@@ -11,6 +14,18 @@ export const stateLabels: Record<string, string> = {
   closed: "종료",
 };
 export const stateLabel = (state: string) => stateLabels[state] ?? state;
+export const blockedKindLabels: Record<string, string> = {
+  needs_input: "입력 필요",
+  capability: "환경 문제",
+  dependency: "선행 대기",
+  timeout: "시간 초과",
+  evidence: "확인 실패",
+  verdict: "진행 불가",
+  cancelled: "취소됨",
+  transient: "연결 문제",
+  safety: "안전 차단",
+};
+export const blockedKindLabel = (kind: string) => blockedKindLabels[kind] ?? "";
 export const makeTaskId = () =>
   `gui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 export const stageLabel = (stage: string) =>
@@ -43,9 +58,12 @@ export function laneOf(state: string) {
     (
       {
         queued: "waiting",
+        held: "waiting",
         ready: "waiting",
         dispatching: "running",
         running: "running",
+        "waiting-permission": "running",
+        paused: "running",
         repairing: "running",
         passed: "success",
         failed: "failed",
@@ -59,9 +77,11 @@ export function requesterLabel(source: string) {
     (
       {
         gui: "실장님 GUI",
-        grok: "Grok 봇",
+        discord: "Discord",
         cli: "CLI",
         legacy: "이전 작업",
+        // Retired Grok producer: historical rows read as previous work.
+        grok: "이전 작업",
       } as Record<string, string>
     )[source] ?? "출처 미확인"
   );

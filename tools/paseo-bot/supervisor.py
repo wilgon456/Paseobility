@@ -1,6 +1,7 @@
-"""Opt-in resident supervisor for the bot runtime (dispatcher + GUI service) on Windows, macOS and Linux.
+"""Opt-in resident supervisor for the bot runtime (dispatcher, GUI and Discord services) on Windows, macOS and Linux.
 
-`run` stays resident and keeps `paseo_bot.py serve` and `gui_serve.py serve` alive:
+`run` stays resident and keeps `paseo_bot.py serve`, `gui_serve.py serve` and
+`discord_serve.py serve` alive:
 
 - Exit: restarted about one second later. Exits shortly after a start count as
   consecutive failures and back off (1, 2, 4 ... 300 s); a long healthy run
@@ -39,7 +40,7 @@ import sys
 import time
 from xml.sax.saxutils import escape
 
-SERVICES = ('paseo_bot', 'gui_serve')
+SERVICES = ('paseo_bot', 'gui_serve', 'discord_serve')
 HEALTHY_SECONDS = 300
 MAX_DELAY = 300
 POLL_SECONDS = 1.0
@@ -227,6 +228,10 @@ def heartbeat(state, name, pid):
     """Last tick time written by the running service, or None when unknown."""
     if name == 'paseo_bot':
         health = read_json(state / 'health.json', {})
+        return health.get('lastTickAt') if health.get('pid') == pid else None
+    if name == 'discord_serve':
+        # The Discord service parents a Node child; its own health file carries its pid.
+        health = read_json(state / 'discord-health.json', {})
         return health.get('lastTickAt') if health.get('pid') == pid else None
     try:
         db = sqlite3.connect(f'file:{state / "queue.sqlite3"}?mode=ro', uri=True, timeout=2)

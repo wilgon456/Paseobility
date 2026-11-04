@@ -9,12 +9,14 @@ authenticated Tailscale SSH without an HTTP listener.
 
 ## Architecture and contract
 
-Grok Bot → trusted CLI intake over Tailscale SSH → SQLite inbox → resident Python
-loop → destination Paseo CLI `run` → JSON file outbox → Grok Bot reads/polls.
-No HTTP listener, webhook callback, Slack client or bot token is needed. File
-intake avoids adding an unauthenticated network surface. SSH authentication and
-the private OS account are the admission boundary: this is a trusted developer
-assistant, not a sandbox for arbitrary untrusted users or repositories.
+Producers (CLI, GUI, [Discord gateway](paseo-bot-discord.md)) → trusted CLI intake over
+Tailscale SSH → SQLite inbox → resident Python loop → destination Paseo CLI
+`run` → JSON file outbox → producers read/poll results.
+No HTTP listener or Slack client is needed. File intake avoids adding an
+unauthenticated network surface. SSH authentication and the private OS account
+are the admission boundary: this is a trusted developer assistant, not a sandbox
+for arbitrary untrusted users or repositories. Discord is an optional chat front
+end for the same manager/plan flow: see [the Discord gateway](paseo-bot-discord.md).
 
 The resident runtime is a deterministic five-second ticker. Models run only for
 admitted tasks, in fresh Paseo agents. A visible manager agent can use
@@ -127,7 +129,10 @@ paths and confirming commands before setting `enabled: true`. Every target has:
 | `publish` | `none` (default) or `draft-pr`: publish passed work as a draft PR |
 
 Top-level `transientGraceSeconds` (default 900) is how long a lost connection may
-last before an in-flight task is blocked; `phaseTimeoutSeconds` bounds each phase.
+last before an in-flight task is blocked; `phaseTimeoutSeconds` bounds each phase,
+`permissionTimeoutSeconds` (default 300) bounds an unanswered permission prompt,
+and `resumeGraceSeconds` (default 45) tolerates the old idle message right after
+a resume. Top-level `safety` adds or disables hardline rules.
 
 `machineAliases` can map friendly names such as `MacBook` and `VAXPORT` to
 registered `MAC_HOME` and `VAX_COM` labels; matching still verifies server identity.
@@ -140,12 +145,21 @@ that same target. Host identity is checked again for every RPC. Running tasks
 retain their admitted target/gates snapshot even if the registry later changes.
 The base is an explicit resolved SHA; no unconditional `origin/main` assumption.
 
-Grok submits a project ID, not an arbitrary repo path or gate command. The JSON
-schema only accepts `id`, `project`, `title`, `prompt`, optional `kind` and optional
-`machine`. `kind` maps `sync→git-sync`, `hard→coding-hard`,
-`refactor→refactor-bulk`, `gpt→gpt-task`. If omitted, bounded keyword rules pick
-refactor/architecture/sync work, otherwise gpt. Explicit kinds always win. Sync
-uses the same worktree/review pipeline and does not authorize a push.
+A task submits a project ID, not an arbitrary repo path or gate command. The
+JSON schema only accepts `id`, `project`, `title`, `prompt`, `kind`, `machine`,
+`pr_url`, `requester`, `model`, `effort`, `modelReason` and `workflow`. `kind`
+maps `sync→git-sync`, `hard→coding-hard`, `refactor→refactor-bulk`,
+`gpt→gpt-task`. If omitted, bounded keyword rules pick refactor/architecture/sync
+work, otherwise gpt. Explicit kinds always win. Sync uses the same
+worktree/review pipeline and does not authorize a push.
+
+### Workflows: inspect, daily, verified
+
+- `inspect` — a read-only question about a project. One `inspect` stage in the registered source checkout (no worktree, gates, snapshot or cleanup), launched with `readOnly` so the bridge picks the provider's narrowest mode (Codex `auto`, Claude/OpenCode `plan`); every permission request is denied automatically and a receipt reporting changed files or gate runs blocks the task. The answer is the receipt `summary` (Korean), surfaced as the task result. Recorded with `verification: read-only`.
+- `daily` — preparation + implementation, self-checked (default for changes).
+- `verified` — four stages with independent review; only when the owner selects it.
+
+Chat selection `workflow: auto` (default) lets the manager choose `inspect` or `daily` per task; plans made only of `inspect` tasks are admitted without a click unless `gui-runtime.json` sets `autoAdmitInspect: false`. Workers may push a task branch and open a PR; merging into the default branch, deploying, publishing or purchasing happens only when the task text explicitly asks for that exact action.
 
 ## Run and submit
 
@@ -155,18 +169,24 @@ From a persistent checkout of this branch/version:
 python3 tools/paseo-bot/paseo_bot.py serve
 # Another shell (or a trusted Tailscale SSH session):
 python3 tools/paseo-bot/paseo_bot.py submit --file /absolute/path/task.json
-python3 tools/paseo-bot/paseo_bot.py result grok-example-001
+python3 tools/paseo-bot/paseo_bot.py result example-001
+python3 tools/paseo-bot/paseo_bot.py cancel example-001 --reason 'owner asked'
+python3 tools/paseo-bot/paseo_bot.py pause example-001
+python3 tools/paseo-bot/paseo_bot.py resume example-001
+python3 tools/paseo-bot/paseo_bot.py permit-allow example-001 --pid abc123def456
+python3 tools/paseo-bot/paseo_bot.py permit-deny example-001 --pid abc123def456
+python3 tools/paseo-bot/paseo_bot.py peek example-001 --tail 40
 python3 tools/paseo-bot/paseo_bot.py list
 python3 tools/paseo-bot/paseo_bot.py health
 ```
 
 Use `--state /absolute/private/directory` **before** the subcommand to select a
 separate queue. Do not repurpose HOME. Submission also accepts UTF-8 JSON on
-stdin. Grok can stream task JSON through SSH stdin without shell interpolation:
+stdin. A producer can stream task JSON through SSH stdin without shell interpolation:
 
 ```text
 ssh <trusted-tailnet-host> python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py submit < task.json
-ssh <trusted-tailnet-host> python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py result grok-example-001
+ssh <trusted-tailnet-host> python3 /absolute/Paseobility/tools/paseo-bot/paseo_bot.py result example-001
 ```
 
 In a private dedicated directory, write a `paseo.json` using the normal workspace
@@ -181,11 +201,10 @@ Create a local workspace for that directory, launch a coordinator agent with the
 MANAGER.md brief, then `paseo script start paseo-bot --workspace <workspace-id>`.
 Keep the runtime checkout pinned while it is running. SIGTERM/SIGINT stops the
 loop after its current bounded RPC; already dispatched agents remain in Paseo.
-`health.json` carries last tick time, PID, `activeTasks` and `webhook` (`ok` or
-`error`; the latter means completion notifications need inspection). It is
-refreshed after every task step. The health CLI marks a tick older than 120
-seconds unhealthy; `status` also counts webhook jobs by state. A heartbeat proves
-the ticker, not provider health.
+`health.json` carries last tick time, PID, `activeTasks` and the ownership
+mode/dispatch state. It is refreshed after every task step. The health CLI marks
+a tick older than 120 seconds unhealthy. A heartbeat proves the ticker, not
+provider health.
 
 A lost connection, bridge timeout or unclassified transport error is not a
 verdict: the task keeps its state and the same step is retried without
@@ -196,12 +215,12 @@ and receipt failures still block immediately.
 ## Results, memory and recovery
 
 SQLite `queue.sqlite3` is authoritative. `results/<task-id>.json` is the durable
-outbox Grok can consume; terminal results are regenerated if publication was
-interrupted. No network delivery is claimed. Grok should poll until `state` is
+outbox a producer can consume; terminal results are regenerated if publication was
+interrupted. No network delivery is claimed. A producer should poll until `state` is
 `passed`, `failed`, `blocked` or `unknown`, then acknowledge consumption in its
 own system. Repeated reads are harmless; there is no exactly-once messaging
-claim. Active states are `queued`, `ready`, `provisioning`, `dispatching`,
-`running`, `repairing` and `cleaning`.
+claim. Active states are `queued`, `held`, `ready`, `provisioning`, `dispatching`,
+`running`, `waiting-permission`, `paused`, `repairing` and `cleaning`.
 The additional `cleaning` state precedes final publication whenever the task
 created a worktree. On `passed`, `failed` or `blocked`, the bot captures a Git
 binary patch relative to preflight HEAD, including untracked and ignored files,
@@ -220,7 +239,14 @@ outcomes remain unreconciled rather than automatically destroying work.
 The version-1 result contains task/project ID, state, machine/server ID, branch,
 worktree/workspace ID, per-phase profile/provider/model/agent receipts, verification
 evidence, summary/reason, timestamps, `deployment: not-run` and
-`delivery: file-outbox`. Raw provider output/stderr is never copied to outbox.
+`delivery: file-outbox`. A `blocked` result also carries `blockedKind`, one of
+`needs_input` (agent error or permission wait), `capability` (pre-launch
+identity/profile/provider check), `dependency` (a prerequisite did not pass),
+`timeout` (phase deadline), `evidence` (receipt/evidence/cleanup could not be
+confirmed), `verdict` (the agent returned blocked), `cancelled` (owner cancel),
+`safety` (a hardline command pattern was detected) or
+`transient` (an outage exhausted the retry window). Raw provider output/stderr is
+never copied to outbox.
 Only one strict `PASEO_BOT_RESULT=<JSON>` final response is accepted per turn.
 A missing/invalid receipt gets at most one durable format-correction follow-up
 to that same idle, owned agent; evidence is recomputed read-only. Failed gates,
@@ -240,6 +266,108 @@ zero/multiple matches become `unknown`, never an automatic second launch.
 Restart resumes recorded agents and phases. Unknown receipt, identity drift,
 permission wait, invalid JSON, incomplete gates or deadlines never becomes pass.
 Timeout leaves agents/worktrees intact; nothing automatically kills them.
+
+### Curated memory
+
+Project and owner memory is AI-written, evidence-tracked and self-pruning in
+the private `memory.sqlite3` store. Routine items apply immediately; only
+important items (owner scope, conventions, deploy/secret/permission wording, or
+changes to previously approved items) need one Discord approval. Memory is
+injected only as clearly-labelled data, never as instructions, and is never
+taken from web pages or raw tool output. See
+[paseo-bot-memory.md](paseo-bot-memory.md) for the store schema, evidence gate,
+outcome/quarantine rules, approval buttons, export repository and configuration.
+
+### Task control (cancel, pause, resume, peek)
+
+Owners can control a non-terminal task without racing the runner. The GUI bridge
+and Discord do not mutate task records: they append a durable row to
+`task_controls` (`id`, `task_id`, `action`, `payload`, `state`, `created`,
+`applied`, `result`), and the resident runner applies queued rows inside `tick()`
+under its existing lock, before stepping tasks. `id` is a caller-supplied
+idempotency key: resubmitting the same id for the same task and action returns
+the existing row, while a different task or action under that id is rejected.
+`state` moves `queued` → `applied` or `rejected`, and `result` records why
+(`cancelled`, `paused`, `held`, `resumed`, `dispatch-in-flight`,
+`cleanup-in-progress`, `pause-unverified`, `not-pausable`, `not-paused`).
+
+| Action | Behavior |
+|---|---|
+| `cancel` | `queued`/`held` become `closed` (`closedFrom: cancelled`, `closedReason: cancelled by owner`). `ready`/`provisioning`/`running`/`paused`/`repairing` stop the current run agent (best effort) and become `blocked` with `blockedKind: cancelled`, so the normal evidence-and-archive cleanup runs. `dispatching` is rejected as `dispatch-in-flight` and `cleaning` as `cleanup-in-progress`; retry after the stage settles. |
+| `pause` | `running` sends `stop`, re-observes the same owned agent, and records `paused` (`pausedFrom`, `pausedAt`, `pausedStage`) only when its status is `idle`. Otherwise it rejects `pause-unverified` and leaves the task running. `queued` becomes `held`; other states reject `not-pausable`. |
+| `resume` | `paused` sends a continuation prompt to the same agent, returns to `running`, and shifts `phaseStartedAt` by the paused duration so the phase deadline excludes paused time. `held` returns to `queued`; other states reject `not-paused`. |
+
+`paused` is not terminal and keeps its machine busy, but it is never observed or
+advanced. `held` is a pre-dispatch pause: it frees the machine and starts no
+agent. `auto_close` never closes `paused` or `held`. `peek` is read-only, may run
+outside the runner lock, and returns the scrubbed tail of the current agent
+timeline (3 500 characters, newest lines kept) or an explanation of the task's
+state when no agent exists.
+
+CLI: `cancel|pause|resume <id> [--reason]` prints the enqueued control id, and
+`peek <id> [--tail N]` prints the scrubbed log tail. Permission decisions use
+`permit-allow|permit-deny <id> --pid <key> [--reason]`; the Discord buttons and
+the GUI use the same durable `task_controls` queue.
+
+### Permission requests and the hardline safety list
+
+When an observed agent is still working (the bridge reports `timeout` from its
+one-second finish wait) or reports another non-idle status, the runner asks the
+destination for that agent's pending permission requests. If there is one, the
+task becomes `waiting-permission` and records:
+
+```json
+{"pid":"12 lowercase key","requestId":"provider request id","agentId":"...","name":"...","description":"...","askedAt":0}
+```
+
+`pid` is the short key the chat buttons carry. The machine stays busy and the
+phase deadline keeps running. A decision is a durable `permit-allow` or
+`permit-deny` control with payload `{pid}`; it applies only while the task is
+still `waiting-permission` with that same key. A stale or mismatched key is
+rejected as `stale-permission` and announced once in chat. `permissionTimeoutSeconds`
+(default 300) denies an unanswered request, logs `by: "timeout"` and returns the
+task to `running`. `cancel` denies the pending request first and then uses the
+normal cancel-and-cleanup path; `pause` is rejected as `not-pausable`.
+`auto_close` never touches `waiting-permission`. Every decision is appended to
+the result's `permissionLog` (`pid`, `name`, `decision`, `by`, `at`).
+
+**Safety rules** live in `tools/paseo-bot/safety.py`: recursive force deletion of
+`/`, `~`, `$HOME` or a whole drive; fork bombs; `mkfs`/`format C:`/`diskutil
+eraseDisk`/`dd of=/dev/disk`; piping `curl|wget|iwr|irm` into a shell; force
+pushing `main`/`master`; `DROP DATABASE` or `DROP SCHEMA ... CASCADE`; and
+reading private keys, cloud/gh/Bitwarden/broker credentials with common readers.
+Add or disable rules privately in the registry:
+
+```json
+{
+  "permissionTimeoutSeconds": 300,
+  "resumeGraceSeconds": 45,
+  "safety": {
+    "extraRules": [{"name": "kubectl-prod", "pattern": "kubectl\\s+delete\\s+namespace\\s+prod"}],
+    "disabledRules": ["fork-bomb"]
+  }
+}
+```
+
+Patterns are capped at 300 characters and must compile; invalid or duplicate
+rule names fail configuration validation. Extra rules cannot reuse a default
+name. Names are safe identifiers because they appear in chat notices.
+
+**Prevention vs detection, honestly:** only a *permission prompt* that matches a
+rule is prevented (denied immediately, never shown to the human). A provider in
+a permissive/full-access mode may run commands without asking, so the second
+layer scans the agent's tool-log tail (200 entries) when a stage finishes and
+before its evidence is accepted. That is detection after the fact, not a
+sandbox: it blocks the task with `blockedKind: "safety"` and a rule name, but it
+cannot undo a command that already ran. The matched command is written only to
+the private stderr log (scrubbed, at most 300 characters) and is never copied to
+the result, notice or chat. A failed log read is logged and does not block the
+task. The stage prompt also tells every worker which command categories are
+forbidden.
+
+The plan's **done-contract** work (§3.1 D3: re-verified completion evidence such
+as PR merge, passing checks or a JSON file condition) is **deferred** and is not
+implemented by this control layer.
 
 ### Temporary outages and failed status checks
 
@@ -303,7 +431,8 @@ keeps the supervisor alive:
 | Linux | systemd user service `paseo-bot-supervisor` (`Restart=always`; `loginctl enable-linger` to run without a session) | no |
 | Windows | `PaseoBotGuardian` service (recommended) or a logon task | service: once |
 
-**Supervisor.** It starts `paseo_bot.py serve` and `gui_serve.py serve` in
+**Supervisor.** It starts `paseo_bot.py serve`, `gui_serve.py serve` and
+`discord_serve.py serve` in
 their own process session (macOS/Linux) or as `python.exe` children with
 `CREATE_NO_WINDOW` (Windows, so neither they nor the node/git/Paseo CLI
 processes they spawn open a window, even with Windows Terminal as the default
@@ -315,12 +444,13 @@ service is restarted when:
 - it hangs: once it has written a heartbeat since its start, a heartbeat older
   than `--stale-seconds` (default 900, longer than any single bot RPC) restarts
   it. The dispatcher's heartbeat is `health.json`, the GUI service's is
-  `gui_meta.heartbeat`;
+  `gui_meta.heartbeat`, the [Discord service](paseo-bot-discord.md)'s is
+  `discord-health.json`;
 - `supervise restart` asks for it after a code update, at an idle boundary.
   This does not count as a failure.
 
-A restart first writes `<state>/<service>.stop` with the service's PID; both
-services finish the current step and exit. Only a service that ignores it for
+A restart first writes `<state>/<service>.stop` with the service's PID; every
+service finishes the current step and exits. Only a service that ignores it for
 30 seconds is terminated. Five consecutive fast failures, or any hang, raise an
 alert: a desktop notification (Notification Center on macOS, `notify-send` on
 Linux, a toast on Windows), `alert` in `supervisor.json`, and `healthy: false`
@@ -407,8 +537,8 @@ they do not certify every project's gates, deployment, or remote coding provider
   Independent gate `python3 verify.py` passed; only `answer.txt` changed 41→42.
   Controller rechecked the actual gate, HEAD, unchanged source/test and matching
   reviewed/final SHA256. Earlier blocked development receipts remain retained.
-- Real Grok Bot transport wiring, every project's gates, and remote coding E2E
-  remain separate rollout work; see the private report/checklist.
+- The Discord gateway's live end-to-end evidence ([setup](paseo-bot-discord.md)), every project's gates, and remote
+  coding E2E remain separate rollout work; see the private report/checklist.
 
 ## Windows PowerShell and owner handoff
 
@@ -424,6 +554,12 @@ Get-Content -Raw -Encoding UTF8 'C:\path\task.json' | & $Bot submit
 & $Bot status
 & $Bot status 'task-id'
 & $Bot result 'task-id'
+& $Bot cancel 'task-id' -Reason 'owner asked'
+& $Bot pause 'task-id'
+& $Bot resume 'task-id'
+& $Bot permit-allow 'task-id' -PermissionKey 'abc123def456'
+& $Bot permit-deny 'task-id' -PermissionKey 'abc123def456'
+& $Bot peek 'task-id' -Tail 40
 ```
 
 Use `-State` for a nondefault queue and `-Python` for a specific interpreter.

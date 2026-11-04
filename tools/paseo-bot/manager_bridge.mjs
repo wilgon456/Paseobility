@@ -4,8 +4,12 @@ import path from "node:path";
 import os from "node:os";
 import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
-const req = JSON.parse(fs.readFileSync(0, "utf8"));
+// One-shot: one JSON request on stdin. Resident (--serve): one JSON request per line, one reply per line,
+// reusing a single daemon connection so chat polling does not pay a process start + connect each time.
+const SERVE = process.argv.includes("--serve");
+let req = SERVE ? null : JSON.parse(fs.readFileSync(0, "utf8"));
 let client;
+let verifiedServer = "";
 async function workspaceExists(id) {
   const listed = await client.fetchWorkspaces({
     filter: { query: id, includeBackground: true },
@@ -14,18 +18,49 @@ async function workspaceExists(id) {
   if (!Array.isArray(listed?.entries)) throw Error("schema");
   return listed.entries.some((w) => w.id === id && !w.archivedAt);
 }
+function createBackgroundWorkspace(prefix, cli, cwd) {
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env };
+    for (const k of ["PASEO_AGENT_ID", "PASEO_WORKSPACE_ID"]) delete env[k];
+    const c = spawn(process.execPath, [...prefix, cli, "workspace", "create", "--isolation", "local",
+      "--path", cwd, "--title", "Paseo 봇 에이전트", "--background", "--json"], { env, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    const timer = setTimeout(() => { c.kill(); reject(Error("workspace")); }, 30000);
+    c.stdout.on("data", (b) => { out += b; if (out.length > 200000) c.kill(); });
+    c.stderr.resume();
+    c.on("error", () => { clearTimeout(timer); reject(Error("workspace")); });
+    c.on("close", (code) => {
+      clearTimeout(timer);
+      try {
+        const r = JSON.parse(out);
+        const id = (r.data || r).workspaceId;
+        if (code || typeof id !== "string" || !id) throw Error();
+        resolve(id);
+      } catch {
+        reject(Error("workspace"));
+      }
+    });
+  });
+}
 async function main() {
   const module = process.env.PASEO_MULTI_HOST_CLIENT_MODULE;
-  const { connectToDaemon } = await import(pathToFileURL(module).href);
-  client = await connectToDaemon({
-    target: {
-      kind: "instance",
-      home: process.env.PASEO_HOME || path.join(os.homedir(), ".paseo"),
-    },
-    timeout: 10000,
-  });
-  const status = await client.getDaemonStatus({ timeout: 10000 });
-  if (status.serverId !== req.serverId) throw Error("identity");
+  if (!client) {
+    const { connectToDaemon } = await import(pathToFileURL(module).href);
+    client = await connectToDaemon({
+      target: {
+        kind: "instance",
+        home: process.env.PASEO_HOME || path.join(os.homedir(), ".paseo"),
+      },
+      timeout: 10000,
+    });
+    verifiedServer = "";
+  }
+  // Identity is checked on every new connection and whenever the requested server changes.
+  if (verifiedServer !== req.serverId) {
+    const status = await client.getDaemonStatus({ timeout: 10000 });
+    if (status.serverId !== req.serverId) throw Error("identity");
+    verifiedServer = req.serverId;
+  }
   if (req.action === "recover") {
     let cursor;
     const agents = [];
@@ -58,8 +93,9 @@ async function main() {
       if (p?.enabled && p.status === "ready") break;
       if (i < 4) await new Promise((r) => setTimeout(r, 400 * (i + 1)));
     }
-    // The manager only plans and explains; operators can pin a narrower mode.
-    const mode = req.mode || "full-access";
+    // The manager only plans and explains. Codex "auto" is the documented mode:
+    // workspace-write with approvals, and the bot denies every request.
+    const mode = req.mode || "auto";
     if (
       !p?.enabled ||
       p.status !== "ready" ||
@@ -68,9 +104,18 @@ async function main() {
       throw Error("provider");
     // Managers share one workspace instead of adding a sidebar entry per
     // conversation. A remembered workspace that is gone falls back to one new one.
-    const reuse = req.workspaceId && (await workspaceExists(req.workspaceId));
+    let reuse = req.workspaceId && (await workspaceExists(req.workspaceId));
     const cli = path.join(path.dirname(path.dirname(module)), "index.js");
     const prefix = JSON.parse(process.env.PASEO_BOT_RUNTIME_PREFIX || "[]");
+    if (!reuse) {
+      // One background workspace hosts every manager and the memory curator: it stays out of
+      // the Paseo sidebar instead of appearing under whatever project owns req.cwd.
+      const made = await createBackgroundWorkspace(prefix, cli, req.cwd).catch(() => null);
+      if (made) {
+        req.workspaceId = made;
+        reuse = true;
+      }
+    }
     const args = [
       ...prefix,
       cli,
@@ -145,6 +190,32 @@ async function main() {
     current.agent.labels?.paseo_bot_gui !== req.session
   )
     throw Error("ownership");
+  if (req.action === "permits") {
+    const pending = Array.isArray(current.agent.pendingPermissions)
+      ? current.agent.pendingPermissions
+      : [];
+    return pending.slice(0, 20).map((p) => ({
+      id: String(p?.id ?? "").slice(0, 200),
+      name: String(p?.name ?? "").slice(0, 200),
+      description: String(p?.description ?? "").slice(0, 1000),
+    })).filter((p) => p.id);
+  }
+  if (req.action === "permit") {
+    if (
+      typeof req.requestId !== "string" ||
+      !req.requestId ||
+      !["allow", "deny"].includes(req.decision)
+    )
+      throw Error("action");
+    const pending = Array.isArray(current.agent.pendingPermissions)
+      ? current.agent.pendingPermissions
+      : [];
+    if (!pending.some((p) => p?.id === req.requestId)) throw Error("permission");
+    await client.respondToPermission(req.agentId, req.requestId, {
+      behavior: req.decision,
+    });
+    return { result: req.decision };
+  }
   if (req.action === "archive") {
     // Only an idle manager owned by this conversation is archived.
     if (current.agent.status !== "idle") throw Error("busy");
@@ -158,7 +229,16 @@ async function main() {
   }
   if (req.action === "observe") {
     const r = await client.waitForFinish(req.agentId, 1000);
-    return { status: r.status, message: r.lastMessage || "" };
+    // The pending count lets the caller skip a separate permits round trip.
+    let pendingPermissions = null;
+    try {
+      const current = await client.fetchAgent({ agentId: req.agentId, timeout: 10000 });
+      if (Array.isArray(current?.agent?.pendingPermissions))
+        pendingPermissions = Math.min(current.agent.pendingPermissions.length, 20);
+    } catch {
+      pendingPermissions = null;
+    }
+    return { status: r.status, message: r.lastMessage || "", pendingPermissions };
   }
   if (req.action === "find") {
     const { fetchProjectedTimelineItems } = await import(
@@ -180,13 +260,33 @@ async function main() {
   }
   throw Error("action");
 }
-try {
-  process.stdout.write(JSON.stringify({ ok: true, result: await main() }));
-} catch {
-  process.stdout.write(
-    '{"ok":false,"error":"Manager transport unavailable; outcome may be unknown."}',
-  );
-  process.exitCode = 1;
-} finally {
+const FAILED = '{"ok":false,"error":"Manager transport unavailable; outcome may be unknown."}';
+if (!SERVE) {
+  try {
+    process.stdout.write(JSON.stringify({ ok: true, result: await main() }));
+  } catch {
+    process.stdout.write(FAILED);
+    process.exitCode = 1;
+  } finally {
+    await client?.close().catch(() => {});
+  }
+} else {
+  const readline = await import("node:readline");
+  const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  for await (const line of lines) {
+    if (!line.trim()) continue;
+    let out;
+    try {
+      req = JSON.parse(line);
+      out = JSON.stringify({ ok: true, result: await main() });
+    } catch {
+      out = FAILED;
+      // A failed call may mean a dead connection: reconnect (and re-verify identity) next time.
+      await client?.close().catch(() => {});
+      client = null;
+      verifiedServer = "";
+    }
+    process.stdout.write(out + "\n");
+  }
   await client?.close().catch(() => {});
 }

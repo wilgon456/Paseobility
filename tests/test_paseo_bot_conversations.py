@@ -9,6 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/paseo-bot'))
+import gui_state
 from gui_state import Conversations
 from gui_api import handle
 from paseo_bot import write_json
@@ -22,6 +23,8 @@ class FakeManager:
         self.found = True
         self.created = []
         self.archived = []
+        self.permits = []
+        self.permit_calls = []
 
     def __call__(self, config, action, **kw):
         if action == 'create':
@@ -37,6 +40,11 @@ class FakeManager:
             if self.lose_ack: raise ValueError('lost acknowledgement')
             return {'accepted': True}
         if action == 'find': return {'found': self.found}
+        if action == 'permits': return list(self.permits)
+        if action == 'permit':
+            self.permit_calls.append(kw)
+            self.permits = [item for item in self.permits if item.get('id') != kw['requestId']]
+            return {'result': kw['decision']}
         raise AssertionError(action)
 
 
@@ -55,7 +63,7 @@ class ConversationTests(unittest.TestCase):
         self.step = dict(project='fixture', title='Fixture task', prompt='Make the bounded change', kind='gpt')
 
     def tearDown(self):
-        self.c.db.close()
+        self.c.close()
         self.tmp.cleanup()
 
     def plan(self, steps=None, message='message-1'):
@@ -222,15 +230,42 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(self.c.bot.result('failed-task')['state'], 'failed')
 
     def test_readonly_sync_full_queue_filters_and_provenance(self):
-        self.c.bot.submit(dict(self.step, id='grok-one'), {'requester': 'grok'})
+        self.c.bot.submit(dict(self.step, id='discord-one'), {'requester': 'discord'})
         for i in range(102): self.c.bot.submit(dict(self.step, id='cli-' + str(i)))
         path = self.home / 'queue.sqlite3'; before = path.read_bytes()
-        out = handle(self.home, dict(action='sync', requester='grok', query='Fixture', sort='oldest'), True)
-        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['id'], 'grok-one')
-        self.assertEqual(out['tasks'][0]['requester'], 'grok'); self.assertEqual(out['total'], 103)
+        out = handle(self.home, dict(action='sync', requester='discord', query='Fixture', sort='oldest'), True)
+        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['id'], 'discord-one')
+        self.assertEqual(out['tasks'][0]['requester'], 'discord'); self.assertEqual(out['total'], 103)
         self.assertEqual(path.read_bytes(), before)
         for request in [dict(action='sync', sort='DROP TABLE tasks'), dict(action='sync', group='shell')]:
             with self.assertRaises(ValueError): handle(self.home, request)
+
+    def test_control_and_blocked_kind_notices_are_announced_once(self):
+        task = self.c.bot.submit(dict(self.step, id='notice-task'), {'conversationId': 'session-1'})
+
+        def count(needle):
+            return self.c.db.execute(
+                "SELECT count(*) FROM gui_messages WHERE conversation='session-1' AND role='system' AND instr(text,?)>0",
+                (needle,)).fetchone()[0]
+
+        def announce(record, needle):
+            self.c.bot.save(dict(self.c.bot.result('notice-task'), **record))
+            self.c.tick_notices()
+            self.c.tick_notices()
+            self.assertEqual(count(needle), 1, needle)
+
+        announce(dict(state='paused', pausedFrom='running', pausedAt=time.time(), pausedStage='work', stage='work'),
+                 '작업을 잠시 멈췄어요.')
+        announce(dict(state='running', resumedAt=time.time(), stage='work'), '작업을 다시 시작했어요.')
+        announce(dict(state='held', stage='work'), '작업을 대기열에서 보류했어요.')
+        labels = {'needs_input': '입력이나 승인이 필요해 멈췄어요.', 'capability': '실행 환경을 준비하지 못했어요.',
+                  'dependency': '선행 작업이 끝나지 않아 멈췄어요.', 'timeout': '시간 제한을 넘겨 멈췄어요.',
+                  'evidence': '결과를 확인하지 못해 멈췄어요.', 'verdict': '작업자가 진행할 수 없다고 판단했어요.',
+                  'transient': '연결 문제로 멈췄어요.', 'cancelled': '요청대로 작업을 취소했어요.'}
+        for kind, label in labels.items():
+            announce(dict(state='blocked', blockedKind=kind, stage='work', reason='fixture ' + kind), label)
+        self.assertEqual(self.c.db.execute("SELECT count(*) FROM tasks WHERE id='notice-task'").fetchone()[0], 1)
+        self.assertEqual(task['id'], 'notice-task')
 
     def test_results_are_delivered_to_origin_conversation_once(self):
         plan, digest = self.plan(); task = self.c.approve('session-1', plan, digest)['taskIds'][0]
@@ -317,14 +352,14 @@ class ConversationTests(unittest.TestCase):
         self.c.remember('session-1', 'reply-message-1', 'fixture')
         self.assertEqual(self.c.db.execute('SELECT count(*) FROM gui_memory').fetchone()[0], 1)
 
-    def test_real_cli_grok_attribution_without_gui_schema_fields(self):
+    def test_real_cli_discord_attribution_without_gui_schema_fields(self):
         script = Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo_bot.py'
-        task = dict(self.step, id='grok-cli')
-        r = subprocess.run([sys.executable, str(script), '--state', str(self.home), 'submit', '--producer', 'grok'],
+        task = dict(self.step, id='discord-cli')
+        r = subprocess.run([sys.executable, str(script), '--state', str(self.home), 'submit', '--producer', 'discord'],
                            input=json.dumps(task).encode('utf-8'), capture_output=True, timeout=20)
         self.assertEqual(r.returncode, 0, r.stdout)
-        out = handle(self.home, dict(action='sync', requester='grok'))
-        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['requester'], 'grok')
+        out = handle(self.home, dict(action='sync', requester='discord'))
+        self.assertEqual(out['filtered'], 1); self.assertEqual(out['tasks'][0]['requester'], 'discord')
 
     def age(self, conversation, days):
         old = time.time() - days * 86400
@@ -332,11 +367,104 @@ class ConversationTests(unittest.TestCase):
         self.c.db.execute('UPDATE gui_conversations SET created=? WHERE id=?', (old, conversation))
         self.c.db.commit()
 
+    def reply_with(self, message, tasks, selection=None):
+        self.c.send('session-1', message, 'Question about fixture', selection=selection)
+        job = self.c.db.execute('SELECT * FROM gui_jobs WHERE id=?', (message,)).fetchone()
+        self.c.collect_reply(job, 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId=message, reply='OK', tasks=tasks)))
+        return self.c.db.execute('SELECT id,state FROM gui_plans ORDER BY created DESC LIMIT 1').fetchone()
+
+    def test_inspect_only_plan_starts_without_a_click(self):
+        plan_id, state = self.reply_with('ask-1', [dict(self.step, workflow='inspect')])
+        self.assertEqual(state, 'approved')
+        task = self.c.bot.result(plan_id + '-1')
+        self.assertEqual(task['workflow'], 'inspect')
+        texts = [r[0] for r in self.c.db.execute("SELECT text FROM gui_messages WHERE conversation='session-1' AND role='system'")]
+        self.assertIn('읽기 전용 확인이라 바로 시작할게요.', texts)
+
+    def test_owner_selected_workflow_overrides_the_manager(self):
+        plan_id, state = self.reply_with('ask-2', [dict(self.step, workflow='inspect')], selection={'workflow': 'daily'})
+        self.assertEqual(state, 'pending')
+        body = json.loads(self.c.db.execute('SELECT body FROM gui_plans WHERE id=?', (plan_id,)).fetchone()[0])
+        self.assertEqual(body['tasks'][0]['workflow'], 'daily')
+
+    def test_mixed_inspect_and_change_plan_still_needs_a_click(self):
+        _, state = self.reply_with('ask-3', [dict(self.step, workflow='inspect'), dict(self.step, workflow='daily', title='Change it')])
+        self.assertEqual(state, 'pending')
+
+    def test_auto_admit_can_be_turned_off(self):
+        config = json.loads((self.home / 'gui-runtime.json').read_text(encoding='utf-8'))
+        write_json(self.home / 'gui-runtime.json', dict(config, autoAdmitInspect=False))
+        _, state = self.reply_with('ask-4', [dict(self.step, workflow='inspect')])
+        self.assertEqual(state, 'pending')
+
+    def test_first_question_rides_with_manager_creation(self):
+        # A conversation whose first message is already queued: one model turn, no greeting turn.
+        self.c.create('session-fast')
+        self.c.send('session-fast', 'fast-1', 'How many projects?')
+        sent_before = len(self.fake.sent)
+        self.c.tick()
+        created = self.fake.created[-1]['prompt']
+        self.assertIn('GUI_REQUEST_ID=fast-1', created)
+        self.assertIn('How many projects?', created)
+        self.assertEqual(len(self.fake.sent), sent_before)  # nothing sent separately
+        state = self.c.db.execute("SELECT state FROM gui_jobs WHERE id='fast-1'").fetchone()[0]
+        self.assertEqual(state, 'waiting')
+        self.fake.reply = 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId='fast-1', reply='Twenty', tasks=[]))
+        self.c.tick()
+        self.assertEqual(self.c.db.execute("SELECT state FROM gui_jobs WHERE id='fast-1'").fetchone()[0], 'done')
+        self.assertEqual(len(self.fake.sent), sent_before)
+
+    def test_manager_permits_rpc_is_skipped_when_observe_reports_none(self):
+        calls = []
+        original = self.fake.__call__
+        def rpc(config, action, **kw):
+            calls.append(action)
+            if action == 'observe':
+                return {'status': 'idle', 'message': self.fake.reply, 'pendingPermissions': 0}
+            return original(config, action, **kw)
+        self.c.rpc = rpc
+        self.converse('quiet', 'Hello', 'Hi')
+        self.assertNotIn('permits', calls)
+
     def converse(self, message, text, reply):
         self.c.send('session-1', message, text)
         self.c.tick()
         self.fake.reply = 'PASEO_GUI_RESPONSE=' + json.dumps(dict(requestId=message, reply=reply, tasks=[]))
         self.c.tick()
+
+    def test_manager_permissions_are_denied_without_asking_the_human(self):
+        self.c.send('session-1', 'perm', 'Please change the fixture')
+        self.fake.permits = [{'id': 'manager-req-1', 'name': 'Edit file', 'description': 'touch fixture.py'}]
+        with patch.object(gui_state, 'log_event') as logged:
+            self.c.tick()
+        self.assertEqual(self.fake.permit_calls[-1]['decision'], 'deny')
+        self.assertEqual(self.fake.permit_calls[-1]['requestId'], 'manager-req-1')
+        denied = [call for call in logged.call_args_list if call.kwargs.get('status') == 'manager-permission-denied']
+        self.assertEqual(len(denied), 1)
+        self.assertEqual(denied[0].kwargs.get('name'), 'Edit file')
+        self.assertNotIn('description', denied[0].kwargs)
+        self.assertEqual(self.c.db.execute(
+            "SELECT count(*) FROM gui_messages WHERE instr(text,'권한 요청이 왔어요')>0").fetchone()[0], 0)
+
+    def test_unsafe_manager_mode_warns_once_per_process(self):
+        config = json.loads((self.home / 'gui-runtime.json').read_text(encoding='utf-8'))
+        write_json(self.home / 'gui-runtime.json', dict(config, mode='full-access'))
+        gui_state._UNSAFE_MANAGER_MODES.clear()
+        try:
+            with patch.object(gui_state, 'log_event') as logged:
+                self.assertEqual(self.c.runtime_config()['mode'], 'full-access')
+                self.c.runtime_config()
+            warnings = [call for call in logged.call_args_list if call.kwargs.get('status') == 'manager-mode-unsafe']
+            self.assertEqual(len(warnings), 1)
+            self.assertEqual(warnings[0].kwargs.get('mode'), 'full-access')
+        finally:
+            gui_state._UNSAFE_MANAGER_MODES.clear()
+
+    def test_manager_role_prompt_is_read_only(self):
+        prompt = self.c.role_prompt()
+        for phrase in ['read-only', 'do not edit files', 'state-changing commands', 'access the network',
+                       'must become a plan task']:
+            self.assertIn(phrase, prompt)
 
     def test_managers_share_one_workspace_per_daemon(self):
         self.assertIsNone(self.fake.created[0]['workspaceId'])
@@ -360,7 +488,8 @@ class ConversationTests(unittest.TestCase):
         self.c.send('session-1', 'two', 'What was the deadline?')
         self.c.tick(); self.c.tick()
         self.assertEqual(len(self.fake.created), 2)
-        prompt = self.fake.sent[-1]['prompt']
+        # The revived manager receives history and the question with its creation: one model turn.
+        prompt = self.fake.created[-1]['prompt']
         self.assertIn('Earlier messages in THIS conversation', prompt)
         self.assertIn('Remember the fixture deadline', prompt); self.assertIn('Noted the deadline', prompt)
         self.assertIsNone(self.c.db.execute("SELECT 1 FROM gui_meta WHERE key='revive:session-1'").fetchone())
@@ -385,13 +514,120 @@ class ConversationTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.c.runtime_config()
 
     @unittest.skipUnless(sys.platform == 'win32', 'Windows producer byte-stream contract')
-    def test_windows_grok_producer_wrapper(self):
+    def test_windows_discord_producer_wrapper(self):
         script = Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo-bot.ps1'
         r = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
-                            'submit', '-State', str(self.home), '-Producer', 'grok'],
-                           input=json.dumps(dict(self.step, id='grok-powershell')).encode('utf-8'), capture_output=True, timeout=30)
+                            'submit', '-State', str(self.home), '-Producer', 'discord'],
+                           input=json.dumps(dict(self.step, id='discord-powershell')).encode('utf-8'), capture_output=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertEqual(handle(self.home, dict(action='sync', requester='grok'))['filtered'], 1)
+        self.assertEqual(handle(self.home, dict(action='sync', requester='discord'))['filtered'], 1)
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class KoreanReasonTests(unittest.TestCase):
+    def test_known_reasons_and_validation_causes_become_korean(self):
+        from gui_state import korean_reason
+        text = korean_reason({'reason': 'Result receipt validation failed; the bot captures evidence, then archives the workspace. Nothing is relaunched.',
+                              'validationError': 'Independent gate evidence incomplete.'})
+        self.assertIn('검증 기준', text)
+        self.assertIn('검사 명령이 모두 실행되지', text)
+        self.assertNotIn('Nothing is relaunched', text)
+
+    def test_unknown_english_reason_points_to_peek_and_korean_passes_through(self):
+        from gui_state import korean_reason
+        self.assertEqual(korean_reason({'reason': 'Some new internal failure text'}), '자세한 내용은 /peek 으로 볼 수 있어요.')
+        self.assertEqual(korean_reason({'reason': '테스트 명령을 찾지 못했어요.'}), '테스트 명령을 찾지 못했어요.')
+        self.assertEqual(korean_reason({}), '')
+
+
+class HousekeepingNoticeTests(unittest.TestCase):
+    def test_auto_closed_task_posts_no_notice_and_memory_review_sync_is_empty(self):
+        import tempfile as _t
+        from gui_api import handle as _handle
+        tmp = _t.TemporaryDirectory()
+        try:
+            home = Path(tmp.name) / 'state'
+            c = Conversations(home, FakeManager())
+            c.migrate()
+            write_json(home / 'owner.json', {'version': 1, 'host': socket.gethostname().casefold(), 'mode': 'active'})
+            out = _handle(home, dict(action='sync', conversationId='memory-review'), True)
+            self.assertEqual(out['messages'], [])
+            with self.assertRaises(ValueError):
+                _handle(home, dict(action='sync', conversationId='no-such-conversation'), True)
+            c.close()
+        finally:
+            tmp.cleanup()
+
+
+class CuratorNotifyCommitTests(unittest.TestCase):
+    def test_curator_notice_is_committed_and_releases_the_write_lock(self):
+        import tempfile as _t, sqlite3 as _sq
+        tmp = _t.TemporaryDirectory()
+        try:
+            home = Path(tmp.name) / 'state'
+            c = Conversations(home, FakeManager())
+            c.migrate()
+            c.create('notice-conv')
+            # Exercise the same wrapper the curator receives.
+            def notify(conversation, role, text, payload=None):
+                with c.db:
+                    c.message(conversation, role, text, payload)
+            notify('notice-conv', 'system', '기억 변경 승인 요청', {'memoryApproval': {'key': 'abcdefabcdef'}})
+            self.assertFalse(c.db.in_transaction)
+            other = _sq.connect(home / 'queue.sqlite3', timeout=1)
+            try:
+                other.execute('BEGIN IMMEDIATE'); other.rollback()  # would raise "database is locked" if uncommitted
+                self.assertEqual(other.execute("SELECT count(*) FROM gui_messages WHERE conversation='notice-conv' AND role='system'").fetchone()[0], 1)
+            finally:
+                other.close()
+            c.close()
+        finally:
+            tmp.cleanup()
+
+
+class ResidentManagerRPCTests(unittest.TestCase):
+    """The resident client keeps one child, answers in order and recovers from a dead child."""
+
+    def make(self, script):
+        import gui_state, queue, threading, subprocess as sp, sys as _sys
+
+        class Echo(gui_state.ResidentManagerRPC):
+            TIMEOUT = 3
+            starts = 0
+
+            def _start(self):
+                Echo.starts += 1
+                self.proc = sp.Popen([_sys.executable, '-c', script], stdin=sp.PIPE, stdout=sp.PIPE, text=True)
+                self.lines = queue.Queue()
+                self.started = time.time()
+                proc, lines = self.proc, self.lines
+
+                def pump():
+                    for line in proc.stdout:
+                        lines.put(line)
+                    lines.put(None)
+                threading.Thread(target=pump, daemon=True).start()
+        return Echo()
+
+    def test_reuses_one_child_for_many_calls(self):
+        rpc = self.make('import sys,json\nfor l in sys.stdin:\n r=json.loads(l)\n print(json.dumps({"ok":True,"result":{"echo":r["action"]}}),flush=True)')
+        try:
+            self.assertEqual(rpc({'serverId': 's'}, 'observe')['echo'], 'observe')
+            self.assertEqual(rpc({'serverId': 's'}, 'send')['echo'], 'send')
+            self.assertEqual(type(rpc).starts, 1)
+        finally:
+            rpc.close()
+
+    def test_refusal_and_dead_child_raise_and_restart(self):
+        rpc = self.make('import sys\nl=sys.stdin.readline()\nprint(\'{"ok":false}\',flush=True)')
+        try:
+            with self.assertRaises(ValueError):
+                rpc({'serverId': 's'}, 'observe')
+            time.sleep(0.3)  # child exited after one line
+            with self.assertRaises(ValueError):
+                rpc({'serverId': 's'}, 'observe')
+            self.assertGreaterEqual(type(rpc).starts, 2)
+        finally:
+            rpc.close()

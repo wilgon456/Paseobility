@@ -45,6 +45,9 @@ class BackoffTests(unittest.TestCase):
 
 
 class LivenessTests(unittest.TestCase):
+    def test_every_service_including_discord_is_supervised(self):
+        self.assertEqual(supervisor.SERVICES, ('paseo_bot', 'gui_serve', 'discord_serve'))
+
     def test_hung_only_after_a_heartbeat_since_start(self):
         limit = supervisor.STALE_SECONDS
         self.assertFalse(supervisor.hung(10_000, 100, None))            # never ticked: unknown, not hung
@@ -65,6 +68,16 @@ class LivenessTests(unittest.TestCase):
             db.execute("INSERT INTO gui_meta VALUES ('heartbeat', ?)", (json.dumps({'lastTickAt': 77.5}),))
             db.commit(); db.close()
             self.assertEqual(supervisor.heartbeat(state, 'gui_serve', 1), 77.5)
+
+    def test_discord_heartbeat_matches_the_service_pid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            (state / 'discord-health.json').write_text(json.dumps(
+                {'version': 1, 'pid': 7, 'lastTickAt': 99.0, 'enabled': True, 'gateway': 'connected', 'childPid': 8}))
+            self.assertEqual(supervisor.heartbeat(state, 'discord_serve', 7), 99.0)
+            self.assertIsNone(supervisor.heartbeat(state, 'discord_serve', 8))
+            self.assertIsNone(supervisor.heartbeat(state, 'discord_serve', 9))
+            self.assertIsNone(supervisor.heartbeat(state, 'discord_serve', None))
 
     def test_services_obey_their_own_stop_request_only(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/paseo-bot'))
@@ -270,3 +283,47 @@ class SupervisorRunTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PowerShellWrapperParameters(unittest.TestCase):
+    """PowerShell automatic variables are read-only; a parameter with one of
+    these names makes the whole wrapper fail on Windows (e.g. $Pid)."""
+    RESERVED = {'pid', 'host', 'input', 'args', 'error', 'home', 'psitem', 'this', 'matches',
+                'event', 'eventargs', 'sender', 'profile', 'pwd', 'shellid', 'true', 'false', 'null',
+                'executioncontext', 'myinvocation', 'psboundparameters', 'lastexitcode', 'stacktrace'}
+
+    def test_wrapper_parameters_do_not_shadow_automatic_variables(self):
+        import re
+        text = (Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo-bot.ps1').read_text(encoding='utf-8-sig')
+        block = text[text.index('param(') + len('param'):]
+        depth, end = 0, len(block)
+        for i, ch in enumerate(block):
+            depth += ch == '('
+            depth -= ch == ')'
+            if depth == 0:
+                end = i
+                break
+        names = {n.lower() for n in re.findall(r'\]\s*\$([A-Za-z_][A-Za-z0-9_]*)', block[:end])}
+        self.assertTrue(names)
+        self.assertFalse(names & self.RESERVED, sorted(names & self.RESERVED))
+
+
+class WriteJsonRetry(unittest.TestCase):
+    def test_transient_permission_error_on_replace_is_retried(self):
+        import importlib.util, tempfile
+        from unittest import mock
+        spec = importlib.util.spec_from_file_location('pb_wj', Path(__file__).resolve().parents[1] / 'tools/paseo-bot/paseo_bot.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / 'state' / 'health.json'
+            real = module.os.replace
+            calls = {'n': 0}
+            def flaky(src, dst):
+                calls['n'] += 1
+                if calls['n'] < 3:
+                    raise PermissionError(5, 'Access is denied')
+                return real(src, dst)
+            with mock.patch.object(module.os, 'replace', flaky), mock.patch.object(module.time, 'sleep', lambda s: None):
+                module.write_json(target, {'ok': True})
+            self.assertEqual(json.loads(target.read_text(encoding='utf-8')), {'ok': True})
+            self.assertEqual(calls['n'], 3)

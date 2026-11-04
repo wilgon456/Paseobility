@@ -1,5 +1,5 @@
 {
-  "id": "grok-example-001",
+  "id": "example-001",
   "project": "paseo_slash",
   "title": "Improve a bounded module",
   "prompt": "Describe the requested change, owned paths, acceptance criteria and relevant constraints here.",

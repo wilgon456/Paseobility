@@ -50,7 +50,7 @@ export function statusTone(group: string): string {
   return ({waiting:'gray', running:'blue', attention:'yellow', success:'green', failed:'red'} as Record<string,string>)[group] || 'gray';
 }
 export function requesterTone(requester: string): string {
-  return requester === 'grok' ? 'purple' : requester === 'gui' ? 'blue' : 'gray';
+  return requester === 'discord' ? 'purple' : requester === 'gui' ? 'blue' : 'gray';
 }
 export function toneInk(tone: string): string {
   return tones[tone] || (/^(#|rgb)/.test(tone) ? tone : tones.gray);

@@ -293,7 +293,7 @@ export function Board(p: Props) {
             value={p.filters.requester}
             options={[
               { value: "", label: "전체" },
-              ...["gui", "grok", "cli", "legacy"].map((m) => ({
+              ...["gui", "discord", "cli", "legacy"].map((m) => ({
                 value: m,
                 label: requesterLabel(m),
                 tone: requesterTone(m),
