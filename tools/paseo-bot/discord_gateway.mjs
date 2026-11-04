@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import * as core from './discord_core.mjs';
 import {Relay, connect, writeMapping} from './relay.mjs';
+import {DiscordInbox} from './discord_inbox.mjs';
 const API = 'https://discord.com/api/v10', DIR = path.dirname(fileURLToPath(import.meta.url));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const stateIndex = process.argv.indexOf('--state');
@@ -21,7 +22,7 @@ const home = path.resolve(botConfig.home || path.join(stateDir, 'assistant'));
 const source = path.resolve(botConfig.source || DIR);
 let client = await connect(process.env.PASEO_MULTI_HOST_CLIENT_MODULE);
 let status = 'connecting', lastEventAt = 0, lastAckAt = 0, socket, sessionId = '', resumeUrl = '', seq = null, acked = true, heartbeat, reconnectTimer, appId = '', stopped = false, attempts = 0;
-const parents = new Map(), processed = new Set(), typingAt = new Map(), buckets = new Map(); let globalUntil = 0;
+const parents = new Map(), typingAt = new Map(), buckets = new Map(); let globalUntil = 0;
 function log(event, data = {}) { process.stderr.write(JSON.stringify({time: new Date().toISOString(), event, ...data}) + '\n'); }
 function health() { try { writeMapping(path.join(stateDir, 'discord-gateway.json'), {pid: process.pid, lastTickAt: Date.now()/1000, lastEventAt:lastEventAt/1000, lastAckAt:lastAckAt/1000, status}); } catch { log('health-write-failed'); } }
 async function request(method, route, body, auth = true) {
@@ -74,21 +75,11 @@ async function attachments(message) {
   }
   return text;
 }
-async function handleMessage(m) {
-  const parent = await parentFor(m.channel_id);
-  if(!core.acceptMessage(config,m,parent) || processed.has(m.id))return;
-  const text=await attachments(m); if(!text.trim())return;
-  let channel=m.channel_id;
-  try {
-    channel=await core.conversationForMessage(config,m,text,(id,name)=>request('POST',`/channels/${config.channelId}/messages/${id}/threads`,{name,auto_archive_duration:1440}));
-    if(channel!==m.channel_id)parents.set(channel,config.channelId);
-    typing(channel); await relay.input(channel,text,m.id);
-  }
-  catch (error) {
-    await request('POST',`/channels/${channel}/messages`,{content:'메시지를 처리하지 못했어요. 잠시 후 다시 보내 주세요.',allowed_mentions:{parse:[]}}).catch(()=>{});
-    throw error;
-  }
-  processed.add(m.id); if(processed.size>5000)processed.delete(processed.values().next().value);
+const inbox=new DiscordInbox({config,relay,request,parentFor,attachments,typing});
+let historyRetry=null;
+function recoverHistory(){
+  clearTimeout(historyRetry);historyRetry=null;
+  inbox.recover().catch(()=>{log('history-recovery-failed');if(!stopped)historyRetry=setTimeout(recoverHistory,10000);});
 }
 async function handleInteraction(i) {
   const parent=await parentFor(i.channel_id);
@@ -113,9 +104,9 @@ function open() {
     if(p.op===10) {clearInterval(heartbeat); const interval=p.d.heartbeat_interval; const beat=()=>{if(!acked){ws.close(4000,'heartbeat');return;}acked=false;send({op:1,d:seq});}; setTimeout(()=>{beat();heartbeat=setInterval(beat,interval);},Math.random()*interval); if(sessionId && seq!==null)send({op:6,d:{token,session_id:sessionId,seq}}); else send({op:2,d:{token,intents:33281,properties:{os:process.platform,browser:'paseo-bot',device:'paseo-bot'}}});return;}
     if(p.op===11){acked=true;lastAckAt=Date.now();return;} if(p.op===1){send({op:1,d:seq});return;} if(p.op===7){ws.close(4000,'reconnect');return;} if(p.op===9){if(!p.d){sessionId='';seq=null;}ws.close(4000,'session');return;} if(p.op!==0)return;
     lastEventAt=Date.now(); const d=p.d;
-    if(p.t==='READY'){sessionId=d.session_id;resumeUrl=d.resume_gateway_url;appId=d.user.id;attempts=0;status='connected';health();request('PUT',`/applications/${appId}/guilds/${config.guildId}/commands`,core.commandDefinitions()).catch(()=>log('commands-failed'));}
+    if(p.t==='READY'){sessionId=d.session_id;resumeUrl=d.resume_gateway_url;appId=d.user.id;attempts=0;status='connected';health();recoverHistory();request('PUT',`/applications/${appId}/guilds/${config.guildId}/commands`,core.commandDefinitions()).catch(()=>log('commands-failed'));}
     else if(p.t==='RESUMED'){attempts=0;status='connected';health();}
-    else if(p.t==='MESSAGE_CREATE')handleMessage(d).catch(()=>{log('message-failed');recoverClient().catch(()=>{});});
+    else if(p.t==='MESSAGE_CREATE')inbox.live(d).catch(()=>{log('message-failed');recoverClient().catch(()=>{}).finally(recoverHistory);});
     else if(p.t==='INTERACTION_CREATE')handleInteraction(d).catch(()=>log('interaction-failed'));
     else if(['THREAD_CREATE','THREAD_UPDATE','THREAD_DELETE'].includes(p.t))threadEvent(p.t,d).catch(()=>log('thread-event-failed'));
   });
@@ -124,5 +115,5 @@ function open() {
 }
 await relay.readyHints; await relay.baseline(); open(); health(); const healthTimer=setInterval(health,5000);
 let polling=false;const pollTimer=setInterval(async()=>{if(polling)return;polling=true;try{await relay.pollDue();}catch{log('poll-failed');await recoverClient().catch(()=>log('client-reconnect-failed'));}finally{polling=false;}},2000);
-async function shutdown(){stopped=true;clearInterval(heartbeat);clearInterval(healthTimer);clearInterval(pollTimer);clearTimeout(reconnectTimer);socket?.close();await client.close().catch(()=>{});process.exit(0);}
+async function shutdown(){stopped=true;clearInterval(heartbeat);clearInterval(healthTimer);clearInterval(pollTimer);clearTimeout(reconnectTimer);clearTimeout(historyRetry);socket?.close();await client.close().catch(()=>{});process.exit(0);}
 process.on('SIGTERM',shutdown); process.on('SIGINT',shutdown);

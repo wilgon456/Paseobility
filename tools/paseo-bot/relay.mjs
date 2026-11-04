@@ -16,17 +16,21 @@ export function writeMapping(file, value) {
     }
   }
 }
-export function loadMapping(file) {
+export function loadState(file) {
   try {
     const value=JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,''));
     if(!value || typeof value!=='object' || Array.isArray(value))throw Error('invalid mapping');
-    return Object.fromEntries(Object.entries(value).map(([thread,v])=>{
+    const versioned=value.version===2 && value.threads && typeof value.threads==='object';
+    const threads=Object.fromEntries(Object.entries(versioned?value.threads:value).map(([thread,v])=>{
       if(typeof v==='string') return [thread,{agentId:v,delivered:0}];
       if(!v || typeof v.agentId!=='string' || !Number.isSafeInteger(v.delivered) || v.delivered<0)throw Error('invalid mapping');
       return [thread,v];
     }));
-  } catch(e) { if(e.code==='ENOENT')return {};throw e; }
+    const lastSeen=versioned && value.lastSeen && typeof value.lastSeen==='object' && !Array.isArray(value.lastSeen)?value.lastSeen:{};
+    return {threads,lastSeen};
+  } catch(e) { if(e.code==='ENOENT')return {threads:{},lastSeen:{}};throw e; }
 }
+export function loadMapping(file) { return loadState(file).threads; }
 export function prepareHome(home,source,projectsFile=path.join(os.homedir(),'.config/paseo-bot/projects.json')) {
   fs.mkdirSync(home,{recursive:true});
   const guidance=fs.readFileSync(new URL('./FRONT_AGENT.md',import.meta.url),'utf8').replaceAll('{{SOURCE}}',source).replaceAll('{{HOME}}',home);
@@ -57,7 +61,7 @@ export async function routedClient(origin,serverId) {
 const resting = status => ['idle','closed','error'].includes(status);
 export class Relay {
   constructor({client,stateDir,home,source,config={},send,typing=()=>{},remoteClient=routedClient}) {
-    this.client=client; this.file=path.join(stateDir,'threads.json'); this.map=loadMapping(this.file);
+    this.client=client; this.file=path.join(stateDir,'threads.json'); const state=loadState(this.file);this.map=state.threads;this.lastSeen=state.lastSeen;
     this.home=home; this.source=source; this.config={provider:'codex',model:'gpt-6.1-terra',thinking:'high',mode:'full-access',...config};
     this.sendOutput=send; this.typing=typing; this.remoteClient=remoteClient; this.chains=new Map(); this.watches=new Map(); this.next=new Map(); this.versions=new Map();
     this.workspacePromise=null; this.requests=path.join(home,'.relay-requests');
@@ -84,7 +88,8 @@ export class Relay {
     });
     fs.writeFileSync(file,lines.join('\n'),'utf8');
   }
-  persist(){writeMapping(this.file,this.map);}
+  persist(){writeMapping(this.file,{version:2,threads:this.map,lastSeen:this.lastSeen});}
+  markSeen(channel,id){if(!this.lastSeen[channel] || BigInt(id)>BigInt(this.lastSeen[channel])){this.lastSeen[channel]=id;this.persist();}}
   serial(thread,fn){const previous=this.chains.get(thread)||Promise.resolve();const result=previous.catch(()=>{}).then(fn);this.chains.set(thread,result);result.finally(()=>{if(this.chains.get(thread)===result)this.chains.delete(thread);}).catch(()=>{});return result;}
   async workspace() {
     if(!this.workspacePromise)this.workspacePromise=this.client.openProject(this.home).then(r=>{if(r.error || !r.workspace?.id)throw Error('assistant workspace unavailable');return r.workspace;}).catch(e=>{this.workspacePromise=null;throw e;});
@@ -109,8 +114,8 @@ export class Relay {
       if(!record)return this.create(thread,text);
       let agent=(await this.client.fetchAgent({agentId:record.agentId}))?.agent;
       if(!agent){this.unwatch(thread);delete this.map[thread];this.persist();return this.create(thread,text);}
-      if(agent.archivedAt || agent.status==='closed')await this.client.refreshAgent(record.agentId);
-      delete record.archived;this.persist();this.watch(thread);this.next.set(thread,0);
+      if(agent.archivedAt || agent.status==='closed' || agent.status==='error')await this.client.refreshAgent(record.agentId);
+      delete record.archived;delete record.lastError;record.errorGeneration=(record.errorGeneration || 0)+1;this.persist();this.watch(thread);this.next.set(thread,0);
       await this.client.sendMessage(record.agentId,text,{messageId,activeTurnBehavior:'steer'});
       return record.agentId;
     });
@@ -132,11 +137,22 @@ export class Relay {
     if(!resting(agent.status)){this.typing(thread);this.next.set(thread,Date.now()+2000);return;}
     const page=await this.timeline(agent.id,record.scan);
     const entries=page.entries || [];
+    let pending=null,turn=null,scanned=record.delivered;
+    const flush=async()=>{if(!pending)return;await this.sendOutput(thread,pending.item.text,{agentId:agent.id,seq:pending.seqEnd});record.delivered=Math.max(record.delivered,pending.seqEnd);this.persist();pending=null;};
     for(const entry of entries){
-      if(entry.item?.type!=='assistant_message' || !entry.item.text?.trim() || entry.seqEnd<=record.delivered)continue;
-      await this.sendOutput(thread,entry.item.text,{agentId:agent.id,seq:entry.seqEnd});
-      record.delivered=entry.seqEnd;this.persist();
+      if(!Number.isSafeInteger(entry.seqEnd) || entry.seqEnd<=record.delivered)continue;
+      if(entry.item?.type==='user_message' || (entry.turnId && turn && entry.turnId!==turn))await flush();
+      if(entry.turnId)turn=entry.turnId;
+      if(entry.item?.type==='assistant_message' && entry.item.text?.trim())pending=entry;
+      scanned=Math.max(scanned,entry.seqEnd);
     }
+    await flush();
+    if(Number.isSafeInteger(page.endCursor?.seq))scanned=Math.max(scanned,page.endCursor.seq);
+    if(scanned>record.delivered){record.delivered=scanned;this.persist();}
+    if(agent.status==='error'){
+      const reason=errorReason(agent,entries); const fingerprint=JSON.stringify([agent.id,record.errorGeneration || 0]);
+      if(record.lastError!==fingerprint){await this.sendOutput(thread,reason,{agentId:agent.id,seq:`error-${agent.id}-${record.errorGeneration || 0}`});record.lastError=fingerprint;this.persist();}
+    } else if(record.lastError){delete record.lastError;record.errorGeneration=(record.errorGeneration || 0)+1;this.persist();}
     if(page.endCursor){record.scan=page.endCursor;this.persist();}
     await this.applySwitch(thread,agent);
     if(this.map[thread]===record && (this.versions.get(thread)||0)===version)this.next.set(thread,Date.now()+60000);
@@ -164,13 +180,27 @@ export class Relay {
     try {
       const hosts=await this.client.listHosts?.();
       for(const host of hosts?.hosts || [])if(host.enabled && host.status==='online' && host.serverId){try{clients.push(await this.remoteClient(this.client,host.serverId));}catch{}}
+      let runningWorker=false;
       for(const c of clients){try {let cursor;do{const page=await c.fetchAgents({includeBackground:true,page:{limit:200,...(cursor?{cursor}:{})}});
-        for(const e of page.entries || []){const a=e.agent;if(a?.id!==record.agentId && !a?.archivedAt && a?.labels?.paseo_bot_thread===thread)await c.archiveAgent(a.id);}
+        for(const e of page.entries || []){const a=e.agent;if(a?.id!==record.agentId && !a?.archivedAt && a?.labels?.paseo_bot_thread===thread){if(deleted || resting(a.status))await c.archiveAgent(a.id);else runningWorker=true;}}
         cursor=page.pageInfo?.hasMore?page.pageInfo.nextCursor:null;
       }while(cursor);}catch(e){if(c===this.client)throw e;process.stderr.write('remote worker cleanup failed\n');}}
       const front=(await this.client.fetchAgent({agentId:record.agentId}))?.agent;
-      if(front && !front.archivedAt)await this.client.archiveAgent(record.agentId);
-      this.unwatch(thread);if(deleted)delete this.map[thread];else record.archived=true;this.persist();
+      if(front && !front.archivedAt && (deleted || (resting(front.status) && !runningWorker)))await this.client.archiveAgent(record.agentId);
+      if(deleted){this.unwatch(thread);delete this.map[thread];delete this.lastSeen[thread];}
+      else if(!front || front.archivedAt || (resting(front.status) && !runningWorker)){this.unwatch(thread);record.archived=true;}
+      this.persist();
     } finally {for(const c of clients.slice(1))await c.close().catch(()=>{});}
   });}
+}
+function errorReason(agent,entries=[]){
+  const errors=entries.filter(e=>/error|failure/i.test(e.item?.type || '')).map(e=>e.item);
+  const details=[agent.error,agent.lastError,agent.statusReason,agent.errorMessage,agent.runtimeInfo?.error,...errors].map(x=>typeof x==='string'?x:JSON.stringify(x ?? '')).join(' ').toLowerCase();
+  if(/quota|usage limit|insufficient|credit|한도|잔액/.test(details))return '사용 한도에 도달해 답변을 마치지 못했어요. 한도를 확인한 뒤 다시 보내 주세요.';
+  if(/rate.?limit|too many requests|429|요청 제한/.test(details))return '요청이 너무 많아 답변을 마치지 못했어요. 잠시 후 다시 보내 주세요.';
+  if(/auth|unauthor|forbidden|credential|401|403|인증/.test(details))return '모델 연결 인증에 문제가 있어요. 연결 상태를 확인한 뒤 다시 보내 주세요.';
+  if(/network|connect|timeout|연결/.test(details))return '모델 연결이 끊겨 답변을 마치지 못했어요. 잠시 후 다시 보내 주세요.';
+  if(/model|unavailable|not found|unsupported|모델/.test(details))return '선택한 모델을 사용할 수 없어 답변을 마치지 못했어요. 모델을 확인한 뒤 다시 보내 주세요.';
+  if(/crash|process|exit|종료/.test(details))return '에이전트 실행이 중단돼 답변을 마치지 못했어요. 다시 보내 주세요.';
+  return '에이전트가 오류로 멈췄어요. 잠시 후 다시 보내 주세요.';
 }

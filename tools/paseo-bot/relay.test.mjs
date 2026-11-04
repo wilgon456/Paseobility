@@ -1,5 +1,6 @@
 import {test} from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import {Relay,loadMapping,writeMapping} from './relay.mjs'; import {acceptMessage,chunkText,conversationForMessage} from './discord_core.mjs';
+import {DiscordInbox} from './discord_inbox.mjs';
 
 function fixture(t) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'relay-test-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
@@ -11,7 +12,7 @@ function fixture(t) {
     async fetchAgents(){return {entries:Object.values(agents).map(agent=>({agent})),pageInfo:{hasMore:false}};},
     async fetchAgentTimeline(id,options){const rows=entries[id].filter(e=>!options.cursor || e.seqEnd>options.cursor.seq);return {entries:rows,endCursor:rows.length?{epoch:'epoch',seq:rows.at(-1).seqEnd}:options.cursor};},
     subscribeAgentTimeline(id,cb){watchers[id]=cb;return ()=>delete watchers[id];},
-    async sendMessage(...a){calls.push(['send',...a]);}, async refreshAgent(id){calls.push(['refresh',id]);agents[id].archivedAt=null;},
+    async sendMessage(...a){calls.push(['send',...a]);}, async refreshAgent(id){calls.push(['refresh',id]);agents[id].archivedAt=null;agents[id].status='idle';},
     async archiveAgent(id){calls.push(['archive',id]);agents[id].archivedAt=1;},
     async setAgentModel(...a){calls.push(['model',...a]);}, async setAgentThinkingOption(...a){calls.push(['thinking',...a]);},
     async respondToPermission(...a){calls.push(['permission',...a]);},
@@ -44,6 +45,30 @@ test('archive stops polling, resumes same agent, deletion keeps shared workspace
   await f.relay.pollDue();await f.relay.input('t','again');assert.equal(f.relay.map.t.agentId,id);assert.ok(f.calls.some(x=>Array.isArray(x)&&x[0]==='refresh'));
   await f.relay.closeThread('t',true);assert.equal(f.relay.map.t,undefined);assert.ok(!f.calls.some(x=>Array.isArray(x)&&x[0]==='archiveWorkspace'));
 });
+test('only the final assistant message from each turn is sent',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');
+  f.entries[id]=[entry(1,'user','user_message'),entry(2,'checking'),entry(3,'tool','tool_call'),entry(4,'answer one'),entry(5,'next','user_message'),entry(6,'working'),entry(7,'answer two'),entry(8,'trailing tool','tool_call')];
+  await f.relay.poll('t');await f.relay.poll('t');
+  assert.deepEqual(f.output.map(x=>x[1]),['answer one','answer two']);assert.equal(f.relay.map.t.delivered,8);
+});
+test('proactive turns with distinct turn ids keep their final answers',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');
+  f.entries[id]=[Object.assign(entry(1,'progress'),{turnId:'one'}),Object.assign(entry(2,'first'),{turnId:'one'}),Object.assign(entry(3,'progress'),{turnId:'two'}),Object.assign(entry(4,'second'),{turnId:'two'})];
+  await f.relay.poll('t');assert.deepEqual(f.output.map(x=>x[1]),['first','second']);
+});
+test('a resting agent error is reported once and retry permits a new notice',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');f.agents[id].status='error';f.agents[id].error={message:'quota exceeded'};
+  await f.relay.poll('t');await f.relay.poll('t');assert.equal(f.output.length,1);assert.match(f.output[0][1],/한도/);
+  await f.relay.input('t','retry');assert.ok(f.calls.some(x=>Array.isArray(x)&&x[0]==='refresh'));
+  f.agents[id].status='error';await f.relay.poll('t');assert.equal(f.output.length,2);assert.notEqual(f.output[0][2].seq,f.output[1][2].seq);
+});
+test('thread archive leaves running front and workers alive; delete archives them',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');f.agents[id].status='idle';
+  f.agents.worker={id:'worker',status:'running',labels:{paseo_bot_thread:'t'}};
+  await f.relay.closeThread('t');assert.equal(f.agents.worker.archivedAt,undefined);assert.equal(f.agents[id].archivedAt,undefined);assert.equal(f.relay.map.t.archived,undefined);
+  f.agents.worker.status='idle';f.agents[id].status='running';await f.relay.closeThread('t');assert.ok(f.agents.worker.archivedAt);assert.equal(f.agents[id].archivedAt,undefined);
+  await f.relay.closeThread('t',true);assert.ok(f.agents[id].archivedAt);assert.equal(f.relay.map.t,undefined);
+});
 test('subscription wakes an idle thread for proactive output',async t=>{
   const f=fixture(t);const id=await f.relay.input('t','one');await f.relay.poll('t');assert.ok(f.relay.next.get('t')>Date.now()+30000);
   f.entries[id]=[entry(1,'worker done')];f.watchers[id]();await f.relay.pollDue();assert.equal(f.output[0][1],'worker done');
@@ -60,4 +85,49 @@ test('top-level message creates its own thread and filtering and splitting work'
   const calls=[];const thread=await conversationForMessage(c,m,m.content,async(...args)=>{calls.push(args);return {id:'222222222222222222'};});
   assert.equal(thread,'222222222222222222');assert.deepEqual(calls,[[m.id,'hello']]);
   const text='hello '.repeat(800)+'😀';assert.equal(chunkText(text).join(''),text);assert.ok(chunkText(text).every(x=>x.length<=2000));
+});
+test('READY history recovery replays missed owner messages in order through the normal handler',async t=>{
+  const f=fixture(t),channel='111111111111111111',thread='222222222222222222',newThread='333333333333333333',owner='444444444444444444';
+  const cfg={enabled:true,guildId:'555555555555555555',channelId:channel,ownerIds:[owner]};
+  const id=await f.relay.input(thread,'before');f.relay.markSeen(channel,'100000000000000001');f.relay.markSeen(thread,'100000000000000002');
+  const calls=[],rows={
+    [channel]:[{id:'100000000000000005',channel_id:channel,guild_id:cfg.guildId,author:{id:owner},content:'new thread'}, {id:'100000000000000003',channel_id:channel,guild_id:cfg.guildId,author:{id:'999999999999999999'},content:'ignored'}],
+    [thread]:[{id:'100000000000000008',channel_id:thread,author:{id:owner},content:'second'}, {id:'100000000000000006',channel_id:thread,author:{id:owner},content:'first'}],
+    [newThread]:[],
+  };
+  const request=async(method,url,body)=>{calls.push([method,url]);if(method==='POST')return {id:newThread};const match=url.match(/^\/channels\/(\d+)\/messages\?after=(\d+)&limit=100$/);if(!match)throw Error(url);return (rows[match[1]] || []).filter(x=>BigInt(x.id)>BigInt(match[2])).reverse();};
+  const makeInbox=()=>new DiscordInbox({config:cfg,relay:f.relay,request,parentFor:async c=>c===channel?null:channel,attachments:async m=>m.content});
+  const inbox=makeInbox();await inbox.recover();
+  const sends=f.calls.filter(x=>Array.isArray(x)&&x[0]==='send'&&x[1]===id).map(x=>x[2]);assert.deepEqual(sends,['first','second']);
+  assert.ok(f.relay.map[newThread]);assert.equal(f.relay.lastSeen[channel],'100000000000000005');assert.equal(f.relay.lastSeen[thread],'100000000000000008');
+  const before=f.calls.length;await makeInbox().recover();await inbox.live({...rows[thread][0],guild_id:cfg.guildId});assert.equal(f.calls.length,before);
+  assert.ok(calls.some(x=>x[0]==='POST'&&x[1].includes('/threads')));
+});
+test('history recovery paginates past 100 messages without skipping earlier owners',async t=>{
+  const f=fixture(t),channel='111111111111111111',thread='222222222222222222',owner='444444444444444444';
+  const cfg={enabled:true,guildId:'555555555555555555',channelId:channel,ownerIds:[owner]},id=await f.relay.input(thread,'before');
+  f.relay.markSeen(channel,'100000000000000000');f.relay.markSeen(thread,'100000000000000000');
+  const rows=Array.from({length:205},(_,i)=>({id:(100000000000000001n+BigInt(i)).toString(),channel_id:thread,author:{id:owner},content:`message ${i}`}));
+  const request=async(method,url)=>{const m=url.match(/^\/channels\/(\d+)\/messages\?after=(\d+)&limit=100$/);if(!m)throw Error(url);return m[1]===channel?[]:rows.filter(x=>BigInt(x.id)>BigInt(m[2])).slice(0,100).reverse();};
+  await new DiscordInbox({config:cfg,relay:f.relay,request,parentFor:async c=>c===channel?null:channel,attachments:async m=>m.content}).recover();
+  const sends=f.calls.filter(x=>Array.isArray(x)&&x[0]==='send'&&x[1]===id);assert.equal(sends.length,205);assert.equal(sends[0][2],'message 0');assert.equal(sends.at(-1)[2],'message 204');
+});
+test('an event received while the first READY baseline is loading is not skipped',async t=>{
+  const f=fixture(t),channel='111111111111111111',thread='222222222222222222',owner='444444444444444444',id='100000000000000123';
+  const cfg={enabled:true,guildId:'555555555555555555',channelId:channel,ownerIds:[owner]},agent=await f.relay.input(thread,'before');f.relay.markSeen(channel,'100000000000000000');
+  let release,started;const waiting=new Promise(r=>release=r), ready=new Promise(r=>started=r);
+  const msg={id,channel_id:thread,guild_id:cfg.guildId,author:{id:owner},content:'live'};
+  const request=async(method,url)=>{if(url.includes(`${channel}/messages?after=`))return [];if(url.endsWith('/messages?limit=1')){started();await waiting;return [msg];}if(url.includes(`${thread}/messages?after=`))return [msg];throw Error(url);};
+  const inbox=new DiscordInbox({config:cfg,relay:f.relay,request,parentFor:async c=>c===channel?null:channel,attachments:async m=>m.content});
+  const recovery=inbox.recover();await ready;const live=inbox.live(msg);release();await recovery;await live;
+  assert.deepEqual(f.calls.filter(x=>Array.isArray(x)&&x[0]==='send'&&x[1]===agent).map(x=>x[2]),['live']);
+});
+test('a previously archived thread reopened while offline is recovered',async t=>{
+  const f=fixture(t),channel='111111111111111111',thread='222222222222222222',owner='444444444444444444';
+  const cfg={enabled:true,guildId:'555555555555555555',channelId:channel,ownerIds:[owner]},agent=await f.relay.input(thread,'before');
+  f.relay.markSeen(channel,'100000000000000000');f.relay.markSeen(thread,'100000000000000000');await f.relay.closeThread(thread);
+  const message={id:'100000000000000001',channel_id:thread,author:{id:owner},content:'reopened'};
+  const request=async(method,url)=>{if(url.endsWith('/threads/active'))return {threads:[{id:thread,parent_id:channel,thread_metadata:{archived:false}}]};if(url.includes(`${channel}/messages?after=`))return [];if(url.includes(`${thread}/messages?after=`))return [message];throw Error(url);};
+  await new DiscordInbox({config:cfg,relay:f.relay,request,parentFor:async c=>c===channel?null:channel,attachments:async m=>m.content}).recover();
+  assert.ok(f.calls.some(x=>Array.isArray(x)&&x[0]==='send'&&x[1]===agent&&x[2]==='reopened'));assert.equal(f.relay.map[thread].archived,undefined);
 });
