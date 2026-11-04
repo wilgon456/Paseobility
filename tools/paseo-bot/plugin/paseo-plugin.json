@@ -3,6 +3,6 @@
   "name": "Paseo 봇",
   "description": "Conversation-first Paseo bot manager, confirmed task plans and a read-only Kanban board.",
   "requirements": {
-    "paseo": ">=0.13.0 <0.14.0"
+    "paseo": ">=0.13.0 <0.16.0"
   }
 }

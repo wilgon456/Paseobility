@@ -705,15 +705,15 @@ function satisfiesRange(version, range) {
     });
 }
 
-test("manifest supports Paseo 0.12 and 0.13 but not 0.14", async () => {
+test("manifest supports Paseo 0.12 through 0.15 but not the unverified 0.16", async () => {
   const manifest = JSON.parse(
     await readFile(new URL("../paseo-plugin.json", import.meta.url), "utf8"),
   );
   const range = manifest.requirements.paseo;
-  assert.equal(range, ">=0.12.0 <0.14.0");
-  for (const version of ["0.12.0", "0.12.10", "0.13.0", "0.13.9"])
+  assert.equal(range, ">=0.12.0 <0.16.0");
+  for (const version of ["0.12.0", "0.12.10", "0.13.0", "0.13.9", "0.14.0", "0.15.0", "0.15.9"])
     assert.ok(satisfiesRange(version, range), version);
-  for (const version of ["0.11.4", "0.14.0", "1.0.0"])
+  for (const version of ["0.11.4", "0.16.0", "1.0.0"])
     assert.ok(!satisfiesRange(version, range), version);
   assert.equal(manifest.translations, undefined);
 });

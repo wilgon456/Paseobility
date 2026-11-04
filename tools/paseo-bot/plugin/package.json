@@ -9,7 +9,7 @@
     "screenshots": "node tests/capture.mjs"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.13.0",
+    "@getpaseo/plugin": "0.15.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.20.5",
     "@types/react": "~19.2.0",

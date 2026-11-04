@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.11.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all twelve skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.12.** The plugin supports Paseo 0.12.x through 0.15.x ([0.15.0 check](docs/compatibility-0.15.0.md)). `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all twelve skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -870,6 +870,16 @@ Install with `paseo plugin add git:wilgon456/Paseobility:plugin`. The text adapt
 
 <details>
 <summary>Earlier release notes</summary>
+
+## 2026-11-04 · Plugin loads again on Paseo 0.14 and 0.15 (v2.12.12)
+
+The Paseobility plugin declared support only up to Paseo 0.13, so Paseo 0.14
+and 0.15 refused to load it and its screens disappeared. Nothing it uses changed
+in those releases: the client plugin API is identical and the daemon side only
+gained new optional hooks. The supported range is now Paseo 0.12 through 0.15,
+checked against the 0.14 and 0.15 plugin SDKs and loaded on a 0.15.0 daemon. The
+Paseo bot plugin got the same range. See the
+[0.15.0 compatibility check](docs/compatibility-0.15.0.md).
 
 ## 2026-10-29 · Plugin screens in English for everyone outside Korea (v2.12.11)
 

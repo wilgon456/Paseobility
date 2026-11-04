@@ -1,5 +1,15 @@
 # Release history
 
+## 2026-11-04 · Plugin loads again on Paseo 0.14 and 0.15 (v2.12.12)
+
+The Paseobility plugin declared support only up to Paseo 0.13, so Paseo 0.14
+and 0.15 refused to load it and its screens disappeared. Nothing it uses changed
+in those releases: the client plugin API is identical and the daemon side only
+gained new optional hooks. The supported range is now Paseo 0.12 through 0.15,
+checked against the 0.14 and 0.15 plugin SDKs and loaded on a 0.15.0 daemon. The
+Paseo bot plugin got the same range. See the
+[0.15.0 compatibility check](compatibility-0.15.0.md).
+
 ## 2026-10-29 · Plugin screens in English for everyone outside Korea (v2.12.11)
 
 The Paseobility plugin is listed worldwide on paseo.sh, but parts of it still
