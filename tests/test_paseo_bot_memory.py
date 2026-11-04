@@ -917,7 +917,8 @@ class ExportTests(MemoryTestCase):
                 self.export.run(['status'], timeout=10 ** 6)
         kwargs = popen.call_args.kwargs
         self.assertEqual(kwargs['errors'], 'replace')
-        self.assertTrue(kwargs['start_new_session'])
+        # POSIX starts a new session so the whole tree can be killed; Windows has no sessions.
+        self.assertEqual(kwargs['start_new_session'], os.name != 'nt')
         self.assertLessEqual(fake.communicate.call_args.kwargs['timeout'], memory.EXPORT_BUDGET_SECONDS)
         self.assertEqual(kill.call_count, 1)
 

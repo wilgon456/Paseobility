@@ -63,7 +63,7 @@ class ConversationTests(unittest.TestCase):
         self.step = dict(project='fixture', title='Fixture task', prompt='Make the bounded change', kind='gpt')
 
     def tearDown(self):
-        self.c.db.close()
+        self.c.close()
         self.tmp.cleanup()
 
     def plan(self, steps=None, message='message-1'):
@@ -556,7 +556,7 @@ class HousekeepingNoticeTests(unittest.TestCase):
             self.assertEqual(out['messages'], [])
             with self.assertRaises(ValueError):
                 _handle(home, dict(action='sync', conversationId='no-such-conversation'), True)
-            c.db.close()
+            c.close()
         finally:
             tmp.cleanup()
 
@@ -582,7 +582,7 @@ class CuratorNotifyCommitTests(unittest.TestCase):
                 self.assertEqual(other.execute("SELECT count(*) FROM gui_messages WHERE conversation='notice-conv' AND role='system'").fetchone()[0], 1)
             finally:
                 other.close()
-            c.db.close()
+            c.close()
         finally:
             tmp.cleanup()
 

@@ -114,7 +114,7 @@ def handle(home, request, allow_submit=False):
                 return c.resolve(request['conversationId'])
             return c.remember(request['conversationId'], request['messageId'], request['project'])
         finally:
-            c.db.close()
+            c.close()
     if action == 'submit':
         if not allow_submit:
             raise ValueError('Read-only bridge')

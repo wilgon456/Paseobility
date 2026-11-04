@@ -106,7 +106,7 @@ class GuiTests(unittest.TestCase):
                                      ('old-message', 'conv-0', 'assistant', '오래된 답변', now, '{}'))
             conversations.db.commit()
         finally:
-            conversations.db.close()
+            conversations.close()
         out = gui.handle(self.home, dict(action='sync', conversationId='conv-0'))
         self.assertTrue(out['configured'])
         self.assertEqual(len(out['conversations']), 50)
@@ -257,7 +257,7 @@ class GuiTests(unittest.TestCase):
                 "SELECT payload FROM gui_messages WHERE conversation='conv-a' AND instr(text,'허용했어요')>0").fetchone()[0])
             self.assertEqual(resolved_payload['permissionResolved'], {'taskId': self.task['id'], 'pid': pid})
         finally:
-            conversations.db.close()
+            conversations.close()
 
     def test_each_rejected_control_is_announced_once(self):
         self.bot.submit(self.task, {'requester': 'discord', 'conversationId': 'conv-a'})
@@ -295,7 +295,7 @@ class GuiTests(unittest.TestCase):
                     ('요청을 처리하지 못했어요: ' + text,)).fetchone()[0]
                 self.assertEqual(shown, 1, reason)
         finally:
-            conversations.db.close()
+            conversations.close()
 
     @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell byte-stream integration')
     def test_windows_wrapper_stdio_readonly_submit_and_result(self):
