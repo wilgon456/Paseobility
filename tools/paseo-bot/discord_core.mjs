@@ -352,6 +352,14 @@ export function modelLabel(task) {
   return `모델 ${alias}`;
 }
 
+// The effort the task runs with, as the service resolved it; older plans fall back to the stored choice.
+export function effortLabel(task) {
+  const resolved = typeof task?.resolvedEffort === 'string' ? task.resolvedEffort : '';
+  const chosen = typeof task?.effort === 'string' && task.effort ? task.effort : 'auto';
+  const effort = resolved || chosen;
+  return effort === 'auto' ? 'effort 기본' : `effort ${effort}`;
+}
+
 export function promptPreview(task, limit = PROMPT_PREVIEW) {
   const size = Number.isInteger(limit) && limit > 0 ? limit : PROMPT_PREVIEW;
   const text = (typeof task?.prompt === 'string' ? task.prompt : '').replace(/\s+/g, ' ').trim();
@@ -370,7 +378,7 @@ function planLines(plan, previewLimit) {
     const bits = [task.project ?? '?'];
     bits.push({inspect: '확인만', daily: '일반 변경', verified: '중요 변경'}[task.workflow ?? 'verified'] ?? String(task.workflow));
     if (typeof task.machine === 'string' && task.machine) bits.push(task.machine);
-    bits.push(modelLabel(task));
+    bits.push(modelLabel(task), effortLabel(task));
     lines.push(bits.join(' · '));
     const preview = promptPreview(task, previewLimit);
     if (preview) lines.push('> ' + preview);

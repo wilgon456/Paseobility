@@ -29,6 +29,8 @@ export const taskSchema = z
     effort: selectionSchema.shape.effort.optional(),
     modelReason: z.string().max(300).optional(),
     resolvedModel: storedModel.exclude(["auto"]).optional(),
+    // The effort the service will run with; "auto" means the host profile's own setting.
+    resolvedEffort: selectionSchema.shape.effort.optional(),
     workflow: workflowSchema.optional(),
   })
   .strict();

@@ -230,10 +230,22 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 `{project:"auto", model:"auto", effort:"auto", workflow:"daily"}`이고 실제
 강제는 `gui_state.py`가 해요.
 
+**모델과 effort를 말로 정하기.** 대화에서 "A는 claude로 high, B는 go로"처럼
+말하면 관리자가 그 작업에만 `model`(sol·claude·go)과 `effort`(low·medium·high)를
+적어요. 말하지 않은 작업은 비워 두고, 관리자가 난이도를 보고 스스로 고르지는
+않아요. 없는 이름(예: gemini, max)을 말하면 관리자가 쓸 수 있는 이름을 답하고,
+그래도 없는 값이 오면 계획을 받지 않아요. 우선순위는 `/task`나 GUI에서 고른 값,
+말로 정한 값, 기본값 순서예요. 기본값은 일반 변경·확인만이면 sol·medium이고,
+중요 변경이면 작업 종류에 따른 모델과 기기 프로필의 effort예요. 서비스는 실제로
+쓸 값을 계획에 `resolvedModel`·`resolvedEffort`로 한 번 계산해 두고, 실행과
+카드가 같은 값을 써요. 계획 카드에는 작업마다 "모델 claude · effort high"가
+보이므로, 잘못 알아들었으면 접수 전에 거절하고 다시 말하면 돼요.
+`modelReason`은 고른 값이면 `직접 선택`, 말로 정했으면 `요청에서 지정`이에요.
+
 ## 7. 계획 카드와 버튼
 
 관리자가 계획을 제안하면(`state: pending`) 쓰레드에 요약 카드를 올려요.
-프로젝트, 기기(있으면), 모델 별칭, 워크플로, `modelReason`을 보여 주고 버튼
+프로젝트, 워크플로, 기기(있으면), 모델, effort를 작업마다 보여 주고 버튼
 두 개를 붙여요.
 
 각 작업 아래에는 실행할 요청 미리보기(`요청: ` + 앞 300자, 줄바꿈은 공백으로

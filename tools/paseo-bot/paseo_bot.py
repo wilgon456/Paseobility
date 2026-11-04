@@ -54,6 +54,13 @@ def route_model(body, stage):
     if stage == 'work' and classify(body) == 'sync': return 'go'
     return 'sol'
 
+def route_effort(body):
+    """The effort a task runs with: a named one, medium for daily/inspect, else the host profile's own."""
+    effort = body.get('effort', 'auto')
+    if effort == 'auto' and body.get('workflow') in ('daily', 'inspect'):
+        return 'medium'
+    return effort
+
 # Usage limits (or a model missing on the host) rotate sol -> claude -> go -> sol; callers skip models already tried.
 FALLBACK = {'sol': 'claude', 'claude': 'go', 'go': 'sol'}
 
@@ -1189,9 +1196,7 @@ class Bot:
                 self.save(r)
             model = r.pop('retryModel', None) or route_model(body, stage)
             profile = MODELS[model][0]
-            effort = body.get('effort', 'auto')
-            if body.get('workflow') in ('daily', 'inspect') and effort == 'auto':
-                effort = 'medium'
+            effort = route_effort(body)
             r.update(state='dispatching', attempt=uuid.uuid4().hex, profile=profile, model=model, phaseStartedAt=time.time())
             self.save(r)  # Admission is durable BEFORE any launch side effect.
             args = dict(profile=profile, modelAlias=model, effort=effort, repo=r['target']['repo'], title='Paseo bot ' + r['id'] + ' ' + stage, attempt=r['attempt'], prompt=self.prompt(body, r, stage))

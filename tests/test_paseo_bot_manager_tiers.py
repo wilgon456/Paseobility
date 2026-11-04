@@ -337,3 +337,47 @@ class ManagerRefusalTests(ManagerHarness):
             with self.assertRaises(ValueError) as error:
                 bridge_result(unknown)
             self.assertNotIsInstance(error.exception, ManagerRefused)
+
+
+class SpokenModelChoiceTests(ManagerHarness):
+    """A model or effort named in words stays on its task; a form choice wins; nothing named keeps defaults."""
+
+    def plan_for(self, tasks, selection=None):
+        self.c.create('session-1')
+        self.c.send('session-1', 'm1', 'A는 claude로 high, B는 그대로', selection=selection or dict(workflow='daily'))
+        self.c.tick()
+        self.fake.replies.append(reply('m1', '이렇게 할게요.', tasks))
+        self.c.tick()
+        row = self.c.db.execute('SELECT body FROM gui_plans').fetchone()
+        return json.loads(row[0])['tasks'] if row else None
+
+    def test_named_model_and_effort_stay_per_task(self):
+        a = dict(self.step, title='A', model='claude', effort='high')
+        b = dict(self.step, title='B')
+        planned = self.plan_for([a, b])
+        self.assertEqual([(t['model'], t['effort'], t['resolvedModel'], t['resolvedEffort']) for t in planned],
+                         [('claude', 'high', 'claude', 'high'), ('auto', 'auto', 'sol', 'medium')])
+        self.assertEqual([t['modelReason'] for t in planned], ['요청에서 지정', '일반 작업 기본 모델'])
+
+    def test_form_choice_wins_over_words(self):
+        a = dict(self.step, title='A', model='claude', effort='high')
+        planned = self.plan_for([a], selection=dict(workflow='daily', model='go', effort='low'))
+        self.assertEqual((planned[0]['model'], planned[0]['effort'], planned[0]['modelReason']), ('go', 'low', '직접 선택'))
+
+    def test_empty_values_from_the_manager_mean_nothing_was_named(self):
+        planned = self.plan_for([dict(self.step, model=None, effort='')])
+        self.assertEqual((planned[0]['model'], planned[0]['effort'], planned[0]['resolvedEffort']), ('auto', 'auto', 'medium'))
+
+    def test_unknown_model_is_not_admitted(self):
+        self.plan_for([dict(self.step, model='gemini')])
+        self.assertEqual(self.c.db.execute('SELECT count(*) FROM gui_plans').fetchone()[0], 0)
+        self.assertEqual(self.job_state('m1'), 'invalid')
+
+    def test_resolved_effort_matches_what_dispatch_runs(self):
+        from paseo_bot import route_effort
+        self.assertEqual(route_effort({'workflow': 'daily'}), 'medium')
+        self.assertEqual(route_effort({'workflow': 'inspect', 'effort': 'auto'}), 'medium')
+        self.assertEqual(route_effort({'workflow': 'verified'}), 'auto')  # the host profile decides
+        self.assertEqual(route_effort({'workflow': 'daily', 'effort': 'high'}), 'high')
+        with self.assertRaises(ValueError):
+            self.c.validate_steps([dict(self.step, workflow='daily', resolvedEffort='high')])

@@ -558,3 +558,15 @@ test('a stuck conversation is announced once per stuck state', () => {
   assert.ok(c.stuckTransition('job-unknown', 'manager-missing').post.includes('관리자를 찾지 못했어요'));
   assert.deepEqual(c.stuckTransition(undefined, 'not-a-state'), {post: '', next: ''});
 });
+
+test('plan cards name the effort each task runs with', () => {
+  const plan = {id: 'plan-effort', tasks: [
+    {project: 'p', title: 'A', prompt: 'a', workflow: 'daily', model: 'claude', effort: 'high', resolvedModel: 'claude', resolvedEffort: 'high'},
+    {project: 'p', title: 'B', prompt: 'b', workflow: 'daily', model: 'auto', effort: 'auto', resolvedModel: 'sol', resolvedEffort: 'medium'},
+    {project: 'p', title: 'C', prompt: 'c', workflow: 'verified', model: 'auto', effort: 'auto', resolvedModel: 'sol', resolvedEffort: 'auto'},
+  ]};
+  const text = c.planSummary(plan);
+  assert.ok(text.includes('모델 claude · effort high'));
+  assert.ok(text.includes('모델 sol · effort medium'));
+  assert.ok(text.includes('effort 기본'));
+});

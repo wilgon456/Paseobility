@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { ExternalLink, Markdown, useToast } from "@getpaseo/plugin/client/ui";
 import { Animated, Easing, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { Action, Plan, Selection, Workflow } from "../shared/contracts";
-import { makeTaskId, modelAlias, modelLabel, models, profileLabel, safePr } from "../shared/model";
+import { makeTaskId, modelLabel, models, profileLabel, safePr } from "../shared/model";
 import type { Props, ActionResult } from "./screen";
 import { Button, Empty, Glyph, MotionIn, Notice, Segmented, Select, StatusIcon, Tag, useReducedMotion, useUi, type Option } from "./ui";
 import { composerKeys } from "./web";
@@ -278,7 +278,13 @@ export function Chat(
         {plan && plan.tasks.length > 0 && (() => {
           const first = plan.tasks[0];
           const model = (task: typeof first, compact = false) => task.resolvedModel ? modelLabel(task.resolvedModel, compact) : profileLabel(task.kind);
-          const effort = (task: typeof first) => task.effort && task.effort !== "auto" ? task.effort : task.workflow === "daily" ? "medium (자동)" : (modelAlias(task.resolvedModel ?? "") === "sol" ? "high (자동)" : "자동");
+          // The service resolves the effort once (resolvedEffort); the card only names it.
+          const effort = (task: typeof first) => {
+            const value = task.resolvedEffort ?? task.effort ?? "auto";
+            if (value === "auto") return "기본";
+            return task.effort && task.effort !== "auto" ? value : `${value} (자동)`;
+          };
+          const mixed = plan.tasks.some((task) => task.resolvedModel !== first.resolvedModel || effort(task) !== effort(first));
           const frame = t.tint(t.c.accent, 0.06, t.c.surface0);
           return (
             <MotionIn motionKey={plan.id}>
@@ -296,6 +302,7 @@ export function Chat(
                 <Tag surface={frame.background} label={`effort ${p.compact ? effort(first).replace(" (자동)", "") : effort(first)}`} tone={effortTone(effort(first))} />
                 {!!first.workflow && <Tag surface={frame.background} label={workflowLabel(first.workflow)} tone={workflows[first.workflow].tone} />}
                 {plan.tasks.length > 1 && <Tag surface={frame.background} label={`${plan.tasks.length}단계`} tone="cyan" />}
+                {mixed && <Tag surface={frame.background} label="작업마다 모델·effort 다름" tone="cyan" />}
                 <Tag surface={frame.background} label={first.modelReason === "일반 작업 기본 모델" && p.compact ? "기본 작업" : first.modelReason || "자동 배정"} tone="gray" />
               </ScrollView>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
