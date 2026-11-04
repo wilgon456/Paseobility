@@ -311,7 +311,7 @@ test('slash commands, selections and autocomplete stay bounded', () => {
   assert.deepEqual(definitions, c.commandDefinitions());
   definitions[0].name = 'changed';
   assert.equal(c.commandDefinitions()[0].name, 'task');
-  assert.deepEqual(c.commandDefinitions().map(command => command.name), ['task', 'status', 'cancel', 'pause', 'resume', 'peek', 'resolve']);
+  assert.deepEqual(c.commandDefinitions().map(command => command.name), ['task', 'status', 'cancel', 'pause', 'resume', 'peek', 'resolve', 'manager']);
   const resolve = c.commandDefinitions().find(command => command.name === 'resolve');
   assert.deepEqual(resolve, {name: 'resolve', description: '확인이 필요한 대화를 다시 열어요.', type: 1, options: []});
   for (const name of c.CONTROL_COMMANDS) {
@@ -524,4 +524,16 @@ test('status text uses Korean state labels', () => {
   assert.match(text, /완료 2/);
   assert.match(text, /멈춰 있음 1/);
   assert.doesNotMatch(text, /passed/);
+});
+
+test('manager command shows and switches the manager profile', () => {
+  const manager = c.commandDefinitions().find(command => command.name === 'manager');
+  assert.deepEqual(manager.options[0].choices.map(choice => choice.value), ['codex', 'claude']);
+  assert.equal(manager.options[0].required, false);
+  const info = {profile: 'codex', provider: 'codex', chat: {model: 'gpt-6.1-terra', thinking: 'max'},
+    plan: {model: 'gpt-6.1-sol', thinking: 'high'}};
+  assert.equal(c.managerText(info), '관리자: Codex\n잡담·질문: gpt-6.1-terra max\n작업 계획: gpt-6.1-sol high');
+  assert.match(c.managerText({...info, profile: 'claude', changed: true}, true), /^관리자를 Claude\(으\)로 바꿨어요/);
+  assert.match(c.managerText({...info, changed: false}, true), /^이미 Codex 관리자를/);
+  assert.match(c.managerText(null), /잡담·질문: \?/);
 });

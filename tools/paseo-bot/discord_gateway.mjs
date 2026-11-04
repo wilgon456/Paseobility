@@ -808,6 +808,18 @@ async function handleTaskCommand(interaction) {
   }
 }
 
+async function handleManagerCommand(interaction) {
+  const use = core.commandOptions(interaction).use;
+  const profile = typeof use === 'string' && use ? use : undefined;
+  try {
+    const result = await gui(profile ? {action: 'manager', profile} : {action: 'manager'});
+    await interactionFollowUp(interaction, {content: core.managerText(result, Boolean(profile))});
+  } catch (error) {
+    noteError('manager-command', error);
+    await interactionFollowUp(interaction, {content: profile ? '관리자를 바꾸지 못했어요.' : '관리자 설정을 확인하지 못했어요.'}).catch(() => {});
+  }
+}
+
 async function handleStatusCommand(interaction) {
   try {
     const result = await gui({action: 'status'});
@@ -982,13 +994,14 @@ async function handleInteraction(interaction) {
       return;
     }
     try {
-      await interactionCallback(interaction, {type: 5, data: (name === 'status' || core.CONTROL_COMMANDS.includes(name)) ? {flags: 64} : {}});
+      await interactionCallback(interaction, {type: 5, data: (name === 'status' || name === 'manager' || core.CONTROL_COMMANDS.includes(name)) ? {flags: 64} : {}});
     } catch (error) {
       noteError('command-ack', error);
       return;
     }
     queue(async () => {
       if (name === 'status') await handleStatusCommand(interaction);
+      else if (name === 'manager') await handleManagerCommand(interaction);
       else if (name === 'task') await handleTaskCommand(interaction);
       else if (core.CONTROL_COMMANDS.includes(name)) await handleControlCommand(interaction, name);
       else await interactionFollowUp(interaction, {content: '알 수 없는 명령이에요.'}).catch(() => {});

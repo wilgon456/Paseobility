@@ -222,6 +222,22 @@ async function main() {
     await client.archiveAgent(req.agentId);
     return { archived: true };
   }
+  if (req.action === "tune") {
+    // Per-turn tier switch (chat model ↔ planner model) on the same conversation.
+    if (current.agent.status !== "idle") throw Error("busy");
+    if (typeof req.model !== "string" || !req.model || typeof req.thinking !== "string" || !req.thinking)
+      throw Error("action");
+    await client.setAgentModel(req.agentId, req.model);
+    await client.setAgentThinkingOption(req.agentId, req.thinking);
+    return { tuned: true };
+  }
+  if (req.action === "claim") {
+    // A pre-created idle spare becomes this conversation's manager by relabelling.
+    if (current.agent.status !== "idle") throw Error("busy");
+    if (typeof req.to !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/.test(req.to)) throw Error("action");
+    await client.updateAgent(req.agentId, { labels: { paseo_bot_gui: req.to } });
+    return { claimed: true };
+  }
   if (req.action === "send") {
     if (current.agent.status !== "idle") throw Error("busy");
     await client.sendMessage(req.agentId, req.prompt);

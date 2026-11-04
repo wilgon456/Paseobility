@@ -88,12 +88,23 @@ def handle(home, request, allow_submit=False):
                'start': {'action', 'requestId', 'messageId', 'text', 'selection'},
                'approve': {'action', 'conversationId', 'planId', 'digest'}, 'reject': {'action', 'conversationId', 'planId'},
                'remember': {'action', 'conversationId', 'messageId', 'project'}, 'resolve': {'action', 'conversationId'},
-               'memory': {'action', 'op', 'key', 'requestId', 'id', 'project', 'status', 'query'}}
+               'memory': {'action', 'op', 'key', 'requestId', 'id', 'project', 'status', 'query'},
+               'manager': {'action', 'profile'}}
     if action not in allowed or set(request) - allowed[action]:
         raise ValueError('Unsupported request')
     home = Path(home)
     if action == 'memory':
         return memory_request(home, request, allow_submit)
+    if action == 'manager':
+        # No profile: report the active manager. A profile switches it (owner command).
+        profile = request.get('profile')
+        if profile is not None and (not isinstance(profile, str) or not allow_submit):
+            raise ValueError('Read-only bridge')
+        c = Conversations(home)
+        try:
+            return c.set_manager(profile) if profile is not None else c.manager_info()
+        finally:
+            c.db.close()
     if action in ['create', 'start', 'send', 'approve', 'reject', 'remember', 'resolve']:
         if not allow_submit:
             raise ValueError('Read-only bridge')

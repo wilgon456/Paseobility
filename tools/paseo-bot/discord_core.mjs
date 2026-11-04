@@ -662,7 +662,32 @@ export const COMMANDS = Object.freeze([
   {name: 'resume', description: '멈춘 작업을 다시 시작해요.', type: 1, options: [TASK_OPTION]},
   {name: 'peek', description: '작업 에이전트의 최근 로그를 봐요.', type: 1, options: [TASK_OPTION]},
   {name: 'resolve', description: '확인이 필요한 대화를 다시 열어요.', type: 1, options: []},
+  {name: 'manager', description: '대화 관리자 모델을 보거나 바꿔요.', type: 1, options: [
+    {type: 3, name: 'use', description: '바꿀 관리자 (비우면 현재 설정을 보여줘요)', required: false, choices: [
+      {name: 'Codex', value: 'codex'}, {name: 'Claude', value: 'claude'},
+    ]},
+  ]},
 ]);
+
+const MANAGER_LABELS = Object.freeze({codex: 'Codex', claude: 'Claude'});
+
+// Owner-facing summary of the active manager profile (from gui_api action 'manager').
+export function managerText(result, switched = false) {
+  const source = result && typeof result === 'object' ? result : {};
+  const name = typeof source.profile === 'string' ? source.profile : '';
+  const label = MANAGER_LABELS[name] ?? (name || String(source.provider ?? ''));
+  const tier = spec => (spec && typeof spec === 'object' ? `${spec.model} ${spec.thinking}` : '?');
+  const lines = [];
+  if (switched) {
+    lines.push(source.changed === false
+      ? `이미 ${label} 관리자를 쓰고 있어요.`
+      : `관리자를 ${label}(으)로 바꿨어요. 각 스레드는 다음 메시지부터 새 관리자로 이어가요(최근 대화를 넘겨줘요).`);
+  } else {
+    lines.push(`관리자: ${label}`);
+  }
+  lines.push(`잡담·질문: ${tier(source.chat)}`, `작업 계획: ${tier(source.plan)}`);
+  return lines.join('\n');
+}
 
 export function commandDefinitions() {
   return JSON.parse(JSON.stringify(COMMANDS));

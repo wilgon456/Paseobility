@@ -220,6 +220,41 @@ class ResidentManagerRPC:
             raise ValueError('Manager outcome unavailable; do not automatically resend.') from None
 
 
+MANAGER_NAME = re.compile(r'[a-z][a-z0-9-]{0,19}\Z')
+MANAGER_TIERS = ('chat', 'plan')
+# Tag a plan job created by escalation; the source message keeps the owner's selection.
+PLAN_SUFFIX = '.plan'
+TIER_PROMPT = ('Each turn states "Manager tier". On a chat turn you are the fast conversational tier: answer questions, '
+               'writing and status directly, and you may return inspect-only tasks for read-only project questions. '
+               'When the request needs project changes (daily or verified tasks), do not write the plan: return tasks=[], '
+               'add "escalate":"plan" to the JSON and reply with one short sentence that you are preparing the plan; '
+               'a stronger planner then continues this same conversation. On a plan turn write the complete plan now '
+               'and never escalate. ')
+
+
+def validate_managers(config):
+    """Optional manager profiles: {name: {provider, mode, chat:{model,thinking}, plan:{model,thinking}}}."""
+    managers = config.get('managers')
+    if managers is None:
+        if 'defaultManager' in config:
+            raise ValueError('Runtime config')
+        return
+    if not isinstance(managers, dict) or not 1 <= len(managers) <= 8:
+        raise ValueError('Runtime config')
+    for name, profile in managers.items():
+        if (not MANAGER_NAME.fullmatch(name) or not isinstance(profile, dict)
+                or set(profile) != {'provider', 'mode', 'chat', 'plan'}
+                or not all(isinstance(profile[k], str) and 0 < len(profile[k]) <= 80 for k in ('provider', 'mode'))):
+            raise ValueError('Runtime config')
+        for tier in MANAGER_TIERS:
+            spec = profile[tier]
+            if (not isinstance(spec, dict) or set(spec) != {'model', 'thinking'}
+                    or not all(isinstance(spec[k], str) and 0 < len(spec[k]) <= 80 for k in ('model', 'thinking'))):
+                raise ValueError('Runtime config')
+    if config.get('defaultManager', next(iter(managers))) not in managers:
+        raise ValueError('Runtime config')
+
+
 def project_list(config):
     return [dict(id=p['id'], enabled=any(t.get('enabled') for t in p['targets']),
                  machines=list(dict.fromkeys(t['machine'] for t in p['targets'] if t.get('enabled'))))
@@ -440,16 +475,23 @@ class Conversations:
         """A manager reply is pending: the service loop should poll faster."""
         return bool(self.db.execute("SELECT 1 FROM gui_jobs WHERE state IN ('queued','prepared','waiting') LIMIT 1").fetchone())
 
+    def queued_ids(self):
+        """Requests not yet sent; a new one wakes the service loop early."""
+        return {r[0] for r in self.db.execute("SELECT id FROM gui_jobs WHERE state='queued'")}
+
     def runtime_config(self):
         path = self.bot.home / 'gui-runtime.json'
         private_file(path)
         config = json.loads(path.read_text(encoding='utf-8-sig'))
         required = {'serverId', 'cwd', 'provider', 'model', 'thinking'}
         idle_days = config.get('managerIdleDays', 7)
-        if (not required <= set(config) <= required | {'mode', 'managerIdleDays', 'curator', 'memoryExport', 'autoAdmitInspect'}
+        if (not required <= set(config) <= required | {'mode', 'managerIdleDays', 'curator', 'memoryExport', 'autoAdmitInspect',
+                                                       'managers', 'defaultManager', 'spareManager'}
                 or not isinstance(config.get('mode', 'auto'), str)
-                or type(idle_days) not in (int, float) or idle_days < 0):
+                or type(idle_days) not in (int, float) or idle_days < 0
+                or not isinstance(config.get('spareManager', False), bool)):
             raise ValueError('Runtime config')
+        validate_managers(config)
         memory.validate_curator(config.get('curator'))
         memory.validate_export(config.get('memoryExport'))
         # Codex "auto" = workspace-write sandbox with approvals; the bot then denies
@@ -460,7 +502,169 @@ class Conversations:
             log_event(status='manager-mode-unsafe', mode=mode)
         return config
 
-    def role_prompt(self):
+    # ---- manager profiles: which provider plays the manager, and the model per tier ----
+
+    def _meta(self, key):
+        row = self.db.execute('SELECT value FROM gui_meta WHERE key=?', (key,)).fetchone()
+        return row[0] if row else None
+
+    def _set_meta(self, key, value):
+        with self.db:
+            if value is None:
+                self.db.execute('DELETE FROM gui_meta WHERE key=?', (key,))
+            else:
+                self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', (key, value))
+
+    def manager_name(self, config):
+        """The active manager profile, or None when profiles are not configured (legacy single model)."""
+        managers = config.get('managers')
+        if not managers:
+            return None
+        chosen = self._meta('manager-profile')
+        return chosen if chosen in managers else config.get('defaultManager', next(iter(managers)))
+
+    def tier_config(self, config, tier, name=None):
+        """The rpc config for one manager tier: provider, mode, model and thinking of that tier."""
+        name = name or self.manager_name(config)
+        if not name:
+            return config
+        profile = config['managers'][name]
+        spec = profile[tier]
+        return dict(config, provider=profile['provider'], mode=profile['mode'],
+                    model=spec['model'], thinking=spec['thinking'])
+
+    def conversation_manager(self, config, conversation):
+        """Profile that created this conversation's manager; older managers count as the default."""
+        managers = config.get('managers') or {}
+        saved = self._meta('profile:' + conversation)
+        return saved if saved in managers else config.get('defaultManager', next(iter(managers), None))
+
+    def manager_info(self, config=None):
+        config = config or self.runtime_config()
+        name = self.manager_name(config)
+        if not name:
+            return {'profile': None, 'available': [], 'provider': config['provider'],
+                    'chat': {'model': config['model'], 'thinking': config['thinking']},
+                    'plan': {'model': config['model'], 'thinking': config['thinking']}}
+        profile = config['managers'][name]
+        return {'profile': name, 'available': sorted(config['managers']), 'provider': profile['provider'],
+                'chat': dict(profile['chat']), 'plan': dict(profile['plan'])}
+
+    def set_manager(self, name):
+        """Owner switch (/manager). Conversations move to the new manager on their next message,
+        replaying recent chat to it; the old manager is archived once idle."""
+        config = self.runtime_config()
+        if not config.get('managers') or name not in config['managers']:
+            raise ValueError('Unknown manager profile')
+        changed = self.manager_name(config) != name
+        self._set_meta('manager-profile', name)
+        if changed:
+            log_event(status='manager-profile-set', profile=name)
+        return dict(self.manager_info(config), changed=changed)
+
+    def job_tier(self, job_id, kind):
+        """'plan' for an escalated job or an owner-selected change workflow, otherwise 'chat'."""
+        if kind == 'plan':
+            return 'plan'
+        payload = self.db.execute('SELECT payload FROM gui_messages WHERE id=?', (job_id,)).fetchone()
+        selection = json.loads(payload[0]).get('selection', {}) if payload else {}
+        return 'plan' if selection.get('workflow') in ('daily', 'verified') else 'chat'
+
+    def tune(self, config, conversation, agent, tier):
+        """Switch an idle manager to the tier's model and thinking; skipped when already there."""
+        name = self.conversation_manager(config, conversation)
+        want = '%s:%s' % (name, tier)
+        if self._meta('tier:' + conversation) == want:
+            return
+        began = time.time()
+        self.rpc(self.tier_config(config, tier, name), 'tune', session=conversation, agentId=agent)
+        self._set_meta('tier:' + conversation, want)
+        log_event(status='manager-tuned', conversation=conversation, tier=tier, profile=name,
+                  tuneMs=int((time.time() - began) * 1000))
+
+    def retire_manager(self, config, conversation, agent):
+        """The owner switched profiles: archive this idle manager; the next turn starts a new one."""
+        self.rpc(config, 'archive', session=conversation, agentId=agent)
+        with self.db:
+            self.db.execute('UPDATE gui_conversations SET agent_id=NULL,status=? WHERE id=?', ('dormant', conversation))
+            self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('revive:' + conversation, '1'))
+            for key in ('tier:', 'profile:'):
+                self.db.execute('DELETE FROM gui_meta WHERE key=?', (key + conversation,))
+        log_event(status='manager-retired', conversation=conversation)
+
+    # ---- spare manager: a pre-created idle manager that a new thread claims instantly ----
+
+    SPARE_MAX_AGE = 6 * 3600
+    SPARE_RETRY = 600
+
+    def tick_spare(self, config):
+        if not config.get('spareManager') or not config.get('managers'):
+            return
+        name = self.manager_name(config)
+        spare = json.loads(self._meta('spare') or '{}')
+        if spare.get('agentId'):
+            stale = (spare.get('profile') != name or spare.get('serverId') != config['serverId']
+                     or time.time() - spare.get('at', 0) > self.SPARE_MAX_AGE)
+            if stale:
+                try:
+                    self.rpc(config, 'archive', session=spare['label'], agentId=spare['agentId'])
+                except (ValueError, KeyError, OSError, subprocess.SubprocessError):
+                    return  # busy or unreachable: try again on a later tick
+                self._set_meta('spare', None)
+            return
+        if self.busy():
+            return  # never delay a pending reply with a creation round trip
+        if spare.get('label'):
+            # A creation whose outcome was lost is found by its unique label, never repeated blindly.
+            try:
+                matches = self.rpc(config, 'recover', session=spare['label'])['agents']
+            except (ValueError, KeyError, OSError, subprocess.SubprocessError):
+                return
+            if len(matches) == 1:
+                spare.update(agentId=matches[0]['id'], at=time.time())
+                self._set_meta('spare', dumps(spare))
+                return
+            if time.time() - spare.get('tried', 0) < self.SPARE_RETRY:
+                return
+        label = uid('spare')
+        self._set_meta('spare', dumps({'label': label, 'profile': name, 'serverId': config['serverId'], 'tried': time.time()}))
+        began = time.time()
+        try:
+            created = self.rpc(self.tier_config(config, 'chat', name), 'create', session=label,
+                               prompt=self.role_prompt(tiered=True), workspaceId=self.manager_workspace(config))
+        except (ValueError, OSError, subprocess.SubprocessError):
+            log_event(status='manager-spare-failed')
+            return
+        self._set_meta('spare', dumps({'label': label, 'profile': name, 'serverId': config['serverId'],
+                                       'agentId': created['id'], 'at': time.time()}))
+        log_event(status='manager-spare-ready', profile=name, createMs=int((time.time() - began) * 1000))
+
+    def claim_spare(self, config, conversation):
+        """Hand the idle spare to a new conversation by relabelling it; None when unavailable."""
+        if not config.get('spareManager') or not config.get('managers'):
+            return None
+        spare = json.loads(self._meta('spare') or '{}')
+        name = self.manager_name(config)
+        if not spare.get('agentId') or spare.get('profile') != name or spare.get('serverId') != config['serverId']:
+            return None
+        self._set_meta('spare', None)
+        try:
+            self.rpc(config, 'claim', session=spare['label'], agentId=spare['agentId'], to=conversation)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            # The relabel may have landed: adopt it by the new label, otherwise create normally.
+            try:
+                matches = self.rpc(config, 'recover', session=conversation)['agents']
+            except (ValueError, KeyError, OSError, subprocess.SubprocessError):
+                matches = []
+            if len(matches) != 1 or matches[0]['id'] != spare['agentId']:
+                return None
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('profile:' + conversation, name))
+            self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('tier:' + conversation, name + ':chat'))
+        log_event(status='manager-spare-claimed', conversation=conversation)
+        return spare['agentId']
+
+    def role_prompt(self, tiered=False):
         return ('You are the daily Paseo assistant for writing, editing, translation, summaries, questions and coding. Reply in the user language, normally Korean. '
                 'Deliver requested prose or answers directly in reply with tasks=[]; do not turn ordinary writing or questions into coding plans. '
                 'Match requested length and tone; a long requested article must not be replaced by an outline. '
@@ -486,6 +690,7 @@ class Conversations:
                 'Do not claim tasks are admitted or completed before evidence. Every final reply MUST be exactly one line: '
                 'PASEO_GUI_RESPONSE={"requestId":"copy GUI_REQUEST_ID exactly, or init during initialization","reply":"answer or complete deliverable","tasks":[]}. For a question or result explanation use tasks=[]. '
                 'For a plan include the real task specs. Never print secrets, raw tool output or hidden reasoning. '
+                + (TIER_PROMPT if tiered else '') +
                 'Initialization only: return a short greeting and tasks=[].')
 
     def collect_reply(self, job, message):
@@ -495,16 +700,21 @@ class Conversations:
         if len(lines) != 1:
             raise ValueError('Missing structured manager response')
         response = json.loads(lines[0])
-        if not isinstance(response, dict) or set(response) - {'requestId', 'reply', 'tasks', 'retryOf'} or not {'requestId', 'reply', 'tasks'}.issubset(response) or response['requestId'] != job_id or not isinstance(response['reply'], str) or not response['reply'].strip() or len(response['reply']) > 12000:
+        if not isinstance(response, dict) or set(response) - {'requestId', 'reply', 'tasks', 'retryOf', 'escalate'} or not {'requestId', 'reply', 'tasks'}.issubset(response) or response['requestId'] != job_id or not isinstance(response['reply'], str) or not response['reply'].strip() or len(response['reply']) > 12000:
             raise ValueError('Invalid manager response')
         tasks = response['tasks']
         if not isinstance(tasks, list):
             raise ValueError('Invalid plan tasks')
+        # An escalated plan job answers for the owner's original message.
+        source = job_id[:-len(PLAN_SUFFIX)] if kind == 'plan' and job_id.endswith(PLAN_SUFFIX) else job_id
+        if self.escalates(job_id, kind, response, tasks):
+            self.escalate(job, response['reply'])
+            return
         if tasks:
-            if kind != 'chat':
+            if kind not in ('chat', 'plan'):
                 raise ValueError('Result notifications cannot plan tasks')
             # The manager can suggest tasks, but selections and explanations are server-owned.
-            old_payload = self.db.execute('SELECT payload FROM gui_messages WHERE id=?', (job_id,)).fetchone()
+            old_payload = self.db.execute('SELECT payload FROM gui_messages WHERE id=?', (source,)).fetchone()
             selection = json.loads(old_payload[0]).get('selection', {}) if old_payload else {}
             chosen = selection.get('workflow', 'daily')  # older messages without a choice behaved as daily
             if not isinstance(tasks, list) or not all(isinstance(task, dict) for task in tasks):
@@ -539,9 +749,9 @@ class Conversations:
             self.message(conversation, 'assistant', response['reply'], message_id='reply-' + job_id)
             if tasks:
                 self.db.execute('UPDATE gui_plans SET state=? WHERE conversation=? AND state=?', ('superseded', conversation, 'pending'))
-                old_payload = self.db.execute('SELECT payload FROM gui_messages WHERE id=?', (job_id,)).fetchone()
+                old_payload = self.db.execute('SELECT payload FROM gui_messages WHERE id=?', (source,)).fetchone()
                 retry_of = proposed_retry or (json.loads(old_payload[0]).get('retryOf') if old_payload else None)
-                body = dict(tasks=tasks, messageId=job_id, retryOf=retry_of)
+                body = dict(tasks=tasks, messageId=source, retryOf=retry_of)
                 plan_id = uid('plan')
                 plan_digest = hashlib.sha256(dumps(body).encode()).hexdigest()
                 self.db.execute('INSERT INTO gui_plans VALUES (?,?,?,?,?,?)',
@@ -555,6 +765,29 @@ class Conversations:
             except ValueError as error:
                 log_event(status='inspect-auto-admit-failed', conversation=conversation, error=str(error)[:200])
 
+    def escalates(self, job_id, kind, response, tasks):
+        """Profiles on and a chat-tier turn that asked for (or slipped into) a change plan."""
+        try:
+            tiered = bool(self.runtime_config().get('managers'))
+        except (ValueError, OSError):
+            tiered = False
+        if not tiered or kind != 'chat' or self.job_tier(job_id, kind) != 'chat':
+            return False
+        if response.get('escalate') == 'plan':
+            return True
+        # Change plans are the planner tier's job even when the chat tier writes one anyway.
+        return any(not isinstance(task, dict) or task.get('workflow') != 'inspect' for task in tasks)
+
+    def escalate(self, job, reply):
+        """Post the chat tier's short note and queue the same request for the planner tier."""
+        job_id, conversation, _, prompt, _, _ = job
+        with self.db:
+            self.message(conversation, 'assistant', reply, message_id='reply-' + job_id)
+            self.db.execute('INSERT OR IGNORE INTO gui_jobs VALUES (?,?,?,?,?,?)',
+                            (job_id + PLAN_SUFFIX, conversation, 'plan', prompt, 'queued', time.time()))
+            self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('done', job_id))
+        log_event(status='manager-escalated', conversation=conversation)
+
     def tick(self):
         config = self.runtime_config()
         for row in self.db.execute('SELECT id,title,agent_id,status,created FROM gui_conversations ORDER BY created').fetchall():
@@ -565,6 +798,7 @@ class Conversations:
                 continue
         self.tick_notices()
         self.tick_memory(config)
+        self.tick_spare(config)
 
     def tick_memory(self, config):
         """Memory maintenance and at most one curator turn; never stalls chat."""
@@ -599,19 +833,32 @@ class Conversations:
                 # 'missing' keeps probing by label: a slow creation can still appear,
                 # while the GUI offers the operator an explicit restart.
                 if status == 'new':
+                    # A pre-created idle manager skips the cold start; the queued request is
+                    # then sent on the next tick like any other turn.
+                    claimed = self.claim_spare(config, conversation)
+                    if claimed:
+                        with self.db:
+                            self.db.execute('UPDATE gui_conversations SET agent_id=?,status=? WHERE id=?', (claimed, 'idle', conversation))
+                        return
                     with self.db:
                         self.db.execute('UPDATE gui_conversations SET status=? WHERE id=?', ('creating', conversation))
                     # The first queued request rides along with creation: one model turn
                     # instead of a greeting turn followed by the real question.
                     first = self.db.execute("SELECT id,kind,prompt FROM gui_jobs WHERE conversation=? AND state='queued' ORDER BY created LIMIT 1", (conversation,)).fetchone()
-                    initial = self.role_prompt()
+                    name = self.manager_name(config)
+                    tier = self.job_tier(first[0], first[1]) if first else 'chat'
+                    initial = self.role_prompt(tiered=bool(name))
                     if first:
-                        initial = self.envelope(conversation, first[0], first[1], first[2])
+                        initial = self.envelope(conversation, first[0], first[1], first[2], tier if name else None)
                         with self.db:
                             self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', first[0]))
+                    if name:
+                        with self.db:
+                            self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('profile:' + conversation, name))
+                            self.db.execute('INSERT OR REPLACE INTO gui_meta VALUES (?,?)', ('tier:' + conversation, name + ':' + tier))
                     try:
                         began = time.time()
-                        created = self.rpc(config, 'create', session=conversation, prompt=initial,
+                        created = self.rpc(self.tier_config(config, tier, name), 'create', session=conversation, prompt=initial,
                                            workspaceId=self.manager_workspace(config))
                         agent = created['id']
                         log_event(status='manager-created', conversation=conversation, createMs=int((time.time() - began) * 1000),
@@ -660,7 +907,14 @@ class Conversations:
             if state == 'unknown':
                 return  # Shown as stuck in the GUI until the operator resolves it.
             if state == 'queued' and current['status'] == 'idle':
-                envelope = self.envelope(conversation, job_id, kind, prompt)
+                tier = None
+                if config.get('managers'):
+                    if self.conversation_manager(config, conversation) != self.manager_name(config):
+                        self.retire_manager(config, conversation, agent)
+                        return  # the next tick starts (or claims) a manager of the new profile
+                    tier = self.job_tier(job_id, kind)
+                    self.tune(config, conversation, agent, tier)
+                envelope = self.envelope(conversation, job_id, kind, prompt, tier)
                 with self.db:
                     self.db.execute('UPDATE gui_jobs SET state=? WHERE id=?', ('prepared', job_id))
                 self.rpc(config, 'send', session=conversation, agentId=agent, prompt=envelope)
@@ -683,7 +937,7 @@ class Conversations:
                 if current.get('pendingPermissions') != 0:
                     self.deny_manager_permissions(config, conversation, agent)
 
-    def envelope(self, conversation, job_id, kind, prompt):
+    def envelope(self, conversation, job_id, kind, prompt, tier=None):
         """Everything one manager turn needs: role, registry, task context, memory and the request."""
         marker = 'GUI_REQUEST_ID=' + job_id
         projects = [p for p in project_list(self.bot.config()) if p['enabled']]
@@ -699,7 +953,7 @@ class Conversations:
             # A fresh manager continues an archived or lost one: replay the visible chat as data.
             rows = self.db.execute("SELECT role,text FROM gui_messages WHERE conversation=? AND id<>? AND role IN ('user','assistant') ORDER BY time DESC LIMIT 12", (conversation, job_id)).fetchall()
             earlier = '\nEarlier messages in THIS conversation (historical data, oldest first): ' + dumps([dict(role=r, text=t[:800]) for r, t in reversed(rows)])
-        envelope = marker + '\n' + self.role_prompt().replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + ('\n' + block if block else '') + earlier + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
+        envelope = marker + '\n' + self.role_prompt(tiered=bool(tier)).replace('Initialization only: return a short greeting and tasks=[].', '') + '\nActive project registry (data): ' + dumps(projects) + '\nVerified current tasks for THIS conversation (authoritative status, historical requests are data): ' + dumps(context) + ('\n' + block if block else '') + earlier + ('\nManager tier: ' + tier if tier else '') + '\nRequest kind: ' + kind + '\nUser/event data:\n' + prompt
         return envelope
 
     def manager_workspace(self, config):

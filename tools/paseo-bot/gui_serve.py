@@ -33,16 +33,24 @@ def main():
                     log_event(status='gui-tick-error', error=describe(error))
                 if args.command == 'tick':
                     break
-                # 1 s while a manager reply is pending (chat latency), 3 s otherwise.
+                # 1 s while a manager reply is pending (chat latency), 3 s otherwise; a newly
+                # queued request ends the wait at once instead of sitting out the interval.
                 try:
                     pause = 10 if c.busy() else 30
+                    seen = c.queued_ids()
                 except Exception:
-                    pause = 30
+                    pause, seen = 30, None
                 for i in range(pause):
                     if not running or (i % 10 == 0 and stop_requested(args.state, 'gui_serve')):
                         running = False
                         break
                     time.sleep(.1)
+                    if seen is not None and i % 2 == 1:
+                        try:
+                            if c.queued_ids() - seen:
+                                break
+                        except Exception:
+                            seen = None
     finally:
         c.close()
 

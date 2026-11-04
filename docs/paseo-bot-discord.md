@@ -211,6 +211,7 @@ python -X utf8 tools/paseo-bot/secret_store.py read --kind discord-bot | wc -c
 | `/pause [task]` | 실행 중인 작업을 멈춰요. 멈춤이 확인된 경우에만 `paused`로 기록해요 |
 | `/resume [task]` | 멈춘 작업을 같은 에이전트로 다시 시작해요 |
 | `/peek [task]` | 작업 에이전트 로그의 끝부분을 코드 블록으로 본인에게만 보여 줘요 |
+| `/manager [use]` | 대화 관리자 설정을 **본인에게만** 보여 줘요. `use:Codex/Claude`를 고르면 관리자를 바꿔요(아래 7.5) |
 | `/resolve` | 추적 중인 쓰레드 안에서만 동작해요. 그 대화의 확인 대기(`needs-review`)를 풀고 쓰레드를 다시 hot으로 만들어요. 확인 대기 중에 버려진 메시지는 다시 보내지 않아요 |
 
 `/cancel` `/pause` `/resume` `/peek`는 **이 서비스가 만든 쓰레드 안에서만**
@@ -332,6 +333,46 @@ AI가 쓴 기억 중 **중요한 항목만** Discord 버튼으로 승인해요. 
 자세한 정책, 저장소 스키마, 근거 게이트, 만료·격리 규칙, 내보내기 저장소와
 `curator`/`memoryExport` 설정은 [paseo-bot-memory.md](paseo-bot-memory.md)를
 보세요.
+
+## 7.5 관리자 프로필과 모델 분배
+
+`gui-runtime.json`에 `managers`가 있으면 관리자 에이전트가 턴마다 모델을 바꿔요.
+없으면 예전처럼 최상위 `provider/model/thinking` 하나만 써요.
+
+```json
+"managers": {
+  "codex":  {"provider": "codex",  "mode": "auto",
+             "chat": {"model": "gpt-6.1-terra", "thinking": "max"},
+             "plan": {"model": "gpt-6.1-sol",   "thinking": "high"}},
+  "claude": {"provider": "claude", "mode": "default",
+             "chat": {"model": "claude-sonnet-5-5", "thinking": "medium"},
+             "plan": {"model": "claude-opus-5-5",   "thinking": "high"}}
+},
+"defaultManager": "codex",
+"spareManager": true
+```
+
+- **잡담 단계(chat):** 모든 메시지는 먼저 `chat` 모델이 받아요. 질문·글쓰기·상태 답변과
+  읽기 전용 확인(`inspect`) 작업은 여기서 바로 끝나요.
+- **계획 단계(plan):** 프로젝트를 바꾸는 계획이 필요하면 chat 단계가
+  `"escalate":"plan"`과 짧은 안내("계획을 세울게요")만 돌려줘요. 봇은 같은 관리자를
+  `plan` 모델로 바꿔(`setAgentModel`·`setAgentThinkingOption`) 같은 요청을
+  `<메시지ID>.plan` 작업으로 다시 보내요. chat 단계가 escalate 없이 변경 작업을
+  써도 봇이 계획 단계로 넘겨요. 계획 단계는 다시 넘기지 않아요. `/task`에서
+  `일반 변경`이나 `중요 변경`을 고르면 처음부터 계획 단계로 보내요.
+- **관리자 바꾸기:** `/manager use:Claude`는 `gui_meta`의 `manager-profile`만 바꿔요.
+  각 스레드는 다음 메시지 때 기존 관리자를 보관(archive)하고 새 프로필로 다시
+  만들며, 최근 대화 12개를 넘겨줘요. 진행 중인 작업 에이전트에는 영향이 없어요.
+- **예비 관리자(`spareManager`):** 답을 기다리는 요청이 없을 때 현재 프로필의
+  chat 모델로 관리자 하나를 미리 만들어 둬요(라벨 `paseo_bot_gui=spare-…`).
+  새 스레드는 라벨만 바꿔 이 관리자를 바로 가져가요. 그래서 관리자를 만드는
+  20~30초가 사라져요. 예비 관리자는 6시간이 지나거나 프로필이 바뀌면
+  보관하고, 만들기에 실패하면 10분 뒤에 다시 시도해요.
+- **즉시 감지:** `gui_serve`는 대기 중에도 0.2초마다 새 요청을 확인해서, 다음
+  주기까지 기다리지 않고 바로 처리해요.
+- **로그:** `manager-tuned`(tier, tuneMs), `manager-escalated`,
+  `manager-spare-ready`(createMs), `manager-spare-claimed`, `manager-retired`,
+  `manager-profile-set`.
 
 ## 8. 보안 모델
 
