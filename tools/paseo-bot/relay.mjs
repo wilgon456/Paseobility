@@ -31,9 +31,9 @@ export function loadState(file) {
   } catch(e) { if(e.code==='ENOENT')return {threads:{},lastSeen:{}};throw e; }
 }
 export function loadMapping(file) { return loadState(file).threads; }
-export function prepareHome(home,source,projectsFile=path.join(os.homedir(),'.config/paseo-bot/projects.json')) {
+export function prepareHome(home,source,projectsFile=path.join(os.homedir(),'.config/paseo-bot/projects.json'),mediaPython='python',speechModel='base') {
   fs.mkdirSync(home,{recursive:true});
-  const guidance=fs.readFileSync(new URL('./FRONT_AGENT.md',import.meta.url),'utf8').replaceAll('{{SOURCE}}',source).replaceAll('{{HOME}}',home);
+  const guidance=fs.readFileSync(new URL('./FRONT_AGENT.md',import.meta.url),'utf8').replaceAll('{{SOURCE}}',source).replaceAll('{{HOME}}',home).replaceAll('{{MEDIA_PYTHON}}',mediaPython).replaceAll('{{SPEECH_MODEL}}',speechModel);
   for(const name of ['AGENTS.md','CLAUDE.md'])fs.writeFileSync(path.join(home,name),guidance,'utf8');
   const preferences=path.join(home,'PREFERENCES.md'); if(!fs.existsSync(preferences))fs.writeFileSync(preferences,'# Preferences\n','utf8');
   try {
@@ -65,7 +65,7 @@ export class Relay {
     this.home=home; this.source=source; this.config={provider:'codex',model:'gpt-6.1-terra',thinking:'high',mode:'full-access',...config};
     this.sendOutput=send; this.typing=typing; this.remoteClient=remoteClient; this.chains=new Map(); this.watches=new Map(); this.next=new Map(); this.versions=new Map();
     this.workspacePromise=null; this.requests=path.join(home,'.relay-requests');
-    prepareHome(home,source,config.projectsFile); fs.mkdirSync(this.requests,{recursive:true});
+    prepareHome(home,source,config.projectsFile,config.mediaPython,config.speechModel); fs.mkdirSync(this.requests,{recursive:true});
     this.readyHints=this.refreshHints().catch(()=>{});
   }
   async refreshHints() {
@@ -105,9 +105,10 @@ export class Relay {
   reconnect(client){for(const thread of [...this.watches.keys()])this.unwatch(thread);this.client=client;this.workspacePromise=null;for(const [thread,r] of Object.entries(this.map))if(!r.archived){this.watch(thread);this.next.set(thread,0);}}
   async create(thread,text) {
     const workspace=await this.workspace();
-    const agent=await this.client.createAgent({provider:this.config.provider,model:this.config.model,thinkingOptionId:this.config.thinking,modeId:this.config.mode,cwd:this.home,workspaceId:workspace.id,title:'Discord conversation',initialPrompt:text,env:{PASEO_BOT_ASSISTANT_HOME:this.home},labels:{paseo_bot_thread:thread}});
-    this.map[thread]={agentId:agent.id,delivered:0};this.persist();this.watch(thread);this.next.set(thread,0);return agent.id;
+    const agent=await this.client.createAgent({provider:this.config.provider,model:this.config.model,thinkingOptionId:this.config.thinking,modeId:this.config.mode,cwd:this.home,workspaceId:workspace.id,title:'Discord conversation',initialPrompt:text,env:this.agentEnv(),labels:{paseo_bot_thread:thread}});
+    this.map[thread]={agentId:agent.id,delivered:0,guideVersion:1};this.persist();this.watch(thread);this.next.set(thread,0);return agent.id;
   }
+  agentEnv(){return {PASEO_BOT_ASSISTANT_HOME:this.home,PASEO_BOT_MEDIA_PYTHON:this.config.mediaPython || 'python',...(this.config.speechModel?{PASEO_BOT_WHISPER_MODEL:this.config.speechModel}:{})};}
   async input(thread,text,messageId=randomUUID()) {
     return this.serial(thread,async()=>{
       let record=this.map[thread];
@@ -116,7 +117,9 @@ export class Relay {
       if(!agent){this.unwatch(thread);delete this.map[thread];this.persist();return this.create(thread,text);}
       if(agent.archivedAt || agent.status==='closed' || agent.status==='error')await this.client.refreshAgent(record.agentId);
       delete record.archived;delete record.lastError;record.errorGeneration=(record.errorGeneration || 0)+1;this.persist();this.watch(thread);this.next.set(thread,0);
-      await this.client.sendMessage(record.agentId,text,{messageId,activeTurnBehavior:'steer'});
+      const message=record.guideVersion===1?text:`${text}\n\n[도구 안내가 갱신되었어요. 답하기 전에 ${path.join(this.home,'AGENTS.md')}를 읽고 사용하세요. 이 메모는 답변에 넣지 마세요.]`;
+      await this.client.sendMessage(record.agentId,message,{messageId,activeTurnBehavior:'steer'});
+      if(record.guideVersion!==1){record.guideVersion=1;this.persist();}
       return record.agentId;
     });
   }
@@ -124,6 +127,32 @@ export class Relay {
     let page=await this.client.fetchAgentTimeline(id,{direction:cursor?'after':'tail',...(cursor?{cursor}:{}),limit:0,projection:'projected',timeout:10000});
     if(page.staleCursor || page.gap)page=await this.client.fetchAgentTimeline(id,{direction:'tail',limit:0,projection:'projected',timeout:10000});
     return page;
+  }
+  async schedulesFor(agentId){
+    if(typeof this.client.scheduleList!=='function')return [];
+    const result=await this.client.scheduleList();
+    if(result.error)throw Error('schedule list unavailable');
+    return (result.schedules || []).filter(s=>s.target?.type==='agent' && s.target.agentId===agentId && ['active','paused'].includes(s.status));
+  }
+  async moveSchedules(schedules,agentId){
+    const copies=[];
+    try{
+      for(const s of schedules){
+        const details=await this.client.scheduleInspect({id:s.id});if(details.error || !details.schedule)throw Error('schedule inspection failed');
+        const old=details.schedule,used=(old.runs || []).length;
+        const remaining=typeof old.maxRuns==='number'?Math.max(0,old.maxRuns-used):undefined;
+        if(remaining===0)continue;
+        const result=await this.client.scheduleCreate({name:old.name,prompt:old.prompt,cadence:old.cadence,target:{type:'agent',agentId},...(remaining!==undefined?{maxRuns:remaining}:{}),...(old.expiresAt?{expiresAt:old.expiresAt}:{})});
+        if(result.error || !result.schedule?.id)throw Error('schedule migration failed');
+        copies.push({old,newId:result.schedule.id});
+        if(old.status==='paused')await this.client.schedulePause({id:result.schedule.id});
+      }
+    }catch(error){for(const copy of copies)await this.client.scheduleDelete({id:copy.newId}).catch(()=>{});throw error;}
+    for(const {old,newId} of copies){
+      try{await this.client.scheduleDelete({id:old.id});}catch{process.stderr.write('old schedule cleanup failed\n');}
+      const file=path.join(this.home,'ROUTINES.md');
+      if(fs.existsSync(file)){const text=fs.readFileSync(file,'utf8');fs.writeFileSync(file,text.split(old.id).join(newId),'utf8');}
+    }
   }
   async baseline() {for(const [thread,r] of Object.entries(this.map))if(!r.archived){this.watch(thread);this.next.set(thread,0);}}
   async pollDue(){await Promise.all(Object.keys(this.map).filter(t=>!this.map[t].archived && Date.now()>=(this.next.get(t)||0)).map(t=>this.poll(t)));}
@@ -138,7 +167,7 @@ export class Relay {
     const page=await this.timeline(agent.id,record.scan);
     const entries=page.entries || [];
     let pending=null,turn=null,scanned=record.delivered;
-    const flush=async()=>{if(!pending)return;await this.sendOutput(thread,pending.item.text,{agentId:agent.id,seq:pending.seqEnd});record.delivered=Math.max(record.delivered,pending.seqEnd);this.persist();pending=null;};
+    const flush=async()=>{if(!pending)return;const text=pending.item.text.trim().replace(/^(?:---\s*)+/,'');if(text!=='__PASEO_BOT_WATCH_NOTHING__')await this.sendOutput(thread,pending.item.text,{agentId:agent.id,seq:pending.seqEnd});record.delivered=Math.max(record.delivered,pending.seqEnd);this.persist();pending=null;};
     for(const entry of entries){
       if(!Number.isSafeInteger(entry.seqEnd) || entry.seqEnd<=record.delivered)continue;
       if(entry.item?.type==='user_message' || (entry.turnId && turn && entry.turnId!==turn))await flush();
@@ -170,8 +199,10 @@ export class Relay {
     const transcript=(history.entries || []).filter(e=>['assistant_message','user_message'].includes(e.item?.type) && typeof e.item.text==='string').slice(-30).map(e=>`${e.item.type}: ${e.item.text.slice(0,4000)}`).join('\n\n').slice(-24000);
     const preferences=fs.readFileSync(path.join(this.home,'PREFERENCES.md'),'utf8').slice(0,12000);
     const initialPrompt=`You are the successor for this Discord conversation. Continue naturally using the history and preferences below. Your provider/model have already changed. Reply briefly in Korean that the conversation model has changed. Do not reveal the handoff.\n\nPreferences:\n${preferences}\n\nRecent conversation:\n${transcript}`;
-    const replacement=await this.client.createAgent({provider:request.provider,model:request.model,thinkingOptionId:request.thinking || undefined,modeId:request.provider==='claude'?'bypassPermissions':request.provider==='codex'?'full-access':undefined,cwd:this.home,workspaceId:agent.workspaceId,title:agent.title || 'Discord conversation',initialPrompt,env:{PASEO_BOT_ASSISTANT_HOME:this.home},labels:{...agent.labels,paseo_bot_thread:thread}});
-    this.unwatch(thread);this.map[thread]={agentId:replacement.id,delivered:0};this.persist();fs.unlinkSync(file);this.watch(thread);this.next.set(thread,0);
+    const schedules=await this.schedulesFor(agent.id);
+    const replacement=await this.client.createAgent({provider:request.provider,model:request.model,thinkingOptionId:request.thinking || undefined,modeId:request.provider==='claude'?'bypassPermissions':request.provider==='codex'?'full-access':undefined,cwd:this.home,workspaceId:agent.workspaceId,title:agent.title || 'Discord conversation',initialPrompt,env:this.agentEnv(),labels:{...agent.labels,paseo_bot_thread:thread}});
+    try{await this.moveSchedules(schedules,replacement.id);}catch(error){await this.client.archiveAgent(replacement.id).catch(()=>{});throw error;}
+    this.unwatch(thread);this.map[thread]={agentId:replacement.id,delivered:0,guideVersion:1};this.persist();fs.unlinkSync(file);this.watch(thread);this.next.set(thread,0);
     await this.client.archiveAgent(agent.id);
   }
   async closeThread(thread,deleted=false){return this.serial(thread,async()=>{
@@ -185,10 +216,13 @@ export class Relay {
         for(const e of page.entries || []){const a=e.agent;if(a?.id!==record.agentId && !a?.archivedAt && a?.labels?.paseo_bot_thread===thread){if(deleted || resting(a.status))await c.archiveAgent(a.id);else runningWorker=true;}}
         cursor=page.pageInfo?.hasMore?page.pageInfo.nextCursor:null;
       }while(cursor);}catch(e){if(c===this.client)throw e;process.stderr.write('remote worker cleanup failed\n');}}
+      const schedules=await this.schedulesFor(record.agentId);
+      if(deleted)for(const schedule of schedules)await this.client.scheduleDelete({id:schedule.id});
+      const keepForSchedules=!deleted && schedules.length>0;
       const front=(await this.client.fetchAgent({agentId:record.agentId}))?.agent;
-      if(front && !front.archivedAt && (deleted || (resting(front.status) && !runningWorker)))await this.client.archiveAgent(record.agentId);
+      if(front && !front.archivedAt && (deleted || (resting(front.status) && !runningWorker && !keepForSchedules)))await this.client.archiveAgent(record.agentId);
       if(deleted){this.unwatch(thread);delete this.map[thread];delete this.lastSeen[thread];}
-      else if(!front || front.archivedAt || (resting(front.status) && !runningWorker)){this.unwatch(thread);record.archived=true;}
+      else if(!front || front.archivedAt || (resting(front.status) && !runningWorker && !keepForSchedules)){this.unwatch(thread);record.archived=true;}
       this.persist();
     } finally {for(const c of clients.slice(1))await c.close().catch(()=>{});}
   });}

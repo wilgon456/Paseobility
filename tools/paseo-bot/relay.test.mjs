@@ -1,6 +1,9 @@
 import {test} from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
 import {Relay,loadMapping,writeMapping} from './relay.mjs'; import {acceptMessage,chunkText,conversationForMessage} from './discord_core.mjs';
 import {DiscordInbox} from './discord_inbox.mjs';
+import {downloadAttachments} from './discord_attachments.mjs';
+import {deliverFiles,discordFileForm,fileNonce} from './outbound_files.mjs';
+import {searchHistory} from './history.mjs';
 
 function fixture(t) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'relay-test-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
@@ -78,6 +81,52 @@ test('thread close archives matching workers on an online native host',async t=>
   f.client.listHosts=async()=>({hosts:[{serverId:'remote',enabled:true,status:'online'}]});
   f.relay.remoteClient=async()=>({async fetchAgents(){return {entries:[{agent:{id:'worker',labels:{paseo_bot_thread:'t'}}},{agent:{id:'other',labels:{paseo_bot_thread:'other'}}}],pageInfo:{hasMore:false}};},async archiveAgent(id){archived.push(id);},async close(){}});
   await f.relay.input('t','one');await f.relay.closeThread('t',true);assert.deepEqual(archived,['worker']);
+});
+test('active heartbeats keep their front agent available on thread archive',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');
+  f.client.scheduleList=async()=>({schedules:[{id:'routine',status:'active',target:{type:'agent',agentId:id}}]});
+  await f.relay.closeThread('t');assert.equal(f.agents[id].archivedAt,undefined);assert.equal(f.relay.map.t.archived,undefined);
+});
+test('provider replacement moves a heartbeat and preserves remaining runs',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one'),deleted=[],created=[];
+  fs.writeFileSync(path.join(f.dir,'home','ROUTINES.md'),'routine-old');
+  f.client.scheduleList=async()=>({schedules:[{id:'routine-old',status:'active',target:{type:'agent',agentId:id}}]});
+  f.client.scheduleInspect=async()=>({schedule:{id:'routine-old',name:'morning',prompt:'check',status:'active',cadence:{type:'cron',expression:'0 9 * * *',timezone:'Asia/Seoul'},maxRuns:3,runs:[{status:'succeeded'}]}});
+  f.client.scheduleCreate=async input=>{created.push(input);return {schedule:{id:'routine-new'}};};f.client.scheduleDelete=async({id})=>deleted.push(id);
+  writeMapping(path.join(f.dir,'home','.relay-requests','t.json'),{id:'r',provider:'claude',model:'claude-sonnet-5-5'});await f.relay.poll('t');
+  assert.equal(created[0].target.agentId,f.relay.map.t.agentId);assert.equal(created[0].maxRuns,2);assert.deepEqual(deleted,['routine-old']);assert.equal(fs.readFileSync(path.join(f.dir,'home','ROUTINES.md'),'utf8'),'routine-new');
+});
+test('a quiet watchdog heartbeat never sends a Discord message',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');f.entries[id]=[entry(1,'\n\n---\n\n__PASEO_BOT_WATCH_NOTHING__')];await f.relay.poll('t');
+  assert.deepEqual(f.output,[]);assert.equal(f.relay.map.t.delivered,1);
+});
+test('file requests deliver bytes to their thread and remain pending on transport failure',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','one');const file=path.join(f.dir,'picture.png');fs.writeFileSync(file,Buffer.from([1,2,3]));
+  const dir=path.join(f.dir,'home','.relay-outbox');writeMapping(path.join(dir,'1234.json'),{id:'1234',thread:'t',file,caption:'hello'});
+  const common={home:path.join(f.dir,'home'),threads:f.relay.map,channelId:'channel',sendError:async()=>{throw Error('unexpected');}};
+  await assert.rejects(deliverFiles({...common,sendFile:async()=>{throw Error('network');}}));assert.ok(fs.existsSync(path.join(dir,'1234.json')));
+  const delivered=[];await deliverFiles({...common,sendFile:async(thread,job)=>delivered.push({thread,...job})});
+  assert.equal(delivered[0].thread,'t');assert.deepEqual(delivered[0].bytes,Buffer.from([1,2,3]));assert.ok(!fs.existsSync(path.join(dir,'1234.json')));
+  const form=discordFileForm(delivered[0]);const payload=JSON.parse(form.get('payload_json'));
+  assert.equal(payload.content,'hello');assert.equal(payload.nonce,fileNonce('1234'));assert.equal(form.get('files[0]').name,'picture.png');
+  assert.deepEqual(Buffer.from(await form.get('files[0]').arrayBuffer()),Buffer.from([1,2,3]));
+});
+test('Discord media is downloaded to the assistant home before it is sent to the agent',async t=>{
+  const f=fixture(t),home=path.join(f.dir,'home'),bytes=Buffer.from('audio');
+  const message={id:'123',content:'',attachments:[{url:'https://cdn.discordapp.com/a/voice.ogg',filename:'voice.ogg',size:bytes.length}]};
+  const text=await downloadAttachments(message,home,async()=>new Response(bytes));
+  assert.match(text,/첨부 파일/);assert.deepEqual(fs.readFileSync(path.join(home,'attachments','123','voice.ogg')),bytes);
+});
+test('existing conversations receive updated tool guidance once',async t=>{
+  const f=fixture(t),id=await f.relay.input('t','first');delete f.relay.map.t.guideVersion;
+  await f.relay.input('t','voice');await f.relay.input('t','next');
+  const sent=f.calls.filter(x=>Array.isArray(x)&&x[0]==='send'&&x[1]===id).map(x=>x[2]);
+  assert.match(sent[0],/^voice[\s\S]*AGENTS\.md/);assert.equal(sent[1],'next');
+  assert.equal(loadMapping(path.join(f.dir,'threads.json')).t.guideVersion,1);
+});
+test('history search finds matching archived thread content',async()=>{
+  const client={async fetchAgents(){return {entries:[{agent:{id:'a',title:'old',archivedAt:'y',labels:{paseo_bot_thread:'thread'}}},{agent:{id:'b',labels:{}}}],pageInfo:{hasMore:false}};},async fetchAgentTimeline(){return {entries:[{timestamp:'2026-11-04',item:{type:'user_message',text:'전에 설정한 명령은?'}},{timestamp:'2026-11-04',item:{type:'assistant_message',text:'npm test'}}]};}};
+  const rows=await searchHistory(client,{query:'설정한',all:true});assert.equal(rows.length,1);assert.equal(rows[0].thread,'thread');assert.equal(rows[0].context,'npm test');
 });
 test('top-level message creates its own thread and filtering and splitting work',async()=>{
   const c={enabled:true,guildId:'1',channelId:'2',ownerIds:['3']};const m={id:'123456789012345678',guild_id:'1',channel_id:'2',author:{id:'3'},content:'hello'};

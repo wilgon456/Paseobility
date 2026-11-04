@@ -8,6 +8,8 @@ import {createHash} from 'node:crypto';
 import * as core from './discord_core.mjs';
 import {Relay, connect, writeMapping} from './relay.mjs';
 import {DiscordInbox} from './discord_inbox.mjs';
+import {downloadAttachments} from './discord_attachments.mjs';
+import {deliverFiles,discordFileForm,fileNonce} from './outbound_files.mjs';
 const API = 'https://discord.com/api/v10', DIR = path.dirname(fileURLToPath(import.meta.url));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const stateIndex = process.argv.indexOf('--state');
@@ -30,7 +32,8 @@ async function request(method, route, body, auth = true) {
   for (let i=0; i<6; i++) {
     await sleep(Math.max(0, globalUntil-Date.now(), (buckets.get(key)||0)-Date.now()));
     let res;
-    try { res = await fetch(API+route, {method, headers: {...(auth ? {authorization:`Bot ${token}`} : {}), ...(body === undefined ? {} : {'content-type':'application/json'})}, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000)}); }
+    const multipart=body instanceof FormData;
+    try { res = await fetch(API+route, {method, headers: {...(auth ? {authorization:`Bot ${token}`} : {}), ...(body === undefined || multipart ? {} : {'content-type':'application/json'})}, body: body === undefined ? undefined : multipart ? body : JSON.stringify(body), signal: AbortSignal.timeout(30000)}); }
     catch { if (i < 2) { await sleep(1000*(i+1)); continue; } throw Error('Discord network'); }
     if (res.status === 429) { const data = await res.json().catch(()=>({})); const delay = Math.max(1000, Number(data.retry_after || res.headers.get('retry-after') || 1)*1000); if(data.global)globalUntil=Date.now()+delay;else buckets.set(key,Date.now()+delay); continue; }
     if (res.status >= 500 && i < 2) { await sleep(1000*(i+1)); continue; }
@@ -62,18 +65,7 @@ async function parentFor(channel) {
   return parents.get(channel);
 }
 async function attachments(message) {
-  let text=message.content || '';
-  for (const a of (message.attachments || []).slice(0,10)) {
-    try {
-      const url=new URL(a.url); if(url.protocol !== 'https:' || !['cdn.discordapp.com','media.discordapp.net'].includes(url.hostname) || a.size > 25*1024*1024) throw Error();
-      const response=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(30000)}); if(!response.ok)throw Error();
-      const bytes=Buffer.from(await response.arrayBuffer()); if(bytes.length>25*1024*1024)throw Error();
-      const dir=path.join(home,'attachments',message.id); fs.mkdirSync(dir,{recursive:true});
-      const name=path.basename(String(a.filename || 'attachment').replace(/[\\/]/g,'_')); const target=path.join(dir,name); fs.writeFileSync(target,bytes);
-      text+=`\n첨부 파일 : ${target}`;
-    } catch { text+=`\n첨부 파일을 가져오지 못했어요 : ${String(a.filename || '').slice(0,100)}`; }
-  }
-  return text;
+  return downloadAttachments(message,home);
 }
 const inbox=new DiscordInbox({config,relay,request,parentFor,attachments,typing});
 let historyRetry=null;
@@ -115,5 +107,10 @@ function open() {
 }
 await relay.readyHints; await relay.baseline(); open(); health(); const healthTimer=setInterval(health,5000);
 let polling=false;const pollTimer=setInterval(async()=>{if(polling)return;polling=true;try{await relay.pollDue();}catch{log('poll-failed');await recoverClient().catch(()=>log('client-reconnect-failed'));}finally{polling=false;}},2000);
-async function shutdown(){stopped=true;clearInterval(heartbeat);clearInterval(healthTimer);clearInterval(pollTimer);clearTimeout(reconnectTimer);clearTimeout(historyRetry);socket?.close();await client.close().catch(()=>{});process.exit(0);}
+let sendingFiles=false;const fileTimer=setInterval(async()=>{if(sendingFiles || status!=='connected')return;sendingFiles=true;try{
+  await deliverFiles({home,threads:relay.map,channelId:config.channelId,
+    sendFile:async(channel,job)=>request('POST',`/channels/${channel}/messages`,discordFileForm(job)),
+    sendError:async(channel,text,id)=>request('POST',`/channels/${channel}/messages`,{content:text,nonce:fileNonce(id),enforce_nonce:true,allowed_mentions:{parse:[]}})});
+}catch{log('file-delivery-failed');}finally{sendingFiles=false;}},2000);
+async function shutdown(){stopped=true;clearInterval(heartbeat);clearInterval(healthTimer);clearInterval(pollTimer);clearInterval(fileTimer);clearTimeout(reconnectTimer);clearTimeout(historyRetry);socket?.close();await client.close().catch(()=>{});process.exit(0);}
 process.on('SIGTERM',shutdown); process.on('SIGINT',shutdown);

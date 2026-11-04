@@ -1,0 +1,4 @@
+# Optional local speech-to-text for Discord voice notes.
+faster-whisper==1.2.1
+# PyAV 17+ removed the metadata_errors argument used by faster-whisper 1.2.1.
+av>=11,<17
