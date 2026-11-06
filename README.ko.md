@@ -22,7 +22,7 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.12.11.** 플러그인은 Paseo 0.12.x와 0.13.x를 지원합니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 12개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
+**현재 패키지: v2.12.12.** 플러그인이 Paseo 0.12.x–0.15.x를 지원하며, v2.12.11에서 0.14 이상을 거부하던 문제를 수정했습니다. [0.15.2 확인](docs/compatibility-0.15.2.md)에 재현 결과, 컴파일러·SDK 버전별 검사, 실제 RPC·어댑터 실행과 UI 검증 한계를 기록했습니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 12개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
 
 ## 한 줄 요약
 
@@ -724,12 +724,16 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 ## `/paseo-browser`
 
-Ego Lite가 설치되어 있으면 **TaskSpace 하나 → 기본 탭 `p1` 재사용 → 완료 정리**가 기본입니다.
+일반 브라우징은 **Ego Lite → TaskSpace 하나 → 기본 탭 `p1` 재사용 → 완료 정리**가 기본입니다.
 `ego-browser skill`로 설치 버전의 API 안내를 읽습니다. 여러 실행 간 재사용,
 완료 결과 확인, 제어권 전환과 Windows 명령 형식은 [Ego 참조](skills/paseo-browser/references/ego.md)를 따릅니다.
 Ego에 Chrome 도우미를 적용하지 않습니다. 오류가 나면 같은 공간을 복구하며 새 공간을 만들거나 브라우저를 자동 전환하지 않습니다.
 
-Chrome을 지정했거나 Ego가 없으면 **현재 실행 중인 Chrome 창에 작업용 탭 하나 추가 → 재사용 → 그 탭만 종료**합니다.
+Ego 미설치, CLI/PATH 누락, 연결 실패를 이유로 Chrome을 자동 선택하지 않습니다.
+Ego 참조에 따라 실제 작업할 컴퓨터의 CLI와 앱 경로를 확인하고, 설정이 부족하면 그 내용을 알립니다.
+스킬을 갱신한 컴퓨터마다 새 에이전트 세션을 열거나 연동을 다시 불러와야 합니다. Paseo를 재시작할 필요는 없습니다.
+
+사용자가 Chrome을 지정했을 때만 **현재 실행 중인 Chrome 창에 작업용 탭 하나 추가 → 재사용 → 그 탭만 종료**합니다.
 macOS의 `scripts/chrome-tabs.py`가 기존 창 ID를 지정해 탭을 만들고, 생성한 탭 ID와 Chrome 실행 식별자를 기록합니다. 생성 응답이 유실돼도 같은 작업 ID로 복구하며 새 창이나 중복 탭을 만들지 않습니다. 작업 후 종료 결과를 다시 확인합니다.
 
 ```bash
@@ -749,7 +753,7 @@ python3 ~/.agents/skills/paseo-browser/scripts/chrome-tabs.py close --task '<고
 
 ## `/paseo-cua`
 
-trycua Cua Driver(`cua-driver` CLI 또는 MCP)로 네이티브 데스크톱 GUI를 구동합니다.
+trycua Cua Driver(`cua-driver` CLI 또는 MCP)로 네이티브 데스크톱 GUI를 구동합니다. 현재 의존성 고정 버전과 설치 검증은 [2026-11-06 기록](docs/dependency-validation-2026-11-06.md)을 참고하세요.
 사용자가 네이티브 앱 조작을 요청하거나 데스크톱 앱 GUI로만 할 수 있는 작업일 때
 쓰며, 같은 결과를 내는 CLI·API·파일 수정이 있으면 그쪽을 우선합니다. **preview / 제한 검증** 단계입니다 — [Cua 플랫폼 검증 상태](docs/cua-platform-validation.md) 참고.
 

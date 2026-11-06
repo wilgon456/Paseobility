@@ -19,9 +19,16 @@ up.
   approve. Do not `open` the app with guessed arguments instead.
 - `unknown` is not `false`: the driver could not confirm its own identity. Do
   not assert a cause; re-check after the driver app is running.
+- After an authorized runtime update, compare the CLI's `--version` with the
+  live `health_report` result's `build.version` and `build.git_sha`. A process
+  started through a symlink can survive the upstream installer, leaving an old
+  daemon behind a new CLI. `doctor` and `build.exe_sha256` alone cannot prove
+  the live code changed (the hash may describe the replaced on-disk file).
+  If stale, check sessions and existing MCP clients before a graceful driver
+  stop/start; never kill another client's connection just to apply an update.
 - If the daemon is wedged or running under the wrong identity, you may
   `cua-driver stop` and start it again
-  (`open -n -g -a CuaDriver --args serve`) when no other agent or user session
+  (`open -n -g /Applications/CuaDriver.app --args serve`) when no other agent or user session
   is using the driver. If you cannot tell, ask first.
 - `background_unavailable` with reason `windowserver_connection_invalid` (or a
   failing `windowserver_connection` check in `health_report`) means the daemon
@@ -30,6 +37,16 @@ up.
 - If every window returns an empty tree with `ax_window_unresolved`, check
   whether the screen is locked or asleep (a locked session was observed to
   return this for every window). Ask the user to unlock instead of retrying.
+- `direct_capture_consent_required` (0.37+) means the separate macOS direct
+  capture approval is missing; Accessibility and Screen Recording alone do
+  not prove it. Ask the human to run `cua-driver permissions grant` and allow
+  the system prompt. Do not switch capture tools or set bypass variables.
+  Keep `HOME` at the real account home: upstream issue/PR #5564 remains open
+  in 0.39.0, and a custom home can produce a false missing-consent result.
+- `automation_consent_required` with `serve --no-automation-prompts` means
+  the target lacks an Automation grant. Report the named app; do not fall back
+  to keys or scripting to evade the refusal. This flag is opt-in and does not
+  suppress other OS permission prompts.
 - **Never restart Paseo to apply this.** It can kill running agents.
 
 ## Targets

@@ -1,5 +1,9 @@
 # Existing Chrome tab lifecycle — 2026-10-23
 
+Historical validation record: the Chrome default described below has been
+superseded. Current ordinary browsing defaults to Ego Lite; Chrome requires
+an explicit user choice. See [the current skill](../skills/paseo-browser/SKILL.md).
+
 ## Problem and scope
 
 The requested behavior is one task tab in an existing Chrome window, reused

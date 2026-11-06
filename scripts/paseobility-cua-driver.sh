@@ -26,16 +26,16 @@
 # installs resolves outside the bundle, e.g. a copied binary.
 set -euo pipefail
 
-PIN_VERSION="${PASEOBILITY_CUA_PIN_VERSION:-0.36.0}"
-PIN_SHA="${PASEOBILITY_CUA_PIN_SHA:-6d6c734c127025fb39ad5d585a10382808b39dc1}"
+PIN_VERSION="${PASEOBILITY_CUA_PIN_VERSION:-0.39.0}"
+PIN_SHA="${PASEOBILITY_CUA_PIN_SHA:-81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd}"
 RAW_BASE="${PASEOBILITY_CUA_RAW_BASE:-https://raw.githubusercontent.com/trycua/cua/${PIN_SHA}/libs/cua-driver/scripts}"
 BIN_DIR="${PASEOBILITY_CUA_BIN_DIR:-$HOME/.local/bin}"
 INSTALLER_DIR="${PASEOBILITY_CUA_INSTALLER_DIR:-}"
 DRIVER_BIN="${PASEOBILITY_CUA_DRIVER_BIN:-}"
 HOST_OS="${PASEOBILITY_CUA_HOST_OS:-$(uname -s 2>/dev/null || echo unknown)}"
 # Optional expected SHA-256 digests for the pinned installer scripts. When set,
-# a mismatch aborts before execution. Upstream publishes no checksums, so these
-# are only checked when an operator supplies them out of band.
+# a mismatch aborts before execution. These optional checks cover the commit-pinned scripts; upstream separately
+# verifies release archives against SHA256SUMS (and Sigstore when available).
 EXPECT_INSTALL="${PASEOBILITY_CUA_INSTALL_SHA256:-}"
 EXPECT_RUST="${PASEOBILITY_CUA_RUST_SHA256:-}"
 EXPECT_COMMON="${PASEOBILITY_CUA_COMMON_SHA256:-}"
@@ -57,7 +57,7 @@ Options:
   --check         Report presence only; do not install (exit 3 when missing)
   --dry-run       Print the install plan without downloading or executing
   --bin-dir DIR   Visible binary directory (default ~/.local/bin)
-  --version V     Pinned Cua Driver version to install (default 0.36.0)
+  --version V     Pinned Cua Driver version to install (default 0.39.0)
 
 Test hooks (environment):
   PASEOBILITY_CUA_INSTALLER_DIR   Use this directory's installer scripts
@@ -140,7 +140,7 @@ warn_if_unbundled() {
     */CuaDriver.app/Contents/MacOS/*|*/CuaDriverLocal.app/Contents/MacOS/*) return 0 ;;
   esac
   printf '[cua-driver] warning: %s resolves to %s, outside CuaDriver.app.\n' "$candidate" "$real" >&2
-  printf '[cua-driver] since 0.36.0 a daemon started from a bare binary refuses background actions; run the app-bundle daemon (`open -n -g -a CuaDriver --args serve`) or point cua-driver at /Applications/CuaDriver.app/Contents/MacOS/cua-driver.\n' >&2
+  printf '[cua-driver] since 0.36.0 a daemon started from a bare binary refuses background actions; run the app-bundle daemon (`open -n -g /Applications/CuaDriver.app --args serve`) or point cua-driver at /Applications/CuaDriver.app/Contents/MacOS/cua-driver.\n' >&2
 }
 
 sha256_of() {

@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.11.** The plugin supports Paseo 0.12.x and 0.13.x. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all twelve skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v2.12.12.** The plugin supports Paseo 0.12.x–0.15.x, fixing the rejection of 0.14+ in v2.12.11. The [0.15.2 check](docs/compatibility-0.15.2.md) records the reproduction, compiler/SDK matrix, live RPC and adapter results, and remaining UI limits. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all twelve skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 ## One-line summary
 
@@ -136,7 +136,7 @@ When you explicitly request these tasks, you can use the following capabilities:
 | `/paseo-god` | Explicit task execution and resumption | Bounded work, acceptance evidence, debugging/review/spike and learning proposals |
 | `/paseo-multi` | Operate selected Paseo computers | Named hosts or `all` (every registered host, in parallel), remote status/agents, inline or file Bash/PowerShell commands (`exec --command`, `--wait` up to 300 s), verified updates, `restart --force` only when you asked for an immediate restart, merging `import-saved` |
 | `/paseo-design` | Web and app frontend workflow | Project design rules, existing components and frontend review |
-| `/paseo-browser` | Browser workflow | Reuse one Ego Lite TaskSpace when installed, or an explicitly selected existing Chrome tab; preserve user tabs and verify completion |
+| `/paseo-browser` | Browser workflow | Default to one Ego Lite TaskSpace; Chrome requires an explicit user choice. Preserve user tabs and verify completion |
 | `/paseo-cua` | Native desktop GUI driving | App window manipulation/snapshot/verification with the trycua Cua Driver, whenever a task needs a native app GUI |
 | `/paseo-orchestration` | Multi-agent coordination and comparison | Explicitly requested coordination or tournament, mode-specific guidance |
 | `/paseo-project` | Project summary and setup | Requested brief (writes or refreshes stale `.paseobility` context) or environment/context setup |
@@ -717,14 +717,19 @@ node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-
 
 ## `/paseo-browser`
 
-Default when installed: **Ego Lite → one TaskSpace → reuse its `p1` → finish**.
+Default: **Ego Lite → one TaskSpace → reuse its `p1` → finish**.
 Read `ego-browser skill` for the installed API contract; see the
 [Ego reference](skills/paseo-browser/references/ego.md) for multi-round reuse,
 completion receipts, user control, and shell portability. Do not run Chrome's
 helper against Ego. Failed tasks retain their space for recovery rather than
 opening a replacement space or silently switching browsers.
 
-For explicitly selected Chrome, or when Ego is absent: **existing Chrome window
+Missing Ego, a CLI/PATH gap or a connection failure does not select Chrome.
+Check the target computer's CLI and app paths using the Ego reference, then
+report any setup gap. Updated skills require a new agent session or integration
+reload on each affected computer; restarting Paseo is unnecessary.
+
+For explicitly selected Chrome: **existing Chrome window
 → one task tab → reuse → close only that tab**.
 The macOS `scripts/chrome-tabs.py` adapter targets an explicit existing window,
 records tab ownership and Chrome incarnation, and recovers a lost creation
@@ -753,7 +758,7 @@ See the [skill](skills/paseo-browser/SKILL.md), [Chrome lifecycle reference](ski
 
 ## `/paseo-cua`
 
-Drives a native desktop GUI through the trycua Cua Driver (`cua-driver` CLI or MCP) when the user asks to operate a native app or a task can only be done through a desktop app's GUI; a CLI, API or file edit that reaches the same result is preferred. **Preview / limited validation** — see the [Cua platform validation status](docs/cua-platform-validation.md).
+Drives a native desktop GUI through the trycua Cua Driver (`cua-driver` CLI or MCP) when the user asks to operate a native app or a task can only be done through a desktop app's GUI; a CLI, API or file edit that reaches the same result is preferred. **Preview / limited validation** — see the [Cua platform validation status](docs/cua-platform-validation.md). Current dependency pins and host checks: [2026-11-06](docs/dependency-validation-2026-11-06.md).
 
 - Preconditions: `cua-driver --version`. If missing, it uses a non-GUI route when one exists, otherwise gives the install command and runs it if you ask. macOS Accessibility and Screen Recording grants stay with the human.
 - Read the installed contract first: `cua-driver list-tools`, `cua-driver describe <tool>`.

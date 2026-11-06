@@ -35,18 +35,18 @@ param(
   [switch]$Check,
   [switch]$DryRun,
   [string]$BinDir = $(if ($env:PASEOBILITY_CUA_BIN_DIR) { $env:PASEOBILITY_CUA_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }),
-  [string]$Version = $(if ($env:PASEOBILITY_CUA_PIN_VERSION) { $env:PASEOBILITY_CUA_PIN_VERSION } else { "0.36.0" })
+  [string]$Version = $(if ($env:PASEOBILITY_CUA_PIN_VERSION) { $env:PASEOBILITY_CUA_PIN_VERSION } else { "0.39.0" })
 )
 
 $ErrorActionPreference = "Stop"
 
-$PinSha = $(if ($env:PASEOBILITY_CUA_PIN_SHA) { $env:PASEOBILITY_CUA_PIN_SHA } else { "6d6c734c127025fb39ad5d585a10382808b39dc1" })
+$PinSha = $(if ($env:PASEOBILITY_CUA_PIN_SHA) { $env:PASEOBILITY_CUA_PIN_SHA } else { "81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd" })
 $RawBase = $(if ($env:PASEOBILITY_CUA_RAW_BASE) { $env:PASEOBILITY_CUA_RAW_BASE } else { "https://raw.githubusercontent.com/trycua/cua/$PinSha/libs/cua-driver/scripts" })
 $InstallerDir = $env:PASEOBILITY_CUA_INSTALLER_DIR
 $DriverBin = $env:PASEOBILITY_CUA_DRIVER_BIN
 # Optional expected SHA-256 digests for the pinned installer scripts. When set,
-# a mismatch aborts before execution. Upstream publishes no checksums, so these
-# are only checked when an operator supplies them out of band.
+# a mismatch aborts before execution. These optional checks cover the commit-pinned scripts; upstream separately
+# verifies release archives against SHA256SUMS (and Sigstore when available).
 $PinnedFiles = @("install.ps1", "_install-common.psm1")
 $ExpectedDigests = @{
   "install.ps1"          = $env:PASEOBILITY_CUA_INSTALL_SHA256

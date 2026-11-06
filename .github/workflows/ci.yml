@@ -9,6 +9,30 @@ permissions:
   contents: read
 
 jobs:
+  plugin-compatibility:
+    name: Plugin on Paseo ${{ matrix.paseo }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        paseo: ["0.13.2", "0.14.0", "0.15.2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci --prefix plugin
+      - name: Install published host compiler and SDK
+        run: npm install --prefix "$RUNNER_TEMP/paseo-runtime" --no-audit --no-fund @getpaseo/cli@${{ matrix.paseo }} @getpaseo/plugin@${{ matrix.paseo }}
+      - name: Compile and exercise client contributions
+        run: node scripts/check-plugin-runtime.mjs "$RUNNER_TEMP/paseo-runtime"
+      - name: Older remote daemon with newer controller
+        if: matrix.paseo == '0.13.2'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/paseo-client" --no-audit --no-fund @getpaseo/cli@0.15.2 @getpaseo/plugin@0.15.2
+          PASEO_PLUGIN_CLIENT_RUNTIME="$RUNNER_TEMP/paseo-client" node scripts/check-plugin-runtime.mjs "$RUNNER_TEMP/paseo-runtime"
+
   posix:
     name: macOS (bash + Python + Node suites)
     runs-on: macos-latest

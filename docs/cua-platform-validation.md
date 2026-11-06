@@ -14,7 +14,7 @@ user-reported Intel macOS and Windows results are recorded below.
 | Field | Verified value |
 | --- | --- |
 | Host | one Apple Silicon macOS machine, macOS 26.6.2 |
-| Cua Driver | 0.28.2 (the version exercised on this target; the current installer pin targets 0.30.4 as a source/schema-reviewed contract, not an E2E result here) |
+| Cua Driver | 0.28.2 (the version exercised on this target; the installer pin at the time of this record was 0.30.4; see the [2026-11-06 dependency check](dependency-validation-2026-11-06.md) for the current pin, separately from this E2E result) |
 | Binary / self-check | installer prepared the binary; `cua-driver doctor` reported every probe ok |
 | MCP integration | registered with the OpenCode client and connected; handshake ok and `tools/list` returned 56 tools |
 | macOS permissions | Accessibility and Screen Recording reported `true` under the driver-daemon identity (`com.trycua.driver`) |

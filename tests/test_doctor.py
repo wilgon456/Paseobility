@@ -92,6 +92,10 @@ import json
 import os
 import sys
 
+def emit(payload):
+    sys.stdout.buffer.write((json.dumps(payload, ensure_ascii=False) + "\\n").encode("utf-8"))
+    sys.stdout.buffer.flush()
+
 args = sys.argv[1:]
 if args[:1] == ["--version"]:
     print("cua-driver 0.28.2 (fake)")
@@ -116,14 +120,13 @@ if args[:1] == ["mcp"]:
                 out = {"id": message.get("id"), "result": scenario["init"]}
             if not scenario.get("omit_jsonrpc"):
                 out["jsonrpc"] = scenario.get("jsonrpc", "2.0")
-            print(json.dumps(out), flush=True)
+            emit(out)
         elif method == "tools/list":
             pages = scenario.get("pages") or []
             page = pages[min(phase, len(pages) - 1)] if pages else {"tools": []}
             phase += 1
-            print(json.dumps({"jsonrpc": scenario.get("jsonrpc", "2.0"),
-                              "id": message.get("id"), "result": page}),
-                  flush=True)
+            emit({"jsonrpc": scenario.get("jsonrpc", "2.0"),
+                  "id": message.get("id"), "result": page})
     sys.exit(0)
 sys.exit(1)
 '''
@@ -469,6 +472,23 @@ class DoctorMcpProbeTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok", result)
         self.assertEqual(result["tool_count"], 2)
         self.assertEqual(result["pages"], 1)
+
+    def test_utf8_tool_descriptions_with_windows_default_encoding(self):
+        scenario = self._init()
+        scenario["pages"] = [{"tools": [{"name": "read_window",
+                                        "description": "창 읽기 — snapshot → element"}]}]
+        # Emulate the Windows default without changing the machine's locale;
+        # retain a caller's explicit encoding and use real subprocess pipes.
+        real_popen = subprocess.Popen
+
+        def windows_default(*args, **kwargs):
+            kwargs.setdefault("encoding", "cp949")
+            return real_popen(*args, **kwargs)
+
+        with patch.object(self.doctor.subprocess, "Popen", side_effect=windows_default):
+            result = self._probe(scenario)
+        self.assertEqual(result["status"], "ok", result)
+        self.assertEqual(result["tool_count"], 1)
 
     def test_oversize_frame_is_rejected_bounded(self):
         self._patch("MCP_MAX_FRAME_BYTES", 4096)

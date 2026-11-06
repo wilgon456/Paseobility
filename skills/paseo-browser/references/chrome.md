@@ -1,5 +1,8 @@
 # Existing Chrome tabs
 
+Use this workflow only when the user explicitly selects Chrome. A missing or
+unreachable Ego runtime is not authorization to switch browsers.
+
 The macOS adapter manages lifecycle only. Page interaction stays with the
 installed browser integration, bound to the returned existing tab. It does not
 inject Chrome extension code, enable remote debugging or replace a user profile.

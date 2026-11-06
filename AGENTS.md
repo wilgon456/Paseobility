@@ -97,11 +97,12 @@ local run records only; it does not execute tasks or save native memory.
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver when a task needs a
-native app GUI; ordinary web page work stays with `paseo-browser`, which prefers installed
+native app GUI; ordinary web page work stays with `paseo-browser`, which defaults to
 Ego Lite for ordinary web work: one TaskSpace and its existing task tab, reused
 across rounds, with explicit completion through Ego's current runtime guide.
-An explicitly selected Chrome keeps the existing-window workflow; when Ego is
-absent, that workflow remains available. The macOS `chrome-tabs.py` helper
+An explicitly selected Chrome keeps the existing-window workflow. Missing Ego,
+CLI/PATH gaps and connection failures never automatically select Chrome; check
+the target host and report the gap. The macOS `chrome-tabs.py` helper
 records Chrome tab ownership and recovers uncertain creation without duplicate
 tabs. CloakBrowser, Paseo `browser_*` and Playwright CLI are named, requested
 alternatives. Connection failures never silently switch browsers. No duplicate alias skills are installed.
@@ -123,15 +124,19 @@ broken and left untouched (non-zero exit), never overwritten. Selecting only
 other skills has no driver side effects.
 
 - The helper fetches the pinned installer scripts (commit
-  `6d6c734c127025fb39ad5d585a10382808b39dc1`, Cua Driver `0.36.0`) and runs
+  `81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd`, Cua Driver `0.39.0`) and runs
   them from a temp directory. It never edits PATH or registers MCP config, and
   it never starts the daemon: the pinned `install.sh` / `_install-rust.sh` only
   resolve/download a release and stop stale daemons
-  (https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/scripts/).
+  (https://github.com/trycua/cua/blob/81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd/libs/cua-driver/scripts/).
   An explicit `CUA_DRIVER_RS_VERSION` pin outranks the installer's baked
   version, and the pinned installer refuses withdrawn releases. The pin is a
   source/schema-reviewed contract; `0.28.2` remains the last version exercised
-  end-to-end.
+  end-to-end. The 0.39.0 installer stops this user's release-driver processes
+  and unregisters other Cua app copies without deleting their files. An
+  explicit runtime upgrade needs session/process checks and an archive backup;
+  it is distinct from the helper's existing-driver reuse policy. See
+  `docs/dependency-validation-2026-11-06.md` for verification and limitations.
 - On Windows the helper installs into a private, Paseobility-owned staging bin
   and then publishes only the executable set (`cua-driver.exe`,
   `cua-driver-uia.exe`, `cua-cursor-theme.exe`) into the shared bin dir. It does
@@ -270,7 +275,11 @@ The current local compatibility baseline is Paseo 0.10.2; see
 published 0.12.0 CLI's `--help`; no 0.12 daemon was run); the resulting fixes
 and open items are in `docs/compatibility-0.12.0.md`. Paseo 0.13.0 was run live
 from throwaway homes (plugin install on 0.12.0 and 0.13.0 daemons, cleanup and
-multi adapters on 0.13.0); see `docs/compatibility-0.13.0.md`. Refresh
+multi adapters on 0.13.0); see `docs/compatibility-0.13.0.md`. Paseo 0.15.2 was checked with a throwaway
+daemon, live plugin RPCs and cleanup/multi adapters; 0.13.2, 0.14.0 and
+0.15.2 compiler/SDK registrations are covered by
+`scripts/check-plugin-runtime.mjs`. See `docs/compatibility-0.15.2.md` for
+verified layers and UI limits. Refresh
 `docs/paseo-cli-surface.json` with `scripts/paseo-cli-surface.py` when a new
 Paseo release changes the CLI. When a CLI is found, run
 `paseo --version` and report the detected version; do not downgrade, update, or

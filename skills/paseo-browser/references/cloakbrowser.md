@@ -12,7 +12,7 @@ a separate browser; it cannot implement personal Chrome tab reuse.
   shasum `fe46fc35997bb73e5e597dcbe183bb6d402a29b9`.
 - Source: <https://github.com/CloakHQ/CloakBrowser>, release tag `v0.6.3`,
   immutable commit `fbf005bc199920b592df17ac4d489324e29d56d8` (== npm `gitHead`).
-- Playwright peer: `playwright-core@1.64.1` (peer range `>=1.53.0`; pinned for
+- Playwright peer: `playwright-core@1.65.0` (peer range `>=1.53.0`; pinned for
   reproducibility).
 - **Node.js ^20.19.0 or >=22.12.0** (the package engine range). Recipes use
   dynamic `import()`; CommonJS is also supported. Verified on Node 22.23.2.
@@ -27,7 +27,8 @@ newest browser binary.
   per platform by the wrapper (`PLATFORM_CHROMIUM_VERSIONS`). On Apple Silicon
   macOS that is **Chromium 145.0.7632.109**; on Linux x64/arm64 and Windows x64
   it is **Chromium 146.0.7680.177.x**.
-- **Latest keyed binary** — Chromium 154 on Linux, Windows and macOS with the full patch set. This is **free with a GitHub-issued key for one
+- **Latest keyed binary** — the 0.7.0 upstream README advertises Chromium 156
+  (checked 2026-11-06). This is **free with an email-issued key for one
   concurrent session** (<https://cloakbrowser.dev/free>) or a paid key for more
   sessions/scaling. A paid subscription is **not** mandatory to use a current
   build.
@@ -41,12 +42,17 @@ key, and never prints key material. If a task needs the latest keyed binary, the
 user supplies the key out of band (`CLOAKBROWSER_LICENSE_KEY`); otherwise use the
 keyless free binary and report exactly which binary ran.
 
-## Upgrade notes for 0.6.3
+## Upgrade policy (checked 2026-11-06)
 
-Update `cloakbrowser` and `playwright-core` together. 0.6.3 reworks humanized
+Keep `cloakbrowser@0.6.3` for the keyless workflow. **Do not automatically
+upgrade to 0.7.0**: its `ensureBinary()` requires a license key and may start an
+interactive email/signup flow on first launch. This is incompatible with these
+keyless recipes. No signup, saved key or license settings are changed by this
+skill. The [upstream 0.7.0 README](https://github.com/CloakHQ/CloakBrowser/blob/1cc093aef0e50b3f5c27fc16b26314add843203a/README.md)
+describes that migration. Validate wrapper and Playwright changes together. 0.6.3 reworks humanized
 typing/mouse/scroll (five humanize settings are now ignored in JS) and fixes
 humanized clicks inside scrollers and navigating `selectOption`; playwright-core
-1.64.1 is a patch release. Neither changes the free binary pins. Keep the
+1.65.0 requires Node >=20 and was smoke-tested with this wrapper. Neither changes the free binary pins. Keep the
 runtime's exact pins and lockfile.
 
 In 0.6.x, humanized locators use strict matching and raise errors instead of
@@ -63,7 +69,7 @@ Installed here (exact pins, own lockfile) — **not** a global npm install and
 
 ```text
 $HOME/.local/share/paseobility/browser/cloakbrowser/
-  package.json        # cloakbrowser 0.6.3 + playwright-core 1.64.1 (exact)
+  package.json        # cloakbrowser 0.6.3 + playwright-core 1.65.0 (exact)
   package-lock.json   # lockfile
   node_modules/
   cache/              # CLOAKBROWSER_CACHE_DIR: verified stealth-Chromium binary
@@ -75,7 +81,7 @@ Reproduce on another machine:
 RUNTIME="${PASEOBILITY_CLOAK_RUNTIME:-$HOME/.local/share/paseobility/browser/cloakbrowser}"
 mkdir -p "$RUNTIME" && cd "$RUNTIME"
 npm init -y >/dev/null
-npm install --save-exact --no-audit --no-fund cloakbrowser@0.6.3 playwright-core@1.64.1
+npm install --save-exact --no-audit --no-fund cloakbrowser@0.6.3 playwright-core@1.65.0
 ```
 
 Load from the runtime path with dynamic `import()` (respects a custom

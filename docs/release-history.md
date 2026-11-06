@@ -1,5 +1,30 @@
 # Release history
 
+## 2026-11-06 · Ego recovery, Paseo 0.15 compatibility and Cua updates (v2.12.12)
+
+An Ego timeout, missing selector or lost context no longer licenses an automatic
+switch to Chrome. Browser instructions now require recovery or a user-directed
+handoff, and keep the prescribed design check separate from interactive work.
+The plugin accepts Paseo 0.12.x–0.15.x; published compiler/SDK checks cover
+0.13.2, 0.14.0 and 0.15.2, including an older daemon with a newer controller.
+
+The Cua installer pin is 0.39.0. Existing working drivers are still reused, so
+installing skills does not silently upgrade the runtime. Recovery guidance checks
+the live daemon's version and commit as well as the installed binary. Doctor now
+decodes MCP stdio as UTF-8, fixing false failures on Korean Windows.
+Optional recipes use Playwright Core 1.65.0 and Playwright CLI 0.1.23 (Node 20+);
+CloakBrowser remains 0.6.3 because 0.7 requires a license key.
+
+Previously merged optional Paseo Bot changes are also included: Discord task
+control, permission handling and bounded owner memory. See the
+[Discord guide](paseo-bot-discord.md) and [memory guide](paseo-bot-memory.md).
+These services are not enabled by skill installation.
+
+See the [compatibility evidence and limits](compatibility-0.15.2.md) and
+[dependency and multi-host rollout record](dependency-validation-2026-11-06.md).
+Fresh-agent browser choice and full native GUI actions remain user validation;
+installation does not upgrade or restart Paseo.
+
 ## 2026-10-29 · Plugin screens in English for everyone outside Korea (v2.12.11)
 
 The Paseobility plugin is listed worldwide on paseo.sh, but parts of it still

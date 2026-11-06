@@ -674,46 +674,20 @@ test("server text and update progress follow the chosen language", async () => {
   );
 });
 
-// Minimal local check for the comparators used by requirements.paseo.
-function satisfiesRange(version, range) {
-  const parse = (value) => {
-    const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value);
-    assert.ok(match, `unexpected version ${value}`);
-    return match.slice(1).map(Number);
-  };
-  const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
-  const target = parse(version);
-  return range
-    .trim()
-    .split(/\s+/)
-    .every((part) => {
-      const match = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+)$/.exec(part);
-      assert.ok(match, `unsupported comparator ${part}`);
-      const order = compare(target, parse(match[2]));
-      switch (match[1] ?? "=") {
-        case ">=":
-          return order >= 0;
-        case "<=":
-          return order <= 0;
-        case ">":
-          return order > 0;
-        case "<":
-          return order < 0;
-        default:
-          return order === 0;
-      }
-    });
-}
-
-test("manifest supports Paseo 0.12 and 0.13 but not 0.14", async () => {
+test("host compatibility accepts checked releases on daemon and app, rejects the next minor", async () => {
+  const { assertPluginCompatibility } = await import("@getpaseo/protocol/plugin-requirements");
   const manifest = JSON.parse(
     await readFile(new URL("../paseo-plugin.json", import.meta.url), "utf8"),
   );
-  const range = manifest.requirements.paseo;
-  assert.equal(range, ">=0.12.0 <0.14.0");
-  for (const version of ["0.12.0", "0.12.10", "0.13.0", "0.13.9"])
-    assert.ok(satisfiesRange(version, range), version);
-  for (const version of ["0.11.4", "0.14.0", "1.0.0"])
-    assert.ok(!satisfiesRange(version, range), version);
+  for (const runtime of ["daemon", "app"]) {
+    for (const version of ["0.12.0", "0.13.2", "0.14.0", "0.15.1", "0.15.2"])
+      assert.doesNotThrow(() => assertPluginCompatibility({ ...manifest, version, runtime }));
+    for (const version of ["0.11.4", "0.16.0", "1.0.0"])
+      assert.throws(() => assertPluginCompatibility({ ...manifest, version, runtime }), /requires Paseo/);
+    // Reproduce the release bug with the host's real guard, not a local semver imitation.
+    assert.throws(() => assertPluginCompatibility({
+      ...manifest, requirements: { paseo: ">=0.12.0 <0.14.0" }, version: "0.15.2", runtime,
+    }), /requires Paseo/);
+  }
   assert.equal(manifest.translations, undefined);
 });

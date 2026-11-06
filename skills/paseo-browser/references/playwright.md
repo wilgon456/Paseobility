@@ -26,13 +26,15 @@ user's personal Chrome cookies or storage into this mode.
 
 - Package: `@playwright/cli` (the `playwright-cli` binary), published by
   Microsoft. CLI-first by design; it does not force a page into the model.
-- Pinned: `0.1.22` — npm `@playwright/cli@0.1.22`
-  (`dist.integrity` `sha512-6WMkQNM4VEzqMkdr/l60X9Cr7i+tI/arK87IWz2K7pB6j8I2ZJ8KN+1JfhJDLnK+SXnab6Op8xGt4adcGLsyfA==`,
-  shasum `8f4bb69e84084f1fabcb4ba08f491f7e16894a06`).
-- Source: <https://github.com/microsoft/playwright-cli>, release tag `v0.1.22`,
-  immutable commit `b85c7a736bb473bf55b584e54a09ffa698d6d871` (also the npm
+- Pinned: `0.1.23` — npm `@playwright/cli@0.1.23`
+  (`dist.integrity` `sha512-+TuHfVgpK1SIlwyV7bcZ9SRRhnVOAIwJwxZCgEh5LWkZuyGfSYnHNx8J7H78dhCwMyLkJtGb/j5XICjzEKzrfg==`,
+  shasum `a180691e3dfe0b55afdcc7a54f24bf7404186513`).
+- Source: <https://github.com/microsoft/playwright-cli>, release tag `v0.1.23`,
+  immutable commit `0a808078d96496cf2a8fa725143c870354f63cda` (also the npm
   `gitHead`). Apache License 2.0.
-- Node.js >= 18.
+- Node.js >= 20 in practice: the CLI package declares >=18, but its pinned
+  `playwright` / `playwright-core@1.65.0-alpha-2026-10-30` reject Node 18.
+  Verified here with Node 22.23.2; the alpha dependency is upstream-pinned.
 
 Always re-read the installed commands before use, because the surface changes
 between releases: `playwright-cli <command> --help`.
@@ -45,7 +47,7 @@ default artifacts do not land in a repository or the user's project.
 Generic signature (text only — replace the placeholders with task values):
 
 ```text
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=<session>" <command> [args]
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=<session>" <command> [args]
 ```
 
 Bash, copyable. This both creates the task dir (and `cd`s into it, so artifacts
@@ -60,8 +62,8 @@ export PLAYWRIGHT_BROWSERS_PATH="$TASK_DIR/browsers"
 export npm_config_cache="$TASK_DIR/npm-cache"
 S='task-browser-demo-20260930'   # replace with a task-unique value
 # one-time for this task dir:
-npx --yes --package @playwright/cli@0.1.22 playwright-cli install-browser chromium
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" open 'https://example.com/' --browser chromium
+npx --yes --package @playwright/cli@0.1.23 playwright-cli install-browser chromium
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" open 'https://example.com/' --browser chromium
 ```
 
 PowerShell equivalent; the `npx` line itself is cross-platform:
@@ -73,8 +75,8 @@ Set-Location -LiteralPath $TaskDir
 $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $TaskDir "browsers"
 $env:npm_config_cache = Join-Path $TaskDir "npm-cache"
 $Session = "task-browser-demo-20260930"   # replace with a task-unique value
-npx --yes --package @playwright/cli@0.1.22 playwright-cli install-browser chromium
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$Session" open "https://example.com/" --browser chromium
+npx --yes --package @playwright/cli@0.1.23 playwright-cli install-browser chromium
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$Session" open "https://example.com/" --browser chromium
 ```
 
 - `npx --yes --package ...` performs a one-time npm fetch; there is **no**
@@ -104,7 +106,7 @@ is a real failure to report, not a silent fallback.
 - Sessions do **not** reliably exit on their own: a forgotten headless session
   was observed alive 50 days after its working directory was deleted. Close
   yours before replying, even after a failure — run multi-step flows in one
-  shell with `trap 'npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" close' EXIT`.
+  shell with `trap 'npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" close' EXIT`.
   Verify the session disappeared with `list`. Inspect older leftovers with
   `scripts/browser-sweep.mjs`; process age alone does not establish inactivity.
 - Do not use `attach` to take over someone else's running browser.
@@ -116,7 +118,7 @@ namespaces. Work from the most recent snapshot and refresh it after navigation
 or a DOM change before acting. Never carry a ref or a "current page" assumption
 from one backend to the other.
 
-## Verified command map (0.1.22)
+## Verified command map (0.1.23)
 
 Navigation and observation:
 
@@ -169,13 +171,13 @@ own fresh `snapshot`. Replace `S` with a task-unique value.
 
 ```bash
 S='task-browser-demo-20260930'
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" open 'http://127.0.0.1:<port>/' --browser chromium
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" snapshot          # read your own eN refs
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" fill e5 '7'       # e5 = field A
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" fill e6 '5'       # e6 = field B
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" click e7          # e7 = Compute
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" snapshot          # confirm the expected result
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" close
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" open 'http://127.0.0.1:<port>/' --browser chromium
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" snapshot          # read your own eN refs
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" fill e5 '7'       # e5 = field A
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" fill e6 '5'       # e6 = field B
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" click e7          # e7 = Compute
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" snapshot          # confirm the expected result
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" close
 ```
 
 ### Scoped snapshot on a large page
@@ -201,14 +203,14 @@ Always pair `tracing-start` with a bounded step and `tracing-stop` before closin
 the session, and write artifacts into `$TASK_DIR`.
 
 ```bash
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" tracing-start
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" tracing-start
 # ... perform only the bounded step you want to evidence ...
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" tracing-stop
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" screenshot --filename "$TASK_DIR/desktop.png"
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" resize 375 812
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" screenshot --filename "$TASK_DIR/mobile.png"
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" pdf --filename "$TASK_DIR/page.pdf"
-npx --yes --package @playwright/cli@0.1.22 playwright-cli "-s=$S" close
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" tracing-stop
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" screenshot --filename "$TASK_DIR/desktop.png"
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" resize 375 812
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" screenshot --filename "$TASK_DIR/mobile.png"
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" pdf --filename "$TASK_DIR/page.pdf"
+npx --yes --package @playwright/cli@0.1.23 playwright-cli "-s=$S" close
 ```
 
 Artifacts default to `./.playwright-cli/` under the session's working directory;

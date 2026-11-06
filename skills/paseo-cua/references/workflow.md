@@ -64,16 +64,19 @@ or screenshot. Report what was operated and the evidence. Never log secrets.
 ## Source
 
 Pinned upstream: [`trycua/cua`](https://github.com/trycua/cua) @
-[`6d6c734c127025fb39ad5d585a10382808b39dc1`](https://github.com/trycua/cua/tree/6d6c734c127025fb39ad5d585a10382808b39dc1).
+[`81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd`](https://github.com/trycua/cua/tree/81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd).
 Reviewed contract:
-[`Skills/cua-driver/SKILL.md`](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/rust/Skills/cua-driver/SKILL.md)
-(0.36.0: actions accept `element_token` = `<snapshot_id>:N`; `element_index`
+[`Skills/cua-driver/SKILL.md`](https://github.com/trycua/cua/blob/81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd/libs/cua-driver/rust/Skills/cua-driver/SKILL.md)
+(0.39.0: actions accept `element_token` = `<snapshot_id>:N`; `element_index`
 and `snapshot_id` are not input arguments to actions; `run_steps` /
 `run_script` added; `get_window_state` adds `since`, `tree_format`,
 `full_output`, `verbose`). Use `capture_id` with pixel input when the
 installed action schema advertises it. `get_window_state` with `display_only`
 and `include_accessibility_tree:false` provides display pixels only; those
 images do not register an action capture or replace the agent snapshot.
-Reviewed [BROWSER.md](https://github.com/trycua/cua/blob/6d6c734c127025fb39ad5d585a10382808b39dc1/libs/cua-driver/rust/Skills/cua-driver/BROWSER.md)
+In 0.39.0, `screenshot_format:"jpeg"` can reduce image size but does not mint
+a `capture_id`. Use a fresh PNG snapshot for an action that requires that ID;
+do not pair an old PNG capture ID with newer JPEG pixels.
+Reviewed [BROWSER.md](https://github.com/trycua/cua/blob/81f3e1bbc0d113c1a33a71b4150fb6ece6a5e9cd/libs/cua-driver/rust/Skills/cua-driver/BROWSER.md)
 for page content. MIT licensed. The last version exercised end-to-end remains
-`0.28.2`; `0.36.0` here is an installed/schema-reviewed contract, not a new GUI end-to-end result.
+`0.28.2`; `0.39.0` here is an installed/schema-reviewed contract, not a new GUI end-to-end result.

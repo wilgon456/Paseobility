@@ -1,12 +1,12 @@
 ---
 name: paseo-browser
 description: >-
-  Operate websites with installed Ego Lite using one reusable TaskSpace and
+  Use Ego Lite by default for websites, with one reusable TaskSpace and
   task tab, then verify completion cleanup; it reads the installed ego-browser
   guide for Ego runtime details, so that skill is not a separate task. Use for
   web navigation, reading, clicking, forms, screenshots and browser debugging.
-  Also supports an explicitly selected existing Chrome window and requested
-  isolated backends.
+  Chrome requires an explicit user choice; missing Ego or CLI errors never
+  select Chrome automatically. Also supports requested isolated backends.
 ---
 
 # Paseo Browser
@@ -16,17 +16,21 @@ backend once per task and keep it across rounds and recoverable failures:
 
 - When the user names a browser, honor that choice. For Ego Lite, follow the
   Ego workflow below; for personal Chrome, use the existing-window lifecycle.
-- For ordinary web work without an explicit browser, prefer **Ego Lite when
-  its `ego-browser` CLI is installed**. Read the installed `ego-browser` skill
+- For ordinary web work without an explicit browser, use **Ego Lite**. An
+  available Chrome tool, an open Chrome window, or a Chrome login is not a
+  browser choice. Read the installed `ego-browser` skill
   and run `ego-browser skill`; read through its end-of-guide marker before
   acting. Use its current documented APIs, not guessed Playwright methods.
-- Standard Ego Lite app locations are `/Applications/ego lite.app` on macOS
-  and `C:\Program Files\Citro Labs\ego lite\Application\ego.exe` on Windows.
-  If the app exists but its CLI is unavailable, report that setup gap rather
-  than treating Ego as absent. Never auto-select Microsoft Edge.
-- If Ego is not installed and the task has not selected it, use an already
-  running Chrome window. Do not install or start a browser implicitly. If the
-  selected backend fails, report and recover there; do not silently switch.
+- Check the computer that will run the browser, not the controller computer.
+  A missing PATH command or skill entry does not prove Ego is absent. Follow
+  [Ego discovery](references/ego.md#discovery-before-browser-selection) before
+  reporting availability; use a verified absolute CLI path when possible.
+- If Ego is absent, its guide cannot be read, or its connection fails, report
+  the specific setup/recovery gap and continue independent work. Do not
+  automatically fall back to Chrome, Edge, built-in browser tools or
+  Playwright. Use another browser only when the user selects it; an earlier
+  explicit choice for this task remains valid. Do not install or upgrade a
+  browser implicitly, or restart Paseo to refresh its PATH.
 - Native desktop tasks belong to `paseo-cua`; HTTP/API and filesystem work do
   not require a browser. Explicit headless verification workflows stay explicit.
 
@@ -74,8 +78,9 @@ Ego's user-control or permission stops, or attach a second browser controller.
 
 ## Existing Chrome lifecycle
 
-Use an existing Chrome window when Ego is absent or the user names personal
-Chrome. Never launch Chrome, copy a profile or change its launch flags. On macOS
+Use an existing Chrome window only when the user selects personal Chrome.
+Ego being unavailable does not select Chrome. Never launch Chrome, copy a
+profile or change its launch flags. On macOS
 the bundled helper creates exactly one tab in a window you select and journals
 ownership outside the repository; a permission denial is reported, not routed
 to another browser. Keep one task ID for the task, bind the returned tab through
@@ -86,6 +91,13 @@ APIs, journal recovery, popups, Windows/Linux limits and verification.
 
 ## Other environments and requested alternatives
 
+An Ego timeout, missing selector, stale context, screenshot failure or suspected
+extension interference is a recovery case, not a request for isolation. Do not
+finish the failed Ego task and replace it with headless Chrome, a raw CDP
+script, or Playwright. Announcing the switch does not authorize it. Keep the
+space ID, inspect the current page and use the runtime guide's recovery or
+handoff. Report a suspected cause as unverified until evidence establishes it.
+
 When the user requests isolation, stealth or headless automation, or a specific
 workflow requires it (such as `paseo-design`'s headless `design-check`), use the
 corresponding reference and name the backend:
@@ -95,6 +107,10 @@ corresponding reference and name the backend:
 - [Paseo browser tools](references/paseo.md): Paseo workspace tabs, not personal
   Chrome. A tool named “new tab” does not prove native window placement.
 - [Playwright CLI](references/playwright.md): separate, named CLI sessions.
+
+The `design-check` exception covers that prescribed render check only. It does
+not authorize replacing interactive Ego page work with a custom browser or
+overriding its executable to Chrome after an Ego error.
 
 Each alternative must close only its own browser/session in `finally`. The
 legacy `scripts/browser-sweep.mjs` inspects separate automation processes only;

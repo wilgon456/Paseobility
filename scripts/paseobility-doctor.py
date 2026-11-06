@@ -609,6 +609,9 @@ def _mcp_child(driver):
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
+        # MCP stdio is UTF-8, regardless of the host's Windows code page.
+        # Locale decoding can discard a valid non-ASCII tools/list response.
+        encoding="utf-8",
         bufsize=1,
     )
 

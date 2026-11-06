@@ -284,7 +284,7 @@ class CuaDriverRuntimeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("present:", result.stdout)
         self.assertIn(UNBUNDLED_WARNING, result.stderr)
-        self.assertIn("open -n -g -a CuaDriver --args serve", result.stderr)
+        self.assertIn("open -n -g /Applications/CuaDriver.app --args serve", result.stderr)
         self.assertEqual(binary.read_text(), WORKING_BINARY)
         self.assertEqual(self.reads(), "")
 

@@ -6,6 +6,37 @@ The separate `ego-browser` skill bootstraps the runtime guide with
 reference supplements that installed contract, not a replacement SDK manual.
 Paseobility does not install, upgrade, or copy Ego profiles or credentials.
 
+## Discovery before browser selection
+
+Run discovery on the target computer. Browser tools listed in the current
+session and an `ego-browser` skill directory are not runtime availability
+checks; absence of either does not authorize Chrome.
+
+- macOS: check `command -v ego-browser`, then the executable
+  `~/.local/bin/ego-browser`. Check both `/Applications/ego lite.app` and
+  `~/Applications/ego lite.app`. A daemon may have inherited an older PATH;
+  invoke the verified CLI by its absolute path instead of restarting Paseo.
+- Windows: check `Get-Command ego-browser -ErrorAction SilentlyContinue` (or
+  `where ego-browser` in cmd), and the standard app location
+  `C:\Program Files\Citro Labs\ego lite\Application\ego.exe`. Onboarding PATH
+  changes only reach new processes. Read the installed `ego-browser` skill's
+  Windows installation reference for recovery; do not infer absence from the
+  current terminal's PATH or invent a CLI shim path.
+- Other/custom installations: consult the installed Ego installation guide.
+  If availability cannot be established, report it as unknown.
+
+An app with no working CLI is a setup gap. A CLI with a failing `skill` command
+is a runtime/guide gap. If the bootstrap skill is missing but the CLI works,
+read the complete `ego-browser skill` output directly. Verify its end marker
+before acting. Never launch the app executable with guessed CLI flags.
+
+When diagnosing differences between computers, compare each host's active
+provider skill directories (including legacy copies), installed `SKILL.md`
+selection rules, and CLI path. An updated source checkout does not update
+installed copies or instructions already loaded by a running agent. After an
+authorized backed-up skill update, use a new agent session or reload
+integrations; preserve active agents and do not restart the daemon.
+
 ## One goal across multiple rounds
 
 Bash/Zsh first round (use a unique stable name for this agent's goal):

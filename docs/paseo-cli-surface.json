@@ -314,6 +314,7 @@
       "--home",
       "--host",
       "--json",
+      "--kill-terminals",
       "--timeout",
       "-h"
     ],
@@ -347,6 +348,7 @@
       "--home",
       "--host",
       "--json",
+      "--keep-terminals",
       "--kill-timeout",
       "--timeout",
       "-h"
@@ -1076,6 +1078,7 @@
       "--home",
       "--host",
       "--json",
+      "--kill-terminals",
       "--no-color",
       "--no-headers",
       "--quiet",
@@ -1603,6 +1606,6 @@
     "-q",
     "-v"
   ],
-  "paseoVersion": "0.13.0",
+  "paseoVersion": "0.15.2",
   "surfaceFormat": 1
 }
