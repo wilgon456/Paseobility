@@ -1,6 +1,6 @@
 // Detached because replacing the plugin ends its RPC process. No daemon restart.
 import * as fs from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { treeDigest, run, installSkills, rollback } from "./update-core.mjs";
 export async function updatePackage(options, execute = run) {
@@ -9,7 +9,19 @@ export async function updatePackage(options, execute = run) {
     statePath = join(stateDir, "job.json");
   let changes = [],
     pluginAttempted = false,
-    uncertain = false;
+    uncertain = false,
+    replacement,
+    preservedSource,
+    restorePlugin = oldPlugin;
+  const listPlugin = async () => JSON.parse(await execute(cli, [
+    "plugin", "ls", "--home", daemonHome, "--json",
+  ])).find((item) => item.id === "paseobility");
+  const addPlugin = (directory) => execute(cli, [
+    "plugin", "add", directory, "--id", "paseobility", "--home", daemonHome, "--json",
+  ]);
+  const removePlugin = () => execute(cli, [
+    "plugin", "remove", "paseobility", "--home", daemonHome, "--json",
+  ]);
   const backup = join(
     home,
     ".agents",
@@ -27,6 +39,11 @@ export async function updatePackage(options, execute = run) {
     );
     await fs.rename(tmp, statePath);
   };
+  const interrupted = () => state(
+    "interrupted",
+    "jobUncertain",
+    "Couldn't confirm the plugin switch. Nothing is retried automatically; check the backup and installation.",
+  );
   try {
     if (!/^\d+\.\d+\.\d+$/.test(version) || !/^([0-9a-f]{40})$/.test(sha))
       throw Error("Invalid release.");
@@ -63,6 +80,25 @@ export async function updatePackage(options, execute = run) {
       .sort();
     if (!ids.length) throw Error("No skills in release.");
     await treeDigest(join(source, "skills"));
+    replacement = join(source, "plugin");
+    const original = await listPlugin();
+    if (original?.path !== oldPlugin || original.status !== "running")
+      throw Error("Installed plugin changed before update.");
+    const kind = original.installation?.identity?.kind ?? original.source;
+    if (kind === "git") {
+      // Removing a managed Git plugin deletes its checkout. Preserve the whole
+      // package (including local edits) before unregistering it, not just plugin/.
+      if (basename(oldPlugin) !== "plugin") throw Error("Unexpected plugin package layout.");
+      const oldRoot = dirname(oldPlugin), savedRoot = join(backup, "plugin-source");
+      const digest = await treeDigest(oldRoot);
+      await fs.cp(oldRoot, savedRoot, { recursive: true, errorOnExist: true, force: false });
+      if (await treeDigest(savedRoot) !== digest || await treeDigest(oldRoot) !== digest)
+        throw Error("Plugin source changed while backing up.");
+      preservedSource = { root: oldRoot, digest };
+      restorePlugin = join(savedRoot, "plugin");
+    } else if (kind !== "directory") {
+      throw Error("Cannot safely replace this plugin source type.");
+    }
     await state(
       "running",
       "jobInstalling",
@@ -70,17 +106,15 @@ export async function updatePackage(options, execute = run) {
     );
     changes = await installSkills(source, home, backup, ids);
     await state("running", "jobReconnecting", "Switching the plugin to the new version…");
+    if ((await listPlugin())?.path !== oldPlugin)
+      throw Error("Installed plugin changed before switching.");
+    if (preservedSource && await treeDigest(preservedSource.root) !== preservedSource.digest)
+      throw Error("Plugin source changed before switching; preserving it.");
     pluginAttempted = true;
-    await execute(cli, [
-      "plugin",
-      "add",
-      join(source, "plugin"),
-      "--id",
-      "paseobility",
-      "--home",
-      daemonHome,
-      "--json",
-    ]);
+    // add/install rejects an existing ID; it is not an upsert. Directory sources
+    // survive remove; managed sources have the verified backup above.
+    await removePlugin();
+    await addPlugin(replacement);
     const plugins = JSON.parse(
       await execute(cli, ["plugin", "ls", "--home", daemonHome, "--json"]),
     );
@@ -110,25 +144,21 @@ export async function updatePackage(options, execute = run) {
   } catch (error) {
     if (pluginAttempted && error.uncertain) {
       uncertain = true;
-      await state(
-        "interrupted",
-        "jobUncertain",
-        "Couldn't confirm the plugin switch. Nothing is retried automatically; check the backup and installation.",
-      );
+      await interrupted();
       return;
     }
     try {
-      if (pluginAttempted)
-        await execute(cli, [
-          "plugin",
-          "add",
-          oldPlugin,
-          "--id",
-          "paseobility",
-          "--home",
-          daemonHome,
-          "--json",
-        ]);
+      if (pluginAttempted) {
+        const current = await listPlugin();
+        if (current?.path === replacement) await removePlugin();
+        else if (current && current.path !== oldPlugin)
+          throw Error("Plugin changed during recovery; no registration was removed.");
+        if (!current || current.path === replacement) await addPlugin(restorePlugin);
+        const restored = await listPlugin();
+        if (restored?.status !== "running" ||
+            ![oldPlugin, restorePlugin].includes(restored.path))
+          throw Error("Previous plugin did not recover.");
+      }
       await rollback(changes);
       const detail = String(error.message);
       await state(
@@ -137,7 +167,12 @@ export async function updatePackage(options, execute = run) {
         `Update failed. Check the backup and installation. ${detail}`,
         { detail },
       );
-    } catch {
+    } catch (recoveryError) {
+      if (recoveryError.uncertain) {
+        uncertain = true;
+        await interrupted();
+        return;
+      }
       await state(
         "failed",
         "jobUnrecovered",

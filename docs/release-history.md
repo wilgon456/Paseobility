@@ -1,5 +1,20 @@
 # Release history
 
+## 2026-11-06 · Repair plugin replacement during updates (v2.12.13)
+
+Updating an existing installation failed because `paseo plugin add` rejects an
+already configured ID. The rollback used the same invalid operation. The worker
+now preserves managed Git checkouts before removal, unregisters only the selected
+plugin, installs the pinned replacement, and verifies that it is running. Failed
+activation restores the preserved source and skills. Concurrent changes and lost
+responses stop automatic recovery rather than deleting another change or replaying
+an uncertain action. Directory development checkouts remain untouched.
+
+An older installed updater must receive this worker fix before using the update
+button; downloading a new release alone cannot repair code already running in the
+old installation. The four selected hosts received this bootstrap fix as part of
+the deployment. Paseo daemons and agents are not restarted.
+
 ## 2026-11-06 · Ego recovery, Paseo 0.15 compatibility and Cua updates (v2.12.12)
 
 An Ego timeout, missing selector or lost context no longer licenses an automatic

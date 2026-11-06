@@ -207,119 +207,111 @@ test("displayed plugin version agrees with package version", async () => {
   assert.ok(source.includes(`PLUGIN_VERSION = "${pkg.version}"`));
 });
 
-for (const mode of ["success", "failure", "uncertain"])
-  test("update worker " + mode + " keeps source and backups", () =>
-    fixture(async (dir) => {
-      const { updatePackage } = await import("../server/update-worker.mjs");
-      const stateDir = join(dir, "state"),
-        home = join(dir, "home");
-      await mkdir(stateDir);
-      await writeFile(join(stateDir, "update.lock"), "");
-      const target = join(home, ".agents/skills/paseo-browser/SKILL.md");
-      await mkdir(join(target, ".."), { recursive: true });
-      await writeFile(target, "old");
-      let staged = "",
-        restored = false;
-      const commands = [];
-      async function execute(command, args) {
-        commands.push([command, ...args]);
-        if (command === "git") {
-          if (args[0] === "init") staged = args.at(-1);
-          if (args.includes("rev-parse")) return "a".repeat(40);
-          if (args.includes("checkout")) {
-            await mkdir(join(staged, "skills/paseo-browser"), {
-              recursive: true,
-            });
-            await mkdir(join(staged, "plugin"));
-            await writeFile(
-              join(staged, "skills/paseo-browser/SKILL.md"),
-              "new",
-            );
-            await writeFile(join(staged, "VERSION"), "2.13.0");
-            await writeFile(
-              join(staged, "plugin/package.json"),
-              JSON.stringify({ version: "2.13.0" }),
-            );
-            await writeFile(
-              join(staged, "plugin/paseo-plugin.json"),
-              JSON.stringify({ id: "paseobility" }),
-            );
+for (const kind of ["directory", "git"])
+  for (const mode of ["success", "failure", "configured-failure", "uncertain", "remove-failure", "remove-uncertain", "concurrent-change", "restore-uncertain", ...(kind === "git" ? ["source-change"] : [])])
+    test(`update worker ${kind}/${mode} preserves source and backs up before replacement`, () =>
+      fixture(async (dir) => {
+        const { updatePackage } = await import("../server/update-worker.mjs");
+        const stateDir = join(dir, "state"), home = join(dir, "home");
+        const oldRoot = join(dir, "original"), oldPlugin = join(oldRoot, "plugin");
+        await mkdir(stateDir);
+        await writeFile(join(stateDir, "update.lock"), "");
+        await mkdir(oldPlugin, { recursive: true });
+        await writeFile(join(oldRoot, "local-edit.txt"), "preserve this too");
+        await writeFile(join(oldPlugin, "index.server.ts"), "original code");
+        const target = join(home, ".agents/skills/paseo-browser/SKILL.md");
+        await mkdir(join(target, ".."), { recursive: true });
+        await writeFile(target, "old");
+        let staged = "", restored = false, listCalls = 0;
+        let current = { id: "paseobility", status: "running", path: oldPlugin,
+          installation: { identity: { kind } } };
+        const commands = [];
+        async function execute(command, args) {
+          commands.push([command, ...args]);
+          if (command === "git") {
+            if (args[0] === "init") staged = args.at(-1);
+            if (args.includes("rev-parse")) return "a".repeat(40);
+            if (args.includes("checkout")) {
+              await mkdir(join(staged, "skills/paseo-browser"), { recursive: true });
+              await mkdir(join(staged, "plugin"));
+              await writeFile(join(staged, "skills/paseo-browser/SKILL.md"), "new");
+              await writeFile(join(staged, "VERSION"), "2.13.0");
+              await writeFile(join(staged, "plugin/package.json"), JSON.stringify({ version: "2.13.0" }));
+              await writeFile(join(staged, "plugin/paseo-plugin.json"), JSON.stringify({ id: "paseobility" }));
+            }
+            return "";
           }
-          return "";
+          if (args[1] === "ls") {
+            ++listCalls;
+            if (listCalls === 2 && mode === "concurrent-change") current.path = join(dir, "another-owner");
+            if (listCalls === 2 && mode === "source-change") await writeFile(join(oldRoot, "local-edit.txt"), "concurrent edit");
+            return JSON.stringify(current ? [current] : []);
+          }
+          if (args[1] === "remove") {
+            if (current?.path === oldPlugin) {
+              if (mode === "remove-failure") throw Error("remove refused");
+              if (kind === "git") {
+                // Real Paseo deletes managed checkouts on remove. The backup
+                // must already include every file, including untracked edits.
+                const job = JSON.parse(await readFile(join(stateDir, "job.json"), "utf8"));
+                assert.equal(await readFile(join(job.backup, "plugin-source/local-edit.txt"), "utf8"), "preserve this too");
+                await rm(oldRoot, { recursive: true });
+              }
+            }
+            current = null;
+            if (mode === "remove-uncertain") throw Object.assign(Error("lost remove reply"), { uncertain: true });
+            return "";
+          }
+          if (args[1] === "add") {
+            // The real host rejects duplicate IDs, including rollback attempts.
+            if (current) throw Error("Plugin ID already configured");
+            const isNew = args[2] === join(staged, "plugin");
+            if (isNew && ["failure", "restore-uncertain"].includes(mode)) throw Error("test failure");
+            current = { id: "paseobility", path: args[2], status: "running",
+              installation: { identity: { kind: "directory" } } };
+            if (isNew && mode === "configured-failure") {
+              current.status = "failed";
+              throw Error("activation failed after registration");
+            }
+            if (isNew && mode === "uncertain") throw Object.assign(Error("lost add reply"), { uncertain: true });
+            if (!isNew) {
+              assert.equal(await readFile(join(args[2], "index.server.ts"), "utf8"), "original code");
+              restored = true;
+              if (mode === "restore-uncertain") throw Object.assign(Error("lost rollback reply"), { uncertain: true });
+            }
+            return "";
+          }
+          throw Error("Unexpected command");
         }
-        if (args[1] === "add" && args[2] === "original-plugin") {
-          restored = true;
-          return "";
+        await updatePackage({ stateDir, version: "2.13.0", sha: "a".repeat(40),
+          home, daemonHome: join(dir, "daemon"), cli: "fake-paseo", oldPlugin }, execute);
+        const job = JSON.parse(await readFile(join(stateDir, "job.json"), "utf8"));
+        const uncertain = mode.includes("uncertain");
+        assert.equal(job.phase, mode === "success" ? "complete" : uncertain ? "interrupted" : "failed");
+        assert.equal(job.code, mode === "success" ? "jobComplete" : uncertain ? "jobUncertain" : "jobFailed");
+        const { MESSAGES, fill } = await import("../shared/messages.ts");
+        assert.equal(job.message, fill(MESSAGES.en[job.code], job.values ?? {}));
+        assert.equal(await readFile(target, "utf8"), mode === "success" || uncertain ? "new" : "old");
+        assert.equal(restored, ["failure", "configured-failure", "restore-uncertain"].includes(mode));
+        assert.ok(!commands.some(x => x.includes("restart")));
+        if (kind === "directory") assert.equal(await readFile(join(oldRoot, "local-edit.txt"), "utf8"), "preserve this too");
+        else assert.equal(await readFile(join(job.backup, "plugin-source/local-edit.txt"), "utf8"), "preserve this too");
+        if (mode === "success") {
+          const receipt = JSON.parse(await readFile(join(stateDir, "installed.json"), "utf8"));
+          assert.equal(receipt.sha, "a".repeat(40));
+          assert.equal(await readFile(join(job.backup, ".agents/paseo-browser/SKILL.md"), "utf8"), "old");
         }
-        if (args[1] === "add" && mode !== "success") {
-          const e = Error("test failure");
-          e.uncertain = mode === "uncertain";
-          throw e;
+        if (uncertain) {
+          assert.equal(await readFile(join(stateDir, "update.lock"), "utf8"), "");
+          assert.equal(commands.filter(x => x[2] === "remove").length, 1);
         }
-        return JSON.stringify([
-          {
-            id: "paseobility",
-            status: "running",
-            path: join(staged, "plugin"),
-          },
-        ]);
-      }
-      await updatePackage(
-        {
-          stateDir,
-          version: "2.13.0",
-          sha: "a".repeat(40),
-          home,
-          daemonHome: join(dir, "daemon"),
-          cli: "fake-paseo",
-          oldPlugin: "original-plugin",
-        },
-        execute,
-      );
-      const job = JSON.parse(
-        await readFile(join(stateDir, "job.json"), "utf8"),
-      );
-      assert.equal(
-        job.phase,
-        mode === "success"
-          ? "complete"
-          : mode === "uncertain"
-            ? "interrupted"
-            : "failed",
-      );
-      const { MESSAGES, fill } = await import("../shared/messages.ts");
-      assert.equal(
-        job.code,
-        mode === "success"
-          ? "jobComplete"
-          : mode === "uncertain"
-            ? "jobUncertain"
-            : "jobFailed",
-      );
-      assert.equal(job.message, fill(MESSAGES.en[job.code], job.values ?? {}));
-      assert.equal(
-        await readFile(target, "utf8"),
-        mode === "failure" ? "old" : "new",
-      );
-      assert.equal(restored, mode === "failure");
-      assert.ok(!commands.some((x) => x.includes("restart")));
-      if (mode === "success") {
-        const receipt = JSON.parse(
-          await readFile(join(stateDir, "installed.json"), "utf8"),
-        );
-        assert.equal(receipt.sha, "a".repeat(40));
-        assert.equal(
-          await readFile(
-            join(job.backup, ".agents/paseo-browser/SKILL.md"),
-            "utf8",
-          ),
-          "old",
-        );
-      }
-      if (mode === "uncertain")
-        assert.equal(await readFile(join(stateDir, "update.lock"), "utf8"), "");
-    }),
-  );
+        if (mode === "source-change") assert.equal(await readFile(join(oldRoot, "local-edit.txt"), "utf8"), "concurrent edit");
+        if (mode === "concurrent-change") {
+          assert.equal(current.path, join(dir, "another-owner"));
+          assert.ok(!commands.some(x => x[2] === "remove"));
+        }
+      }),
+    );
 
 test("pill lifecycle ignores stale snapshots, preserves registrations, removes archived agents and stops late work", async () => {
   const { followAgentPills } = await import("../client/agent-pills.ts");

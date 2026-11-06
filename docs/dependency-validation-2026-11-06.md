@@ -201,3 +201,33 @@ replaying them. Five focused regression tests and actual child-exit recovery
 on an isolated socket passed. The original socket then served consecutive
 health/window-list/health calls. Only the custom bridge was restarted; the
 Paseo and Cua daemons remained running.
+
+
+## Release deployment follow-up: plugin ID replacement
+
+After v2.12.12 passed all five CI jobs and was published, the built-in updater
+failed on all four existing installations: `plugin add` rejects an already
+configured ID. Its rollback made the same call. Skills had been backed up and
+copied, while the original plugin registrations remained running. No successful
+package receipt was written, so the UI correctly did not claim a verified install.
+
+The v2.12.13 worker explicitly removes only the selected plugin before adding
+the replacement. Directory source trees are retained by Paseo; managed Git
+checkouts are copied and verified before removal because Paseo deletes them.
+Changes to registration or source during preparation abort the switch. A failed
+activation removes only the known candidate and restores the prior code from its
+preserved path or backup. Uncertain responses retain the lock and require
+inspection, including uncertainty during rollback.
+
+The regression host now rejects duplicate IDs, removes managed checkouts, and
+models both pre-registration and post-registration activation failure. It covers
+concurrent registration/source edits, failed removal and lost add/remove/rollback
+replies. The plugin suite has 41 cases. Actual directory and managed Git
+replacement both completed on a separate Paseo 0.15.2 daemon with verified
+receipts; the temporary daemon was stopped afterward. No browser or native GUI
+action was used for this check.
+
+Existing installations need the corrected worker bootstrapped before invoking
+their updater, because that worker is read from the old installed source. The
+selected hosts receive that single-file repair with a backup and digest check,
+then use the official pinned release update path.
