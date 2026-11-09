@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { findBrowser, run } from './design-check.mjs';
+import { findBrowser, noBrowserMessage, run } from './design-check.mjs';
 
-test('discovery prefers Ego, then Chrome, and never automatically selects Edge', () => {
+test('discovery prefers Ego on macOS, never auto-selects Ego on Windows, and never Edge', () => {
   const platform = Object.getOwnPropertyDescriptor(process, 'platform');
   const stat = fs.statSync;
   const saved = [process.env.DESIGN_CHECK_BROWSER, process.env.CHROME_PATH];
@@ -24,9 +24,20 @@ test('discovery prefers Ego, then Chrome, and never automatically selects Edge',
         if (available.some(re => re.test(String(p)))) return { isFile: () => true };
         throw new Error('fixture: absent');
       };
-      assert.match(findBrowser(), ego);
+      // Windows Ego opens the Default apps settings window on every launch, so it is skipped.
+      assert.match(findBrowser(), host === 'win32' ? chrome : ego);
       available = [chrome, edge];
       assert.match(findBrowser(), chrome);
+      available = [ego, edge];
+      if (host === 'win32') {
+        assert.equal(findBrowser(), null);
+        assert.match(noBrowserMessage(), /Ego Lite is installed but is not used on Windows/);
+        process.env.DESIGN_CHECK_BROWSER = 'C:\\Program Files\\Citro Labs\\ego lite\\Application\\ego.exe';
+        assert.match(findBrowser(), ego, 'an explicit DESIGN_CHECK_BROWSER is still honoured');
+        delete process.env.DESIGN_CHECK_BROWSER;
+      } else {
+        assert.match(findBrowser(), ego);
+      }
       available = [edge];
       assert.equal(findBrowser(), null);
     }

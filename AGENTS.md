@@ -93,7 +93,7 @@ verification and resumption; install it alone with
 `./scripts/paseobility-init.sh --skill paseo-god --no-context` (Windows:
 `.\scripts\paseobility-install.ps1 -Skill paseo-god`). Its Node helper creates
 local run records only; it does not execute tasks or save native memory.
-`paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Ego Lite (preferred before Chrome; Microsoft Edge is never auto-selected) and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
+`paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Ego Lite on macOS or Chrome/Playwright Chromium (Ego is never auto-selected on Windows, where every launch opens the Default apps settings window; Microsoft Edge is never auto-selected) and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
 in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
 are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
 apps through the separately installed trycua Cua Driver when a task needs a

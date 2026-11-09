@@ -17,5 +17,6 @@ npm run preview
 
 Preview is explicitly offline fixture data rendered by the production view;
 it never connects to SSH or the real queue. Browser tests use `CHROME_PATH`
-when set, then an installed Ego Lite, then Google Chrome, and otherwise fall
+when set, then an installed Ego Lite (not on Windows, where every Ego launch
+opens the Default apps settings window), then Google Chrome, and otherwise fall
 back to Playwright's bundled Chromium; Microsoft Edge is never used.

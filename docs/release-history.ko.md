@@ -1,5 +1,24 @@
 # 릴리스 이력
 
+## 2026-11-09 · 화면 점검마다 Windows 기본 앱 설정 창이 뜨던 문제 수정 (v2.12.14)
+
+Windows의 Ego Lite는 따로 실행될 때마다 1초 안에 시스템의 「기본 앱」 설정
+창을 엽니다. `--headless`와 `--no-default-browser-check`를 주거나, `Local
+State`에 값을 미리 넣거나, 프로필을 다시 써도 막히지 않았습니다(Ego 0.6.2.8).
+`SOFTWARE\Policies\Chromium` 정책은 관리자 권한이 있어야 넣을 수 있습니다.
+`paseo-design`의 `design-check`가 실행할 때마다 Ego를 먼저 띄웠기 때문에,
+에이전트가 화면을 고치며 점검을 반복하면 점검할 때마다 설정 창이 하나씩
+떴습니다.
+
+이제 `design-check`와 paseo-bot 플러그인의 브라우저 테스트는 Windows에서 Ego를
+자동으로 고르지 않고 Chrome이나 설치된 Playwright Chromium을 씁니다.
+`DESIGN_CHECK_BROWSER`나 `CHROME_PATH`로 직접 지정한 브라우저는 그대로 씁니다.
+Ego만 설치된 PC에서는 이유와 한 번만 하면 되는 해결 방법(`npx playwright
+install chromium`)을 오류 문구로 알려 줍니다. macOS의 선택 순서는 바뀌지
+않습니다. 앞으로 만드는 도구에서도 같은 일이 생기지 않도록 Ego 참조 문서에
+규칙을 적었고, 두 선택 순서를 테스트로 고정했습니다. `ego-browser` CLI로 하는
+일반 Ego 작업은 영향을 받지 않습니다.
+
 ## 2026-11-06 · 기존 플러그인 업데이트 교체 오류 수정 (v2.12.13)
 
 이미 등록된 ID에 `paseo plugin add`를 호출하면 거부되는데, 기존 업데이트와 복구

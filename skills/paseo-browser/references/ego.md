@@ -30,6 +30,14 @@ is a runtime/guide gap. If the bootstrap skill is missing but the CLI works,
 read the complete `ego-browser skill` output directly. Verify its end marker
 before acting. Never launch the app executable with guessed CLI flags.
 
+On Windows, never launch `ego.exe` as a separate process for headless checks,
+tests or measurement. Every such launch opens the system Default apps settings
+window within about a second, even with `--headless`,
+`--no-default-browser-check` and a reused profile (Ego 0.6.2.8), so a loop or a
+repeated check raises one window per run. Headless tooling uses Chrome or a
+Playwright Chromium there; Ego work goes through the `ego-browser` CLI and the
+running app.
+
 When diagnosing differences between computers, compare each host's active
 provider skill directories (including legacy copies), installed `SKILL.md`
 selection rules, and CLI path. An updated source checkout does not update
