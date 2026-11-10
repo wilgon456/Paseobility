@@ -16,24 +16,28 @@ import { treeDigest, installSkills, rollback } from "../server/update-core.mjs";
 test("preserves the complete draft, whitespace and other skill references", () => {
   const draft = "  기존 질문\n두 번째 줄  ";
   assert.equal(
-    appendSkill(draft, "paseo-browser"),
-    draft + "\n/paseo-browser ",
+    appendSkill(draft, "ps-browser"),
+    draft + "\n/ps-browser ",
   );
-  assert.equal(appendSkill("", "paseo-design"), "/paseo-design ");
-  assert.equal(appendSkill("내용\n", "paseo-design"), "내용\n/paseo-design ");
+  assert.equal(appendSkill("", "ps-design"), "/ps-design ");
+  assert.equal(appendSkill("내용\n", "ps-design"), "내용\n/ps-design ");
   assert.equal(
-    appendSkill("/paseo-share 내용", "paseo-browser"),
-    "/paseo-share 내용\n/paseo-browser ",
+    appendSkill("/ps-share 내용", "ps-browser"),
+    "/ps-share 내용\n/ps-browser ",
   );
 });
 test("repeated skill selection is idempotent, with whole-token matching", () => {
-  const first = appendSkill("질문", "paseo-browser");
-  assert.equal(appendSkill(first, "paseo-browser"), first);
+  const first = appendSkill("질문", "ps-browser");
+  assert.equal(appendSkill(first, "ps-browser"), first);
   assert.equal(
-    appendSkill("/paseo-browser-extra", "paseo-browser"),
-    "/paseo-browser-extra\n/paseo-browser ",
+    appendSkill("/ps-browser-extra", "ps-browser"),
+    "/ps-browser-extra\n/ps-browser ",
   );
   assert.throws(() => appendSkill("original", "../../bad"));
+});
+test("catalog slash reference is distinct from ps-prefixed specialist references", () => {
+  assert.equal(appendSkill("/ps-design task", "ps"), "/ps-design task\n/ps ");
+  assert.equal(appendSkill("/ps list", "ps"), "/ps list");
 });
 test("source has no agent send/creation path", async () => {
   for (const file of [
@@ -58,37 +62,62 @@ async function fixture(fn) {
     await rm(dir, { recursive: true, force: true });
   }
 }
+test("release containing the bare ps skill installs, backs up and rolls back without legacy cleanup", () =>
+  fixture(async (dir) => {
+    const source = join(dir, "source"), home = join(dir, "home"), backup = join(dir, "backup");
+    for (const [file, text] of [
+      [join(source, "skills/ps/SKILL.md"), "---\nname: ps\n---\nnew catalog"],
+      [join(home, ".agents/skills/ps/SKILL.md"), "previous catalog"],
+      // An accidental predecessor derived from id.slice(3) must stay intact.
+      [join(home, ".agents/skills/paseo-/SKILL.md"), "---\nname: paseo-\n---\nkeep"],
+      [join(home, ".claude/skills/ps/SKILL.md"), "previous Claude catalog"],
+    ]) {
+      await mkdir(join(file, ".."), { recursive: true });
+      await writeFile(file, text);
+    }
+    const changes = await installSkills(source, home, backup, ["ps"]);
+    assert.equal(changes.length, 2);
+    for (const owner of [".agents", ".claude"])
+      assert.match(await readFile(join(home, owner, "skills/ps/SKILL.md"), "utf8"), /new catalog/);
+    assert.equal(await readFile(join(home, ".agents/skills/paseo-/SKILL.md"), "utf8"), "---\nname: paseo-\n---\nkeep");
+    assert.equal(await readFile(join(backup, ".agents/ps/SKILL.md"), "utf8"), "previous catalog");
+    await rollback(changes);
+    assert.equal(await readFile(join(home, ".agents/skills/ps/SKILL.md"), "utf8"), "previous catalog");
+    assert.equal(await readFile(join(home, ".claude/skills/ps/SKILL.md"), "utf8"), "previous Claude catalog");
+    for (const id of ["ps/other", "ps..", "ps-other/../../escape", "psthing"])
+      await assert.rejects(installSkills(source, home, join(dir, "invalid-backup"), [id]), /Invalid skill name/);
+  }));
 test("update backs up existing skills, verifies bytes and rolls back without touching unrelated skills", () =>
   fixture(async (dir) => {
     const source = join(dir, "source"),
       home = join(dir, "home"),
       backup = join(dir, "backup");
     for (const [path, text] of [
-      [join(source, "skills/paseo-browser/SKILL.md"), "new"],
-      [join(home, ".agents/skills/paseo-browser/SKILL.md"), "old"],
+      [join(source, "skills/ps-browser/SKILL.md"), "new"],
+      [join(home, ".agents/skills/ps-browser/SKILL.md"), "old"],
       [join(home, ".agents/skills/private/SKILL.md"), "private"],
     ]) {
       await mkdir(join(path, ".."), { recursive: true });
       await writeFile(path, text);
     }
     const changes = await installSkills(source, home, backup, [
-      "paseo-browser",
+      "ps-browser",
     ]);
     assert.equal(
       await readFile(
-        join(home, ".agents/skills/paseo-browser/SKILL.md"),
+        join(home, ".agents/skills/ps-browser/SKILL.md"),
         "utf8",
       ),
       "new",
     );
     assert.equal(
-      await readFile(join(backup, ".agents/paseo-browser/SKILL.md"), "utf8"),
+      await readFile(join(backup, ".agents/ps-browser/SKILL.md"), "utf8"),
       "old",
     );
     await rollback(changes);
     assert.equal(
       await readFile(
-        join(home, ".agents/skills/paseo-browser/SKILL.md"),
+        join(home, ".agents/skills/ps-browser/SKILL.md"),
         "utf8",
       ),
       "old",
@@ -98,26 +127,59 @@ test("update backs up existing skills, verifies bytes and rolls back without tou
       "private",
     );
   }));
+test("update moves a recognized old paseo- copy to the backup and restores it on rollback", () =>
+  fixture(async (dir) => {
+    const source = join(dir, "source"),
+      home = join(dir, "home"),
+      backup = join(dir, "backup"),
+      skills = join(home, ".agents/skills");
+    for (const [path, text] of [
+      [join(source, "skills/ps-browser/SKILL.md"), "new"],
+      [join(source, "skills/ps-god/SKILL.md"), "new"],
+      [join(skills, "paseo-browser/SKILL.md"), "---\nname: paseo-browser\n---\nold"],
+      [join(skills, "paseo-browser/local-note.txt"), "keep"],
+      // Declares another name, so it is not ours to move.
+      [join(skills, "paseo-god/SKILL.md"), "---\nname: something-else\n---\n"],
+    ]) {
+      await mkdir(join(path, ".."), { recursive: true });
+      await writeFile(path, text);
+    }
+    const changes = await installSkills(source, home, backup, ["ps-browser", "ps-god"]);
+    assert.equal(await readFile(join(skills, "ps-browser/SKILL.md"), "utf8"), "new");
+    await assert.rejects(readFile(join(skills, "paseo-browser/SKILL.md"), "utf8"));
+    assert.equal(
+      await readFile(join(backup, ".agents/paseo-browser/local-note.txt"), "utf8"),
+      "keep",
+    );
+    assert.match(await readFile(join(skills, "paseo-god/SKILL.md"), "utf8"), /something-else/);
+    assert.deepEqual(
+      changes.filter((x) => x.retired).map((x) => x.target),
+      [join(skills, "paseo-browser")],
+    );
+    await rollback(changes);
+    assert.equal(await readFile(join(skills, "paseo-browser/local-note.txt"), "utf8"), "keep");
+    await assert.rejects(readFile(join(skills, "ps-browser/SKILL.md"), "utf8"));
+  }));
 test("partial installation failure restores prior skills", () =>
   fixture(async (dir) => {
     const source = join(dir, "source"),
       home = join(dir, "home");
     for (const [path, text] of [
-      [join(source, "skills/paseo-browser/SKILL.md"), "new"],
-      [join(home, ".agents/skills/paseo-browser/SKILL.md"), "old"],
+      [join(source, "skills/ps-browser/SKILL.md"), "new"],
+      [join(home, ".agents/skills/ps-browser/SKILL.md"), "old"],
     ]) {
       await mkdir(join(path, ".."), { recursive: true });
       await writeFile(path, text);
     }
     await assert.rejects(
       installSkills(source, home, join(dir, "backup"), [
-        "paseo-browser",
+        "ps-browser",
         "paseo-missing",
       ]),
     );
     assert.equal(
       await readFile(
-        join(home, ".agents/skills/paseo-browser/SKILL.md"),
+        join(home, ".agents/skills/ps-browser/SKILL.md"),
         "utf8",
       ),
       "old",
@@ -130,22 +192,22 @@ test("failed backup move removes only this invocation's staged skill", () =>
       backup = join(dir, "backup"),
       root = join(home, ".agents/skills");
     for (const [path, text] of [
-      [join(source, "skills/paseo-browser/SKILL.md"), "new"],
-      [join(root, "paseo-browser/SKILL.md"), "old"],
-      [join(backup, ".agents/paseo-browser/SKILL.md"), "previous backup"],
+      [join(source, "skills/ps-browser/SKILL.md"), "new"],
+      [join(root, "ps-browser/SKILL.md"), "old"],
+      [join(backup, ".agents/ps-browser/SKILL.md"), "previous backup"],
       [join(root, "unrelated.paseobility-stage/marker"), "keep"],
     ]) {
       await mkdir(join(path, ".."), { recursive: true });
       await writeFile(path, text);
     }
-    await assert.rejects(installSkills(source, home, backup, ["paseo-browser"]));
+    await assert.rejects(installSkills(source, home, backup, ["ps-browser"]));
     assert.deepEqual((await readdir(root)).sort(), [
-      "paseo-browser",
+      "ps-browser",
       "unrelated.paseobility-stage",
     ]);
-    assert.equal(await readFile(join(root, "paseo-browser/SKILL.md"), "utf8"), "old");
+    assert.equal(await readFile(join(root, "ps-browser/SKILL.md"), "utf8"), "old");
     assert.equal(
-      await readFile(join(backup, ".agents/paseo-browser/SKILL.md"), "utf8"),
+      await readFile(join(backup, ".agents/ps-browser/SKILL.md"), "utf8"),
       "previous backup",
     );
   }));
@@ -153,13 +215,13 @@ test("rollback refuses to delete concurrent user edits", () =>
   fixture(async (dir) => {
     const source = join(dir, "source"),
       home = join(dir, "home");
-    const file = join(source, "skills/paseo-browser/SKILL.md");
+    const file = join(source, "skills/ps-browser/SKILL.md");
     await mkdir(join(file, ".."), { recursive: true });
     await writeFile(file, "new");
     const changes = await installSkills(source, home, join(dir, "backup"), [
-      "paseo-browser",
+      "ps-browser",
     ]);
-    const target = join(home, ".agents/skills/paseo-browser/SKILL.md");
+    const target = join(home, ".agents/skills/ps-browser/SKILL.md");
     await writeFile(target, "user edit");
     await assert.rejects(rollback(changes));
     assert.equal(await readFile(target, "utf8"), "user edit");
@@ -219,7 +281,7 @@ for (const kind of ["directory", "git"])
         await mkdir(oldPlugin, { recursive: true });
         await writeFile(join(oldRoot, "local-edit.txt"), "preserve this too");
         await writeFile(join(oldPlugin, "index.server.ts"), "original code");
-        const target = join(home, ".agents/skills/paseo-browser/SKILL.md");
+        const target = join(home, ".agents/skills/ps-browser/SKILL.md");
         await mkdir(join(target, ".."), { recursive: true });
         await writeFile(target, "old");
         let staged = "", restored = false, listCalls = 0;
@@ -232,9 +294,9 @@ for (const kind of ["directory", "git"])
             if (args[0] === "init") staged = args.at(-1);
             if (args.includes("rev-parse")) return "a".repeat(40);
             if (args.includes("checkout")) {
-              await mkdir(join(staged, "skills/paseo-browser"), { recursive: true });
+              await mkdir(join(staged, "skills/ps-browser"), { recursive: true });
               await mkdir(join(staged, "plugin"));
-              await writeFile(join(staged, "skills/paseo-browser/SKILL.md"), "new");
+              await writeFile(join(staged, "skills/ps-browser/SKILL.md"), "new");
               await writeFile(join(staged, "VERSION"), "2.13.0");
               await writeFile(join(staged, "plugin/package.json"), JSON.stringify({ version: "2.13.0" }));
               await writeFile(join(staged, "plugin/paseo-plugin.json"), JSON.stringify({ id: "paseobility" }));
@@ -299,7 +361,7 @@ for (const kind of ["directory", "git"])
         if (mode === "success") {
           const receipt = JSON.parse(await readFile(join(stateDir, "installed.json"), "utf8"));
           assert.equal(receipt.sha, "a".repeat(40));
-          assert.equal(await readFile(join(job.backup, ".agents/paseo-browser/SKILL.md"), "utf8"), "old");
+          assert.equal(await readFile(join(job.backup, ".agents/ps-browser/SKILL.md"), "utf8"), "old");
         }
         if (uncertain) {
           assert.equal(await readFile(join(stateDir, "update.lock"), "utf8"), "");
@@ -494,6 +556,9 @@ test("withAlpha converts hex and rgb, clamps alpha and falls back", async () => 
 
 test("workflow metadata is complete and uses verified Lucide icons", async () => {
   const { WORKFLOWS } = await import("../shared/workflows.ts");
+  const manifest = JSON.parse(await readFile(new URL("../../paseobility.json", import.meta.url), "utf8"));
+  assert.equal(WORKFLOWS.length, 15);
+  assert.deepEqual(WORKFLOWS.map(s => s.id).sort(), [...manifest.skills].sort());
   // Lucide names that exist in both the Paseo 0.12 and 0.13 bundles.
   const icons = new Set([
     "Globe",

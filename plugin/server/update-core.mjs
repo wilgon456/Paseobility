@@ -88,7 +88,7 @@ export async function installSkills(source, home, backup, ids) {
         continue;
       await fs.mkdir(root, { recursive: true });
       for (const id of ids) {
-        if (!/^paseo-[a-z0-9-]+$/.test(id)) throw Error("Invalid skill name.");
+        if (!/^(?:ps|ps-[a-z0-9-]+)$/.test(id)) throw Error("Invalid skill name.");
         const from = join(source, "skills", id),
           target = join(root, id),
           saved = join(backup, owner, id);
@@ -122,6 +122,27 @@ export async function installSkills(source, home, backup, ids) {
         } finally {
           await fs.rm(stageRoot, { recursive: true, force: true });
         }
+      }
+      // v3.0.0 renamed paseo-<name> to ps-<name>. An old copy left beside the
+      // new one would load both, so move a recognized old copy to the backup.
+      // Links and directories that do not declare the old name are left alone.
+      for (const id of ids) {
+        if (id === "ps") continue; // The catalog has no paseo- predecessor.
+        const legacy = "paseo-" + id.slice(3),
+          target = join(root, legacy),
+          saved = join(backup, owner, legacy);
+        const found = await fs.lstat(target).catch(() => null);
+        if (!found?.isDirectory()) continue;
+        const manifest = join(target, "SKILL.md");
+        if (!(await fs.lstat(manifest).catch(() => null))?.isFile()) continue;
+        const header = /^---\r?\n([\s\S]*?)\r?\n---/.exec(
+          await fs.readFile(manifest, "utf8"),
+        )?.[1];
+        const name = /^name:\s*['"]?([a-z0-9-]+)['"]?\s*$/m.exec(header ?? "")?.[1];
+        if (name !== legacy) continue;
+        await fs.mkdir(join(backup, owner), { recursive: true });
+        await fs.rename(target, saved);
+        changes.push({ target, saved, existed: true, installed: false, retired: true });
       }
     }
     return changes;

@@ -95,9 +95,9 @@ if (process.argv[3]) {
     const plugins = await client.listPlugins();
     assert.equal(plugins.find(p => p.id === 'paseobility')?.status, 'running');
     const status = await client.invokePluginRpc('paseobility', 'skills.status', {});
-    assert.equal(status.skills.length, 12);
+    assert.equal(status.skills.length, 15);
     const search = await client.invokePluginRpc('paseobility', 'skills.search', { query: 'browser' });
-    assert.equal(search.items[0]?.id, 'paseo-browser');
+    assert.equal(search.items[0]?.id, 'ps-browser');
     assert.match(search.items[0].text, /Read its SKILL.md/);
     console.log(JSON.stringify({ version, livePlugin: 'running', skillsStatus: 'pass', browserSearch: 'pass', agentApi: 'pass' }));
   } finally { stop?.(); await api.dispose(); await client.close(); }

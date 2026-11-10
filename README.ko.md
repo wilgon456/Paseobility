@@ -4,7 +4,7 @@
 
 # Paseobility
 
-프로젝트·브라우저·산출물·Paseo로 연결된 PC를 다루는 12개 스킬입니다.
+프로젝트·브라우저·산출물·Paseo로 연결된 PC를 다루는 15개 스킬입니다.
 
 [English](README.md) · **한국어**
 
@@ -22,7 +22,25 @@
 
 ## 시작 전에
 
-**현재 패키지: v2.12.13.** 플러그인이 Paseo 0.12.x–0.15.x를 지원하며, v2.12.11에서 0.14 이상을 거부하던 문제를 수정했습니다. [0.15.2 확인](docs/compatibility-0.15.2.md)에 재현 결과, 컴파일러·SDK 버전별 검사, 실제 RPC·어댑터 실행과 UI 검증 한계를 기록했습니다. `/paseo-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 12개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
+**현재 패키지: v3.0.0.** 기존 스킬 이름이 `paseo-<이름>`에서 `ps-<이름>`으로 바뀌고 카탈로그 `ps`, 명시 호출 기획·작성 스킬 `ps-plan`·`ps-write`가 추가되었습니다. 기존 설치본을 옮기는 방법은 [릴리스 이력](docs/release-history.ko.md)에 있습니다. 플러그인이 Paseo 0.12.x–0.15.x를 지원하며, v2.12.11에서 0.14 이상을 거부하던 문제를 수정했습니다. [0.15.2 확인](docs/compatibility-0.15.2.md)에 재현 결과, 컴파일러·SDK 버전별 검사, 실제 RPC·어댑터 실행과 UI 검증 한계를 기록했습니다. `/ps-multi`는 Paseo 0.11.2에서 Mac·Windows 조합을 검증했습니다. 전체 패키지의 기존 호환성 기준선은 0.10.2이며, 15개 스킬 전체가 0.11.2에서 검증된 것은 아닙니다. 0.12.0 보고서는 소스·CLI 정적 확인입니다. 0.13.0 보고서는 임시 0.12.0·0.13.0 데몬에서 플러그인 설치와 정리·multi 어댑터를 실제로 실행한 기록이며, 전체 스킬의 런타임 검증을 뜻하지 않습니다. [Multi 검증 기록](docs/paseo-multi-validation.md) · [전체 기준선 기록](docs/compatibility-0.10.2.md) · [0.12.0 정적 확인](docs/compatibility-0.12.0.md) · [0.13.0 확인](docs/compatibility-0.13.0.md).
+
+> **v2.x에서 올라오는 모든 설치본은 아래 작업을 한 번 해야 합니다.** v2
+> 플러그인의 업데이트 버튼으로는 v3.0.0을 설치할 수 없습니다. "Invalid skill
+> name"으로 멈추고 옛 스킬을 그대로 둡니다. 이 저장소를 받은 폴더에서 실행하세요.
+>
+> ```bash
+> ./scripts/paseobility-init.sh --migrate-skills --with-claude --no-context   # macOS, Linux
+> ```
+>
+> ```powershell
+> .\scripts\paseobility-install.ps1 -MigrateSkills -WithClaude                # Windows
+> ```
+>
+> 옛 `paseo-<이름>` 폴더는 설치 스크립트가 알려주는 백업 폴더로 옮겨집니다.
+> 그다음 `paseo plugin remove paseobility`, `paseo plugin add
+> git:wilgon456/Paseobility:plugin` 순서로 플러그인을 교체하고, 새 에이전트
+> 세션을 시작하세요. 직접 써 둔 프롬프트나 설정의 스킬 이름도 바꿔야 합니다
+> (`/paseo-god`은 이제 `/ps-god`).
 
 ## 한 줄 요약
 
@@ -36,6 +54,8 @@ Paseobility는 사용자가 이 GitHub repo URL을 Codex, Claude, Paseo agent에
 
 ---
 
+`/ps <작업>`은 여러 에이전트 홈의 로컬 스킬 목록을 읽고 맞는 전문 스킬 하나를 골라 원본 `SKILL.md`를 읽습니다. `/ps list`는 목록만 보여줍니다. Node 20+가 필요하며, 캐시·사용 기록을 남기거나 스킬을 복사하지 않습니다.
+
 ## 빠른 시작
 
 먼저 스킬 하나를 설치해 볼 수 있습니다. macOS/Linux에서는 Git과 Bash,
@@ -44,25 +64,25 @@ Windows에서는 Git과 PowerShell이 필요합니다. 이 예시는 선택 사�
 ```bash
 git clone https://github.com/wilgon456/Paseobility.git
 cd Paseobility
-./scripts/paseobility-init.sh --skill paseo-research --no-context
-test -f ~/.agents/skills/paseo-research/SKILL.md && echo '스킬 파일 설치됨'
+./scripts/paseobility-init.sh --skill ps-research --no-context
+test -f ~/.agents/skills/ps-research/SKILL.md && echo '스킬 파일 설치됨'
 ```
 
 ```powershell
 git clone https://github.com/wilgon456/Paseobility.git
 cd Paseobility
-.\scripts\paseobility-install.ps1 -Skill paseo-research
-Test-Path (Join-Path $env:USERPROFILE '.agents\skills\paseo-research\SKILL.md')
+.\scripts\paseobility-install.ps1 -Skill ps-research
+Test-Path (Join-Path $env:USERPROFILE '.agents\skills\ps-research\SKILL.md')
 ```
 
 새 에이전트 세션을 열거나 연동을 다시 불러온 뒤
-`/paseo-research 이 프로젝트가 어떻게 동작하는지 코드를 근거로 설명해줘`라고 요청합니다.
+`/ps-research 이 프로젝트가 어떻게 동작하는지 코드를 근거로 설명해줘`라고 요청합니다.
 파일이 있다는 확인은 현재 세션에서 스킬을 불러왔다는 뜻은 아닙니다. 전체 설치,
 Claude 지원과 드라이버 조건은 [설치](#설치), 실제 검증 범위는 [검증 상태](#검증-상태)를 참고하세요.
 
 ---
 
-## `/paseo-god` — 명시 호출 작업 모드 (v0)
+## `/ps-god` — 명시 호출 작업 모드 (v0)
 
 완료 조건을 먼저 정하고 필요한 디버깅·리뷰·실험 절차만 읽습니다. 작업마다
 별도 TODO·검증 근거·재개 지점을 남깁니다. 학습 내용은 저장 후보로 제안하며,
@@ -70,15 +90,15 @@ Claude 지원과 드라이버 조건은 [설치](#설치), 실제 검증 범위�
 기록을 만들고 재개할 뿐, 작업을 자동 실행하는 런타임이 아닙니다.
 
 ```bash
-./scripts/paseobility-init.sh --skill paseo-god --no-context
+./scripts/paseobility-init.sh --skill ps-god --no-context
 ```
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-god
+.\scripts\paseobility-install.ps1 -Skill ps-god
 ```
 
 ```text
-/paseo-god 이 버그를 고치고 원래 증상으로 검증해줘. 막히면 재개 지점을 남겨줘.
+/ps-god 이 버그를 고치고 원래 증상으로 검증해줘. 막히면 재개 지점을 남겨줘.
 ```
 
 범위·로컬 기록·검증 한계는 [God 안내](docs/paseo-god.md)를 참고하세요.
@@ -92,12 +112,12 @@ Claude 지원과 드라이버 조건은 [설치](#설치), 실제 검증 범위�
 
 이 프로젝트의 기본 사용자는 shell에서 직접 설치하는 사람이 아니라, **AI 에이전트에게 GitHub URL을 주고 설치와 검증을 맡기는 사람**입니다.
 
-`paseo-share`만 설치하려면 Codex 또는 Claude에 아래 문장 그대로 보내면 됩니다.
+`ps-share`만 설치하려면 Codex 또는 Claude에 아래 문장 그대로 보내면 됩니다.
 
 ```text
 https://github.com/wilgon456/Paseobility
 
-이 저장소의 지침을 읽고 paseo-share만 이 컴퓨터에 설치하고 검증해줘.
+이 저장소의 지침을 읽고 ps-share만 이 컴퓨터에 설치하고 검증해줘.
 기존 설치본은 백업하고 Paseo daemon은 재시작하지 마.
 설치가 끝나면 새 세션/reload 방법과 최초 공유 요청 방법을 알려줘.
 ```
@@ -107,7 +127,7 @@ https://github.com/wilgon456/Paseobility
 
 이 repo를 읽고 AGENTS.md 지침대로 내 로컬 Paseo skills 디렉터리에 설치해줘.
 먼저 --target-home/-TargetHome 임시 경로로 설치 테스트하고, 통과하면 실제 skills 디렉터리에 설치해줘.
-설치 후 새 Paseo 세션에서 /paseo-project가 인식되는지도 확인해줘.
+설치 후 새 Paseo 세션에서 /ps-project가 인식되는지도 확인해줘.
 ```
 
 에이전트는 Codex/Paseo에서는 [AGENTS.md](./AGENTS.md), Claude Code에서는 [CLAUDE.md](./CLAUDE.md)를 읽고 OS별 경로와 설치 절차를 따라갑니다. 이 Paseobility 저장소는 설치 원본입니다. 실제 공유 artifact는 인증 계정의 private `paseo_share` 저장소에 보관하며, 설치만으로 저장소를 만들지는 않습니다.
@@ -131,22 +151,25 @@ https://github.com/wilgon456/Paseobility
 
 | Skill | 역할 | 이런 요청에 강함 |
 | --- | --- | --- |
-| `/paseo-toss` | 토스 미니앱 개발 | 기획, 구성, 브라우저 디버깅, 휴대폰 테스트와 출시 전 점검. 업로드에는 콘솔 인증이 필요합니다 |
-| `/paseo-god` | 명시 호출 실행·검증·재개 | 완료 조건, 디버깅·리뷰·실험, 작업별 기록과 학습 후보 제안 |
-| `/paseo-browser` | 브라우저 작업 | 설치된 Ego Lite의 TaskSpace 하나 또는 지정한 기존 Chrome 탭을 재사용하고, 사용자 탭 보존과 완료 정리를 확인 |
-| `/paseo-cua` | 네이티브 데스크톱 GUI 구동 | trycua Cua Driver로 앱 창 조작·스냅샷·검증, 작업에 네이티브 앱 GUI가 필요할 때 동작 |
-| `/paseo-orchestration` | 다중 에이전트 조율과 비교 | 명시 요청한 조율 또는 토너먼트, 모드별 지침 |
-| `/paseo-project` | 프로젝트 요약과 설정 | 요청한 brief(없거나 오래된 `.paseobility` context 작성·갱신) 또는 환경·context 설정 |
-| `/paseo-multi` | 연결된 PC 조작 | 이름 또는 `all`(등록된 모든 호스트를 병렬로)로 대상 선택, 원격 상태·에이전트 확인, 인라인·파일 Bash·PowerShell 실행(`exec --command`, `--wait` 최대 300초), 업데이트 검증, 즉시 재시작을 요청했을 때만 `restart --force`, `import-saved`는 병합 |
-| `/paseo-design` | 웹·앱 프론트 워크플로 | 프로젝트 디자인 규칙, 기존 컴포넌트 활용과 화면 검토 |
-| `/paseo-share` | 컴퓨터·모바일 산출물 공유 | private `paseo_share` 자동 준비, 50 MiB 이하 모든 파일 형식(한 번에 여러 개 게시 가능), 클릭 가능한 미리보기/다운로드 링크, 공유 ID 기반 검증·가져오기 |
-| `/paseo-research` | 근거 있는 조사 | 고정 커밋의 코드, 변경 이력, 버전별 공식 문서; 주장마다 관측·문서·추론·미확인 등급 표시 |
-| `/paseo-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
-| `/paseo-agent-cleanup` | 비활성 agent/workspace 정리 | 기본은 미리보기, 일반 idle 보존, 지정했거나 테스트 표식이 있는 후보는 바로 archive, 활성 agent 보호, workspace는 `--yes`가 있을 때만 archive |
+| `/ps` | 필요할 때 읽는 로컬 스킬 목록 | `/ps <작업>`으로 맞는 전문 스킬 선택, `/ps list`로 목록 확인. 여러 에이전트 홈의 원본을 복사·설치 없이 읽기 |
+| `/ps-plan` | 명시 호출 기획·계획 | 현황 등급, 대안, 검증 가능한 수용 기준과 단계, 위험 대응을 담은 Markdown 계획서 한 개 |
+| `/ps-write` | 명시 호출 문서 작성 | 출처 대조, 처음 읽는 독자 기준 점검, 한국어 출력에만 읽는 문체 지침 |
+| `/ps-toss` | 토스 미니앱 개발 | 기획, 구성, 브라우저 디버깅, 휴대폰 테스트와 출시 전 점검. 업로드에는 콘솔 인증이 필요합니다 |
+| `/ps-god` | 명시 호출 실행·검증·재개 | 완료 조건, 디버깅·리뷰·실험, 작업별 기록과 학습 후보 제안 |
+| `/ps-browser` | 브라우저 작업 | 설치된 Ego Lite의 TaskSpace 하나 또는 지정한 기존 Chrome 탭을 재사용하고, 사용자 탭 보존과 완료 정리를 확인 |
+| `/ps-cua` | 네이티브 데스크톱 GUI 구동 | trycua Cua Driver로 앱 창 조작·스냅샷·검증, 작업에 네이티브 앱 GUI가 필요할 때 동작 |
+| `/ps-orchestration` | 다중 에이전트 조율과 비교 | 명시 요청한 조율 또는 토너먼트, 모드별 지침 |
+| `/ps-project` | 프로젝트 요약과 설정 | 요청한 brief(없거나 오래된 `.paseobility` context 작성·갱신) 또는 환경·context 설정 |
+| `/ps-multi` | 연결된 PC 조작 | 이름 또는 `all`(등록된 모든 호스트를 병렬로)로 대상 선택, 원격 상태·에이전트 확인, 인라인·파일 Bash·PowerShell 실행(`exec --command`, `--wait` 최대 300초), 업데이트 검증, 즉시 재시작을 요청했을 때만 `restart --force`, `import-saved`는 병합 |
+| `/ps-design` | 웹·앱 프론트 워크플로 | 프로젝트 디자인 규칙, 기존 컴포넌트 활용과 화면 검토 |
+| `/ps-share` | 컴퓨터·모바일 산출물 공유 | private `paseo_share` 자동 준비, 50 MiB 이하 모든 파일 형식(한 번에 여러 개 게시 가능), 클릭 가능한 미리보기/다운로드 링크, 공유 ID 기반 검증·가져오기 |
+| `/ps-research` | 근거 있는 조사 | 고정 커밋의 코드, 변경 이력, 버전별 공식 문서; 주장마다 관측·문서·추론·미확인 등급 표시 |
+| `/ps-spyware-check` | 설치 전 보안/스파이웨어 정적 점검 | GitHub URL, 로컬 repo, install script, secret, exfiltration, supply-chain 위험 확인 |
+| `/ps-agent-cleanup` | 비활성 agent/workspace 정리 | 기본은 미리보기, 일반 idle 보존, 지정했거나 테스트 표식이 있는 후보는 바로 archive, 활성 agent 보호, workspace는 `--yes`가 있을 때만 archive |
 
 ---
 
-`/paseo-toss 기획부터 토스 미니앱을 만들어줘`로 시작할 수 있습니다. 단일 설치는 `./scripts/paseobility-init.sh --skill paseo-toss --no-context`를 사용합니다.
+`/ps-toss 기획부터 토스 미니앱을 만들어줘`로 시작할 수 있습니다. 단일 설치는 `./scripts/paseobility-init.sh --skill ps-toss --no-context`를 사용합니다.
 
 ## 설치
 
@@ -158,7 +181,7 @@ https://github.com/wilgon456/Paseobility
 Windows/Mac 환경에 맞춰 skills/*를 복사하고, 설치 후 필요한 reload 방법을 알려줘.
 ```
 
-에이전트는 Codex/Paseo에서는 [AGENTS.md](./AGENTS.md), Claude Code에서는 [CLAUDE.md](./CLAUDE.md)를 기준으로 Mac/Windows의 skills 경로를 확인해 설치합니다. `paseo-share` 요청은 전체 스킬팩 대신 해당 스킬만 설치합니다.
+에이전트는 Codex/Paseo에서는 [AGENTS.md](./AGENTS.md), Claude Code에서는 [CLAUDE.md](./CLAUDE.md)를 기준으로 Mac/Windows의 skills 경로를 확인해 설치합니다. `ps-share` 요청은 전체 스킬팩 대신 해당 스킬만 설치합니다.
 
 직접 설치도 가능합니다.
 
@@ -170,9 +193,9 @@ cd Paseobility
 ./scripts/paseobility-init.sh --no-context
 
 # 특정 스킬만 업데이트하고 싶다면
-./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
-./scripts/paseobility-init.sh --skill paseo-spyware-check --no-context
-./scripts/paseobility-init.sh --skill paseo-share --no-context
+./scripts/paseobility-init.sh --skill ps-agent-cleanup --no-context
+./scripts/paseobility-init.sh --skill ps-spyware-check --no-context
+./scripts/paseobility-init.sh --skill ps-share --no-context
 
 # Claude Code에서도 같이 쓰고 싶다면
 ./scripts/paseobility-init.sh --with-claude --no-context
@@ -191,9 +214,9 @@ cd Paseobility
 .\scripts\paseobility-install.ps1
 
 # 특정 스킬만 업데이트하고 싶다면
-.\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
-.\scripts\paseobility-install.ps1 -Skill paseo-spyware-check
-.\scripts\paseobility-install.ps1 -Skill paseo-share
+.\scripts\paseobility-install.ps1 -Skill ps-agent-cleanup
+.\scripts\paseobility-install.ps1 -Skill ps-spyware-check
+.\scripts\paseobility-install.ps1 -Skill ps-share
 
 # 임시 홈에 먼저 테스트 설치하고 싶다면
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
@@ -204,31 +227,31 @@ cd Paseobility
 
 ### Cua Driver 런타임
 
-`paseo-cua`를 선택하거나 전체 패키지를 설치하면 trycua Cua Driver 런타임도
+`ps-cua`를 선택하거나 전체 패키지를 설치하면 trycua Cua Driver 런타임도
 함께 준비합니다. 다른 스킬만 선택하면 드라이버 부수 효과가 없습니다. 런타임
 단계는 멱등하며, 이미 동작하는 드라이버는 재사용하고 자동 업그레이드하지
 않습니다.
 
 ```bash
-# paseo-cua 선택 -> 드라이버 자동 준비
-./scripts/paseobility-init.sh --skill paseo-cua --no-context
+# ps-cua 선택 -> 드라이버 자동 준비
+./scripts/paseobility-init.sh --skill ps-cua --no-context
 
 # 스킬만, 런타임 없음 (문서 전용·오프라인)
-./scripts/paseobility-init.sh --skill paseo-cua --skip-cua-driver --no-context
+./scripts/paseobility-init.sh --skill ps-cua --skip-cua-driver --no-context
 
 # 사용자 지정 타깃 홈은 실제 호스트 런타임을 기본적으로 건너뜁니다
 ./scripts/paseobility-init.sh --target-home "$tmp" --no-context
 
 # 사용자 지정 타깃 홈에서 실제 호스트 런타임 설치를 명시적으로 허용
-./scripts/paseobility-init.sh --skill paseo-cua --target-home "$tmp" \
+./scripts/paseobility-init.sh --skill ps-cua --target-home "$tmp" \
   --allow-host-runtime --no-context
 ```
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-cua
-.\scripts\paseobility-install.ps1 -Skill paseo-cua -SkipCuaDriver
+.\scripts\paseobility-install.ps1 -Skill ps-cua
+.\scripts\paseobility-install.ps1 -Skill ps-cua -SkipCuaDriver
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
-.\scripts\paseobility-install.ps1 -Skill paseo-cua -TargetHome $tmp.FullName -AllowHostRuntime
+.\scripts\paseobility-install.ps1 -Skill ps-cua -TargetHome $tmp.FullName -AllowHostRuntime
 ```
 
 드라이버 helper를 직접 실행할 수도 있습니다.
@@ -313,8 +336,8 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 - Paseo Settings -> Agents -> **Enable Paseo tools** 활성화
 - 1개 이상의 AI 프로바이더
   - 예: Codex, Claude Code 등
-- `/paseo-share`는 Node.js와 Git 필요. 기본 GitHub 자동 온보딩에는 인증된 GitHub CLI(`gh`)가 필요하며, Forgejo·custom remote는 명시적인 저장소 URL로 연결. GitHub Actions는 사용하지 않음
-- `/paseo-cua`는 trycua Cua Driver 필요. installer가 `paseo-cua` 또는 전체 패키지 설치 시 자동으로 준비하며, macOS Accessibility·Screen Recording 권한은 수동으로 부여해야 함
+- `/ps-share`는 Node.js와 Git 필요. 기본 GitHub 자동 온보딩에는 인증된 GitHub CLI(`gh`)가 필요하며, Forgejo·custom remote는 명시적인 저장소 URL로 연결. GitHub Actions는 사용하지 않음
+- `/ps-cua`는 trycua Cua Driver 필요. installer가 `ps-cua` 또는 전체 패키지 설치 시 자동으로 준비하며, macOS Accessibility·Screen Recording 권한은 수동으로 부여해야 함
 - 오케스트레이션은 Paseo의 `list_profiles`를 우선 사용합니다. 기존
   `~/.paseo/orchestration-preferences.json`은 선택형 추가 지침으로만 읽습니다.
 - 설치 대상 skills 경로
@@ -328,12 +351,12 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 ## 검증 상태
 
 기존 6개 스킬의 CLI·MCP 호환성 기록은 v2.7.0 시점
-[호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에 있으며, **신규 `paseo-cua`는
+[호환성 보고서](docs/compatibility-0.9.0-beta.2.md)에 있으며, **신규 `ps-cua`는
 포함하지 않습니다**. 6개 스킬 기록을 7개 전체에 대한 검증으로 해석하면 안 됩니다.
 현재 패키지 호환성 기준선은 Paseo **0.10.2**이며, 재검증 기록은
 [`docs/compatibility-0.10.2.md`](docs/compatibility-0.10.2.md)입니다.
 
-`paseo-cua`는 **preview / 제한 검증** 단계로, 넓은 범위의 안정적인 Mac·Windows
+`ps-cua`는 **preview / 제한 검증** 단계로, 넓은 범위의 안정적인 Mac·Windows
 지원이 아닙니다. 2026-09-22 기준 현재 상태:
 
 | 환경 | 네이티브 GUI (Cua) | 브라우저 결과와 제한 |
@@ -387,7 +410,7 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
   timeout, 연결된 탭 없음, fixture 서버 종료 후 포트 리스너 없음으로 실패했습니다.
   현재 브라우저 호스트가 탭을 등록하지 못해 GUI 통과를 주장하지 않습니다. 위 기기
   행 기록은 그대로입니다.
-- 이번 릴리스에서 업데이트한 `paseo-cua` 스킬은 Codex/Paseo와 Claude 스킬
+- 이번 릴리스에서 업데이트한 `ps-cua` 스킬은 Codex/Paseo와 Claude 스킬
   디렉터리 양쪽에 백업과 함께 로컬 설치했습니다. 소스 7개 트리 모두 일치하고 나머지
   12개 설치 트리는 그대로였으며, Cua 런타임은 0.28.2로 유지되었습니다.
 
@@ -419,13 +442,13 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 | Apple Silicon macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/arm64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Intel macOS | Tested | Paseo CLI 0.2.5에서 `Darwin/x86_64` 감지, 임시 HOME 설치, 실제 `~/.agents/skills` 설치, context 생성, package scripts 감지, 새 Paseo agent의 `/paseo-session-brief` 인식 확인 |
 | Windows | Tested | Windows 11 x64, Windows PowerShell 5.1, Paseo CLI 0.2.5에서 PowerShell installer, `-TargetHome` 임시 설치, 실제 `%USERPROFILE%\.agents\skills` 설치, 새 Paseo agent의 `/paseo-session-brief` 인식 확인. Native bash context script는 미검증 |
-| `/paseo-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인. 필수 report I/O fail-closed와 선택 scanner 실패 계속 처리 회귀 테스트 통과 |
-| `/paseo-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
-| `/paseo-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
-| `/paseo-agent-cleanup` helper | Tested locally | Node 회귀 테스트에서 bare dry-run, 일반 idle 보존, disposable marker/명시 ID/사용자 패턴 제한, running/initializing 보호, Paseo 0.6 archive acknowledgement와 post-archive 목록 검증, workspace 승인 gate, 위험 명령 미실행 확인 |
-| `/paseo-agent-cleanup` on Windows | Previous install verified | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 설치 및 dry-run JSON 확인. v2.5.2 정책 회귀는 cross-platform Node 단위 테스트로 검증 |
-| `/paseo-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안·온보딩·help/`--help` 회귀 테스트, private 저장소 생성/재사용과 public·비관련 저장소 거부 검증, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
-| `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
+| `/ps-spyware-check` on Apple Silicon macOS | Tested | Paseo 0.3.0에서 temp HOME 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, scanner dry-run 확인. 필수 report I/O fail-closed와 선택 scanner 실패 계속 처리 회귀 테스트 통과 |
+| `/ps-spyware-check` on Intel macOS | Tested | Darwin x86_64 / Paseo 0.3.0에서 설치, helper script 실행, fixture 위험 패턴 탐지, 새 Paseo agent 인식, Gitleaks secret scan no finding 확인 |
+| `/ps-spyware-check` on Windows | Tested | Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0에서 native PowerShell static-search workflow regex 컴파일, fixture 위험 패턴 탐지, 새 Paseo agent 인식 확인. Bash helper는 Windows native에서 미검증 |
+| `/ps-agent-cleanup` helper | Tested locally | Node 회귀 테스트에서 bare dry-run, 일반 idle 보존, disposable marker/명시 ID/사용자 패턴 제한, running/initializing 보호, Paseo 0.6 archive acknowledgement와 post-archive 목록 검증, workspace 승인 gate, 위험 명령 미실행 확인 |
+| `/ps-agent-cleanup` on Windows | Previous install verified | Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0에서 `%USERPROFILE%\.agents\skills` 설치 및 dry-run JSON 확인. v2.5.2 정책 회귀는 cross-platform Node 단위 테스트로 검증 |
+| `/ps-share` on Apple Silicon macOS | Tested | 공식 skill validator, Node 보안·온보딩·help/`--help` 회귀 테스트, private 저장소 생성/재사용과 public·비관련 저장소 거부 검증, 실제 private GitHub 게시·조회·자동 fetch·원본 SHA-256 비교, Codex/Claude 격리 설치 확인 |
+| `/ps-share` on Windows | Tested | Windows private checkout, PowerShell 설치, private GitHub 연결, 실제 TXT 게시와 원격 파일 조회, 모바일 GitHub 미리보기 확인 |
 
 Intel Mac 테스트에서는 설치 실패, agent 인식 실패, Intel 전용 오류가 관찰되지 않았습니다.
 Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치, 실제 스킬 인식이 통과했습니다. 임시 홈 설치는 `$HOME` 대신 `-TargetHome` 또는 `$env:USERPROFILE` 기준으로 격리하는 방식을 사용합니다.
@@ -440,7 +463,7 @@ Windows 테스트에서는 PowerShell installer, `-TargetHome` 임시 홈 설치
 `paseo_share` 저장소를 자동으로 준비합니다.
 
 ```text
-/paseo-share 이 보고서 휴대폰에서 볼 수 있게 공유해줘.
+/ps-share 이 보고서 휴대폰에서 볼 수 있게 공유해줘.
 ```
 
 GitHub 인증이 없으면 `gh auth login --hostname github.com` 연결을 먼저
@@ -450,9 +473,9 @@ GitHub 인증이 없으면 `gh auth login --hostname github.com` 연결을 먼�
 그다음 자연어로 게시하거나 가져옵니다.
 
 ```text
-/paseo-share 이 보고서 휴대폰에서 볼 수 있게 공유해줘.
-/paseo-share 다른 컴퓨터에서 방금 공유한 파일 보여줘.
-/paseo-share 최신 공유 파일을 현재 프로젝트로 가져와서 요약해줘.
+/ps-share 이 보고서 휴대폰에서 볼 수 있게 공유해줘.
+/ps-share 다른 컴퓨터에서 방금 공유한 파일 보여줘.
+/ps-share 최신 공유 파일을 현재 프로젝트로 가져와서 요약해줘.
 ```
 
 게시 결과에는 공유 ID와 클릭 가능한 미리보기/다운로드 링크가 포함됩니다. private 저장소 링크는 모바일 브라우저에서 GitHub/Forgejo 로그인이 필요합니다.
@@ -460,7 +483,7 @@ GitHub 인증이 없으면 `gh auth login --hostname github.com` 연결을 먼�
 ### 웹 UI를 직접 다루기
 
 ```text
-/paseo-browser
+/ps-browser
 https://example.com 로그인 페이지 열고, 폼 구조 확인한 다음,
 테스트 계정으로 로그인되는지 스크린샷까지 찍어서 검증해줘.
 ```
@@ -475,7 +498,7 @@ https://example.com 로그인 페이지 열고, 폼 구조 확인한 다음,
 ### 여러 에이전트를 지휘하기
 
 ```text
-/paseo-orchestration
+/ps-orchestration
 이 기능을 구현, 테스트, 리뷰로 나눠서 병렬로 진행하고
 마지막에는 리뷰 에이전트가 통과 여부를 판단하게 해줘.
 ```
@@ -490,7 +513,7 @@ https://example.com 로그인 페이지 열고, 폼 구조 확인한 다음,
 ### 여러 모델 답을 비교하기
 
 ```text
-/paseo-orchestration
+/ps-orchestration
 이 README 방향을 두고 GPT는 옹호, OpenCode DeepSeek은 반대,
 Grok은 둘을 비교해서 최종 판단을 정리해줘.
 ```
@@ -506,7 +529,7 @@ Grok은 둘을 비교해서 최종 판단을 정리해줘.
 ### 세션 브리프 만들기
 
 ```text
-/paseo-project
+/ps-project
 이 프로젝트 처음 보는 상태라고 생각하고 현재 작업 가능한 브리프 만들어줘.
 ```
 
@@ -520,7 +543,7 @@ Project -> Current State -> Instructions -> Commands
 ### 새 프로젝트 맥락 세팅하기
 
 ```text
-/paseo-project
+/ps-project
 이 repo 처음 보는 상태라고 생각하고 docs, CLAUDE.md, AGENTS.md,
 package scripts를 읽어서 작업 맥락을 만들어줘.
 ```
@@ -545,7 +568,7 @@ package scripts를 읽어서 작업 맥락을 만들어줘.
 ### 설치 전 스파이웨어 체크하기
 
 ```text
-/paseo-spyware-check
+/ps-spyware-check
 https://github.com/owner/repo 설치해도 되는지,
 install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위주로 검사해줘.
 ```
@@ -564,7 +587,7 @@ install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위
 ### 테스트 agent 정리하기
 
 ```text
-/paseo-agent-cleanup
+/ps-agent-cleanup
 먼저 dry-run으로 disposable/test 표식이 있는 inactive agent와 테스트 workspace 후보를 보여줘.
 일반 idle 세션은 보존하고, 내가 지정한 ID나 패턴 밖의 agent는 archive하지 마.
 실행 중인 agent는 건드리지 말고 workspace는 승인 전에는 후보만 보여줘.
@@ -580,7 +603,7 @@ install script, secret 접근, 원격 코드 실행, 데이터 유출 위험 위
 
 ---
 
-## `/paseo-share`
+## `/ps-share`
 
 50 MiB 이하의 모든 형식 파일을 전용 private Git 저장소에 불변 artifact로 게시합니다. GitHub Actions나 background daemon 없이 각 컴퓨터에서 로컬 `git fetch`, `rebase`, `commit`, `push`만 실행합니다.
 
@@ -599,7 +622,7 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
 
 ---
 
-## `/paseo-orchestration` 비교 모드
+## `/ps-orchestration` 비교 모드
 
 같은 문제를 여러 에이전트에게 독립적으로 맡긴 뒤, 별도 judge가 비교해서 최종 답을 고르는 스킬입니다.
 
@@ -621,7 +644,7 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
 
 ---
 
-## `/paseo-project`
+## `/ps-project`
 
 프로젝트 요약과 환경 설정을 하나의 진입점에서 선택합니다.
 
@@ -632,12 +655,12 @@ Artifact는 `artifacts/<machine>/<year>/<month>/<artifact-id>/` 아래 저장됩
   별칭 때문에 `--cwd` 조회가 실패하면 기존 workspace ID를 사용합니다.
 - 요약에서는 의존성을 설치하거나 서버를 띄우지 않습니다. `.paseobility/`는 로컬 상태이며, repo가 무시하지 않으면 `.gitignore`가 아니라 `.git/info/exclude`에 추가합니다.
 
-필요한 모드의 절차는 [스킬](skills/paseo-project/SKILL.md)과 연결된
+필요한 모드의 절차는 [스킬](skills/ps-project/SKILL.md)과 연결된
 references에서 확인할 수 있습니다.
 
 ---
 
-## `/paseo-spyware-check`
+## `/ps-spyware-check`
 
 GitHub URL이나 로컬 repo를 설치하기 전에 spyware, 악성 install script, secret 탈취, 원격 코드 실행, supply-chain 위험 신호를 정적으로 점검합니다.
 
@@ -663,31 +686,31 @@ GitHub URL이나 로컬 repo를 설치하기 전에 spyware, 악성 install scri
 
 Third-party scanner note:
 
-- `/paseo-spyware-check`는 로컬에 설치된 외부 오픈소스 스캐너 CLI를 호출해 사용하는 방식입니다.
+- `/ps-spyware-check`는 로컬에 설치된 외부 오픈소스 스캐너 CLI를 호출해 사용하는 방식입니다.
 - Paseobility는 해당 스캐너의 바이너리나 룰셋을 저장소에 포함하거나 재배포하지 않습니다.
 
 포함된 helper:
 
 ```bash
 # Cross-platform JSON security receipt
-python skills/paseo-spyware-check/scripts/spyware-check.py https://github.com/owner/repo --json
+python skills/ps-spyware-check/scripts/spyware-check.py https://github.com/owner/repo --json
 ```
 
 ```bash
 # macOS/Linux
-skills/paseo-spyware-check/scripts/spyware-check.sh --target https://github.com/owner/repo
-skills/paseo-spyware-check/scripts/install-scanners.sh --dry-run
+skills/ps-spyware-check/scripts/spyware-check.sh --target https://github.com/owner/repo
+skills/ps-spyware-check/scripts/install-scanners.sh --dry-run
 ```
 
 ```powershell
 # Windows PowerShell
-.\skills\paseo-spyware-check\scripts\spyware-check.ps1 -Target https://github.com/owner/repo
-.\skills\paseo-spyware-check\scripts\install-scanners.ps1 -DryRun
+.\skills\ps-spyware-check\scripts\spyware-check.ps1 -Target https://github.com/owner/repo
+.\skills\ps-spyware-check\scripts\install-scanners.ps1 -DryRun
 ```
 
 ---
 
-## `/paseo-agent-cleanup`
+## `/ps-agent-cleanup`
 
 Paseo의 비활성 agent와 테스트 workspace를 안전하게 정리합니다.
 
@@ -712,21 +735,21 @@ Paseo의 비활성 agent와 테스트 workspace를 안전하게 정리합니다.
 포함된 helper:
 
 ```bash
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run --pattern 'cleanup-validation|fixture'
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --agent <agent-id>
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --pattern 'cleanup-validation|fixture'
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --dry-run --pattern 'cleanup-validation|fixture'
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --auto --agent <agent-id>
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --auto --pattern 'cleanup-validation|fixture'
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
 ```
 
 ---
 
-## `/paseo-browser`
+## `/ps-browser`
 
 일반 브라우징은 **Ego Lite → TaskSpace 하나 → 기본 탭 `p1` 재사용 → 완료 정리**가 기본입니다.
 `ego-browser skill`로 설치 버전의 API 안내를 읽습니다. 여러 실행 간 재사용,
-완료 결과 확인, 제어권 전환과 Windows 명령 형식은 [Ego 참조](skills/paseo-browser/references/ego.md)를 따릅니다.
+완료 결과 확인, 제어권 전환과 Windows 명령 형식은 [Ego 참조](skills/ps-browser/references/ego.md)를 따릅니다.
 Ego에 Chrome 도우미를 적용하지 않습니다. 오류가 나면 같은 공간을 복구하며 새 공간을 만들거나 브라우저를 자동 전환하지 않습니다.
 
 Ego 미설치, CLI/PATH 누락, 연결 실패를 이유로 Chrome을 자동 선택하지 않습니다.
@@ -737,21 +760,21 @@ Ego 참조에 따라 실제 작업할 컴퓨터의 CLI와 앱 경로를 확인�
 macOS의 `scripts/chrome-tabs.py`가 기존 창 ID를 지정해 탭을 만들고, 생성한 탭 ID와 Chrome 실행 식별자를 기록합니다. 생성 응답이 유실돼도 같은 작업 ID로 복구하며 새 창이나 중복 탭을 만들지 않습니다. 작업 후 종료 결과를 다시 확인합니다.
 
 ```bash
-python3 ~/.agents/skills/paseo-browser/scripts/chrome-tabs.py list
-python3 ~/.agents/skills/paseo-browser/scripts/chrome-tabs.py open --task '<고유-작업-ID>' --window '<기존-창-ID>' --url 'https://example.com/'
+python3 ~/.agents/skills/ps-browser/scripts/chrome-tabs.py list
+python3 ~/.agents/skills/ps-browser/scripts/chrome-tabs.py open --task '<고유-작업-ID>' --window '<기존-창-ID>' --url 'https://example.com/'
 # 반환된 tabId를 설치된 Chrome 연동 도구로 바인딩해 작업합니다.
-python3 ~/.agents/skills/paseo-browser/scripts/chrome-tabs.py close --task '<고유-작업-ID>'
+python3 ~/.agents/skills/ps-browser/scripts/chrome-tabs.py close --task '<고유-작업-ID>'
 ```
 
 사용자 탭·로그인·다른 에이전트의 탭은 보존합니다. provider 강제 종료 시에는 다음 실행에서 기록을 확인해 정리해야 합니다. macOS 이외의 기존 창 어댑터는 아직 검증하지 않았으며, 연결 실패를 새 브라우저 실행으로 대체하지 않습니다.
 
-격리·headless 작업을 요청했거나 `paseo-design` 검증처럼 별도 워크플로우가 요구할 때만 CloakBrowser, Paseo workspace 브라우저 또는 Playwright CLI를 사용합니다. 설치만으로 브라우저나 데몬을 실행하지 않습니다.
+격리·headless 작업을 요청했거나 `ps-design` 검증처럼 별도 워크플로우가 요구할 때만 CloakBrowser, Paseo workspace 브라우저 또는 Playwright CLI를 사용합니다. 설치만으로 브라우저나 데몬을 실행하지 않습니다.
 
-자세한 실행 계약과 반복 검증은 [스킬](skills/paseo-browser/SKILL.md)과 [Chrome 참조](skills/paseo-browser/references/chrome.md), 격리 실행은 [CloakBrowser](skills/paseo-browser/references/cloakbrowser.md)와 [Playwright CLI](skills/paseo-browser/references/playwright.md)를 참고하세요.
+자세한 실행 계약과 반복 검증은 [스킬](skills/ps-browser/SKILL.md)과 [Chrome 참조](skills/ps-browser/references/chrome.md), 격리 실행은 [CloakBrowser](skills/ps-browser/references/cloakbrowser.md)와 [Playwright CLI](skills/ps-browser/references/playwright.md)를 참고하세요.
 
 ---
 
-## `/paseo-cua`
+## `/ps-cua`
 
 trycua Cua Driver(`cua-driver` CLI 또는 MCP)로 네이티브 데스크톱 GUI를 구동합니다. 현재 의존성 고정 버전과 설치 검증은 [2026-11-06 기록](docs/dependency-validation-2026-11-06.md)을 참고하세요.
 사용자가 네이티브 앱 조작을 요청하거나 데스크톱 앱 GUI로만 할 수 있는 작업일 때
@@ -772,7 +795,7 @@ trycua Cua Driver(`cua-driver` CLI 또는 MCP)로 네이티브 데스크톱 GUI�
 
 ---
 
-## `/paseo-orchestration`
+## `/ps-orchestration`
 
 한 에이전트가 여러 에이전트를 만들고, 역할을 나누고, 결과를 합성하는 패턴 모음입니다.
 
@@ -830,19 +853,24 @@ feature 선택의 기준입니다. 아래 legacy 파일은 provider source가 �
 
 ```text
 skills/
-├── paseo-agent-cleanup/       # SKILL.md + CLI helper/tests
-├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
-├── paseo-cua/                # SKILL.md + implicit-invocation policy
+├── ps/                     # SKILL.md + read-only local catalog/tests
+├── ps-agent-cleanup/       # SKILL.md + CLI helper/tests
+├── ps-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
+├── ps-cua/                # SKILL.md + implicit-invocation policy
 │   └── references/           # setup.md, workflow.md, recovery.md
-├── paseo-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
-├── paseo-god/                # SKILL.md + explicit-only policy, procedures, run helper/tests
-├── paseo-multi/              # SKILL.md + host adapter/tests + references
-├── paseo-orchestration/      # SKILL.md + explicit-only policy
+├── ps-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
+├── ps-god/                # SKILL.md + explicit-only policy, procedures, run helper/tests
+├── ps-multi/              # SKILL.md + host adapter/tests + references
+├── ps-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
-├── paseo-project/            # SKILL.md
+├── ps-plan/               # SKILL.md + explicit-only policy
+├── ps-project/            # SKILL.md
 │   └── references/           # brief.md, setup.md
-├── paseo-share/              # SKILL.md + CLI helper/tests
-└── paseo-spyware-check/      # SKILL.md + scanners/tests
+├── ps-research/           # SKILL.md + primary-source workflow
+├── ps-share/              # SKILL.md + CLI helper/tests
+├── ps-spyware-check/      # SKILL.md + scanners/tests
+├── ps-toss/               # SKILL.md + pinned upstream Harness
+└── ps-write/              # SKILL.md + explicit-only policy, Korean style reference
 scripts/                     # installers, doctor (.sh/.ps1/.py), context helper, cua-driver helper
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template + validator
@@ -946,11 +974,11 @@ paseobility.json
 
 [전체 릴리스 이력](docs/release-history.ko.md)에서 내용을 확인할 수 있습니다.
 
-## 2026-10-11 업데이트 — `/paseo-multi` (v2.9.0)
+## 2026-10-11 업데이트 — `/ps-multi` (v2.9.0)
 
 [전체 릴리스 이력](docs/release-history.ko.md)에서 내용을 확인할 수 있습니다.
 
-## 2026-10-05 업데이트 — `/paseo-design`에 design-check (v2.8.3)
+## 2026-10-05 업데이트 — `/ps-design`에 design-check (v2.8.3)
 
 [전체 릴리스 이력](docs/release-history.ko.md)에서 내용을 확인할 수 있습니다.
 
@@ -958,7 +986,7 @@ paseobility.json
 
 [전체 릴리스 이력](docs/release-history.ko.md)에서 내용을 확인할 수 있습니다.
 
-### `/paseo-browser` 기본 백엔드가 CloakBrowser로
+### `/ps-browser` 기본 백엔드가 CloakBrowser로
 
 [전체 릴리스 이력](docs/release-history.ko.md)에서 내용을 확인할 수 있습니다.
 

@@ -337,7 +337,7 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(invocation_problems(found[0][1], self.surface), [])
 
     def test_ignores_names_urls_and_prose(self):
-        text = ("Use the `paseo-share` skill and https://paseo.sh/docs/cli.md. "
+        text = ("Use the `ps-share` skill and https://paseo.sh/docs/cli.md. "
                 "The Paseo app stays open; `paseo` alone is a tool name.")
         self.assertEqual(document_invocations(text), [])
 

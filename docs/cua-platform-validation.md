@@ -1,6 +1,6 @@
 # Cua platform validation status
 
-`/paseo-cua` is **preview / limited validation**. It is not broad, stable, and
+`/ps-cua` is **preview / limited validation**. It is not broad, stable, and
 fully verified Mac and Windows support. This page records the exact verified
 boundary, what remains unverified, and the short procedure to validate a new
 target before any support claim is updated. It separates **directly verified**
@@ -79,7 +79,7 @@ Same host and baseline as above: macOS 26.6.2 (Apple Silicon), Paseo
   supports restoring/showing the host window as a recovery step; it does not
   prove universal background capture, and ordinary default-viewport screenshots
   succeeded. See
-  [`skills/paseo-browser/references/screenshots.md`](../skills/paseo-browser/references/screenshots.md).
+  [`skills/ps-browser/references/screenshots.md`](../skills/ps-browser/references/screenshots.md).
 - **`fullPage` duplication unresolved.** At a fractional device pixel ratio,
   `fullPage: true` returned an image with repeated right/bottom edges while a
   default-viewport capture of the same page was valid. This remains an
@@ -343,11 +343,11 @@ dated history.
 | Browser scroll | MIDDLE `222`, BOTTOM `333`, `bottomReached: true` — passed (semantic) |
 | Viewport PNG | failed — `screenshot_no_frame`, no image |
 | `fullPage` | failed — `browser_timeout` after 15 s, no image (repeated/clipped output was **not** visually observed) |
-| Skill catalog | new session showed 5 names; `paseo-cua` / `paseo-orchestration` absent from the catalog and explicit recognition still unconfirmed; do **not** change `allow_implicit_invocation: false` |
+| Skill catalog | new session showed 5 names; `ps-cua` / `ps-orchestration` absent from the catalog and explicit recognition still unconfirmed; do **not** change `allow_implicit_invocation: false` |
 | Cleanup | all test resources reported cleaned up |
 
-> Note (2026-10-20): `skills/paseo-cua/agents/openai.yaml` now sets
-> `allow_implicit_invocation: true` by design, so `paseo-cua` is used whenever a
+> Note (2026-10-20): `skills/ps-cua/agents/openai.yaml` now sets
+> `allow_implicit_invocation: true` by design, so `ps-cua` is used whenever a
 > task needs a native app GUI. The row above records the policy at the time of
 > this run.
 
@@ -406,12 +406,12 @@ independently reproduced in this review**.
 | Memory (snapshot) | Paseo: 10 processes, working set 2906.2 MiB / private 2647.8 MiB; Cua: 0 running processes; physical available 6368 MiB; commit 37334/49068 MiB (76.09%) |
 
 Both repository YAML files set `allow_implicit_invocation: false` (verified in the
-source root), so the catalog not listing `paseo-cua` / `paseo-orchestration` is
+source root), so the catalog not listing `ps-cua` / `ps-orchestration` is
 **not by itself** an install failure; do not change the trigger configuration
 automatically.
 
-> Note (2026-10-20): implicit invocation for `paseo-cua` is now enabled by design
-> (`allow_implicit_invocation: true`); `paseo-orchestration` stays `false`. The
+> Note (2026-10-20): implicit invocation for `ps-cua` is now enabled by design
+> (`allow_implicit_invocation: true`); `ps-orchestration` stays `false`. The
 > paragraph above is the record as of 2026-09-22.
 
 ### Installer conflict and manual recovery (unresolved)
@@ -506,7 +506,7 @@ the driver's own commands are authoritative:
 
 ## Related
 
-- Reproducible macOS onboarding: [`skills/paseo-cua/references/setup.md`](../skills/paseo-cua/references/setup.md).
-- Browser screenshot failure and `fullPage` recovery: [`skills/paseo-browser/references/screenshots.md`](../skills/paseo-browser/references/screenshots.md).
+- Reproducible macOS onboarding: [`skills/ps-cua/references/setup.md`](../skills/ps-cua/references/setup.md).
+- Browser screenshot failure and `fullPage` recovery: [`skills/ps-browser/references/screenshots.md`](../skills/ps-browser/references/screenshots.md).
 - Current Paseo compatibility record: [`compatibility-0.10.2.md`](./compatibility-0.10.2.md).
-- Prior-version skill compatibility (does **not** cover `paseo-cua`): [`compatibility-0.9.0-beta.2.md`](./compatibility-0.9.0-beta.2.md).
+- Prior-version skill compatibility (does **not** cover `ps-cua`): [`compatibility-0.9.0-beta.2.md`](./compatibility-0.9.0-beta.2.md).

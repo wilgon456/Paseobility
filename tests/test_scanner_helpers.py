@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'skills/paseo-spyware-check/scripts/spyware-check.ps1'
+SCRIPT = Path(__file__).resolve().parents[1] / 'skills/ps-spyware-check/scripts/spyware-check.ps1'
 SHELLS = [shell for shell in ('pwsh', 'powershell') if shutil.which(shell)]
 
 
@@ -23,7 +23,7 @@ class PosixScannerHelperTests(unittest.TestCase):
             for name in ('bash', 'cat', 'date', 'dirname', 'find', 'git', 'grep',
                          'mkdir', 'mktemp', 'rm', 'sed', 'awk', 'rg'):
                 (tools / name).symlink_to(shutil.which(name))
-            payload = target / 'skills/paseo-spyware-check/scripts/fixture.js'
+            payload = target / 'skills/ps-spyware-check/scripts/fixture.js'
             payload.parent.mkdir(parents=True)
             payload.write_text('GITHUB_TOKEN="fixture-sensitive-value-123"')
             config = root / 'invalid-rg-config'
@@ -95,7 +95,7 @@ exit $LASTEXITCODE
                 root = Path(temporary)
                 target, report = root / 'target', root / 'report'
                 target.mkdir()
-                payload = target / 'skills/paseo-spyware-check/scripts/fixture.js'
+                payload = target / 'skills/ps-spyware-check/scripts/fixture.js'
                 payload.parent.mkdir(parents=True)
                 payload.write_text('GITHUB_TOKEN="fixture-sensitive-value-123"')
                 wrapper = root / 'probe.ps1'

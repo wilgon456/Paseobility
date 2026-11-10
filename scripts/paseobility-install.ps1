@@ -99,6 +99,15 @@ function Copy-Skills {
       $backupCount += 1
       Write-Status "migrate" "moved $retired to $backupDest"
     }
+  } else {
+    # An old copy beside its replacement loads both descriptions and both sets
+    # of instructions. Removal stays opt-in, so say how to finish the rename.
+    foreach ($entry in $RetiredSkills.GetEnumerator()) {
+      if (-not $entry.Value -or -not (Selected-Skill $entry.Value)) { continue }
+      if (-not (Test-Path -LiteralPath (Join-Path $Target $entry.Key) -PathType Container)) { continue }
+      if (-not (Test-Path -LiteralPath (Join-Path $Target "$($entry.Value)/SKILL.md"))) { continue }
+      Write-Warning ("{0} still sits beside {1} in {2}; rerun with -MigrateSkills to move it to backup" -f $entry.Key, $entry.Value, $Target)
+    }
   }
 
   if ($backupCount -gt 0) {
@@ -107,11 +116,24 @@ function Copy-Skills {
 }
 
 $RetiredSkills = [ordered]@{
-  "paseo-agent-tournament" = "paseo-orchestration"
-  "paseo-session-brief" = "paseo-project"
-  "paseo-project-bootstrap" = "paseo-project"
-  "paseo-computer-use" = "paseo-browser"
+  "paseo-agent-tournament" = "ps-orchestration"
+  "paseo-session-brief" = "ps-project"
+  "paseo-project-bootstrap" = "ps-project"
+  "paseo-computer-use" = "ps-browser"
   "paseo-skill-save" = ""
+  # v3.0.0 renamed every skill from paseo-<name> to ps-<name>.
+  "paseo-agent-cleanup" = "ps-agent-cleanup"
+  "paseo-browser" = "ps-browser"
+  "paseo-cua" = "ps-cua"
+  "paseo-design" = "ps-design"
+  "paseo-god" = "ps-god"
+  "paseo-multi" = "ps-multi"
+  "paseo-orchestration" = "ps-orchestration"
+  "paseo-project" = "ps-project"
+  "paseo-research" = "ps-research"
+  "paseo-share" = "ps-share"
+  "paseo-spyware-check" = "ps-spyware-check"
+  "paseo-toss" = "ps-toss"
 }
 
 function Selected-Skill([string]$Name) {
@@ -190,9 +212,9 @@ if ($WithClaude) {
   Write-Status "skip" "Claude skills not touched. Pass -WithClaude to install there."
 }
 
-# Ensure the Cua Driver runtime when paseo-cua (or the full package) is selected.
+# Ensure the Cua Driver runtime when ps-cua (or the full package) is selected.
 # Idempotent: an existing driver is reused, never auto-upgraded.
-$wantsRuntime = ($Skill.Count -eq 0 -or (Selected-Skill "paseo-cua"))
+$wantsRuntime = ($Skill.Count -eq 0 -or (Selected-Skill "ps-cua"))
 Write-Host ""
 if (-not $wantsRuntime) {
   Write-Status "skip" "Cua Driver runtime not requested for this skill selection."

@@ -1,6 +1,6 @@
 # Paseo Multi validation — 2026-10-11
 
-Scope: the local Paseobility v2.9.0 source and its `paseo-multi` adapter, using
+Scope: the local Paseobility v2.9.0 source and its `ps-multi` adapter, using
 the installed Paseo 0.11.2 client. These results do not establish every skill's
 compatibility or an independently published release.
 

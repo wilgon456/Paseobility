@@ -1,6 +1,6 @@
 # Paseo Design: product evidence, composition and visual review
 
-The design procedure lives in `paseo-design`. A caller such as `paseo-god`
+The design procedure lives in `ps-design`. A caller such as `ps-god`
 reuses it and links its evidence; it does not need a second design workflow.
 
 ## Working depth
@@ -12,11 +12,11 @@ reuses it and links its evidence; it does not need a second design workflow.
 | Substantial public page or several screens | Maintain that brief in the existing planning document, including selected/rejected directions and visual corrections. |
 
 Project rules, tokens and components remain authoritative. The optional
-[brief template](../skills/paseo-design/templates/BRIEF.md) links their sources
+[brief template](../skills/ps-design/templates/BRIEF.md) links their sources
 rather than duplicating them. Research answers specific open decisions; there
 is no website quota, mandatory agent team, game or fixed FPS target.
 
-The [creative workflow](../skills/paseo-design/references/creative-workflow.md)
+The [creative workflow](../skills/ps-design/references/creative-workflow.md)
 connects material copy/demo claims to product evidence, distinguishes simulated
 examples from implemented behavior, and gives interaction and motion a purpose.
 After the first render, compare the screen with the brief and actual content.
@@ -28,7 +28,7 @@ brief/run record. Measured errors and visual judgment are reported separately.
 The skill now requires a meaning-based subtraction pass: remove repeated
 heading/status explanations, decorative micro-labels, redundant card wrappers,
 automatic emphasis/effects and generic filler. The
-[design digest](../skills/paseo-design/references/design-digest.md) includes
+[design digest](../skills/ps-design/references/design-digest.md) includes
 concrete examples and preserves labels, accessible names, units, time ranges
 and recovery guidance. Layout, grouping, spacing and hierarchy should carry
 relationships; a clean geometry report does not detect semantic duplication.
@@ -93,7 +93,7 @@ On Apple Silicon macOS, Node 22.23.2 and Python 3.9.22:
   changed for this revision. The evaluator reread the revised entrypoint and
   confirmed the preparation-only interpretation without rerunning unchanged
   browser checks.
-- The local `.agents/skills/paseo-design` installation was updated with the
+- The local `.agents/skills/ps-design` installation was updated with the
   single-skill installer and its default backup. All 172 local files matched
   source, including the unchanged caches. Digest comparison confirmed that
   the other 29 installed agent skills and the existing Claude design skill

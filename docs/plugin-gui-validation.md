@@ -7,7 +7,7 @@ Scope: sidebar version/update screen; composer skill picker that preserves the d
 - Strict TypeScript and 13 Node tests pass. Tests cover exact draft/whitespace preservation, duplicate references, absence of send/create/submit calls, pill subscription cleanup and late snapshots, backup/rollback, partial failure, concurrent edits, symlink rejection, Windows argument encoding, version consistency, and complete/failed/uncertain update jobs with a fake Git/Paseo process boundary.
 - Actual React Native components rendered through React Native Web with mocked RPCs at 375/768/1440, light/dark. Version, offline, failed-update and composer views: zero measured errors. The version screen has one gap-rhythm warning per width/scheme, and the failure view has two: intervening buttons/text are omitted by the checker's grouping; all real parent gaps use 16/24 px. Screenshots were inspected. The picker was rerendered separately with its menu open.
 - Ego Lite fixture: Korean multiline draft including leading/trailing whitespace and an existing attachment survive skill selection; another selection of the same skill adds nothing; a second skill appends normally. Send count remains zero. An ambiguous duplicate editor is refused without changing the draft.
-- Actual MAC_HOME Paseo app: sidebar version RPC returned current/latest v2.12.0; legacy installed-skill version was correctly unknown. The composer displayed both the existing generic Skills plugin and the new Paseobility pill. A two-line verification-only draft was entered in this task's own conversation. Selecting Browser appended `/paseo-browser` while keeping both lines and trailing spaces. The draft remained unsent and was cleared back to its original empty state.
+- Actual MAC_HOME Paseo app: sidebar version RPC returned current/latest v2.12.0; legacy installed-skill version was correctly unknown. The composer displayed both the existing generic Skills plugin and the new Paseobility pill. A two-line verification-only draft was entered in this task's own conversation. Selecting Browser appended `/ps-browser` while keeping both lines and trailing spaces. The draft remained unsent and was cleared back to its original empty state.
 - The local plugin reload reached running/Plugin ready. No daemon restart, real agent message, or unrelated plugin mutation was performed.
 
 ## Limits
@@ -55,8 +55,8 @@ Verified in the published apps, not a mock: the 0.13.0 desktop web bundle
 installed from the working tree and a real agent conversation. Screens were
 captured at 1440, 768 and 375 px in light and dark, in Korean and English. In
 the 0.13 app, typing in the picker search and pressing Enter appended
-`/paseo-design` to an existing draft, and ArrowDown twice plus Enter appended
-`/paseo-project`; nothing was sent. `plugin/media/` now holds real-app
+`/ps-design` to an existing draft, and ArrowDown twice plus Enter appended
+`/ps-project`; nothing was sent. `plugin/media/` now holds real-app
 captures (the update-available state used a temporary local version change
 that was reverted).
 

@@ -78,7 +78,7 @@ commands appropriate for that machine and safe without production secrets.
 - Python 3.9+, Node/Electron provided by a working Paseo installation.
 - Paseo **0.13.1** internal client/CLI surface is the implementation target.
   Internal APIs are checked at runtime and fail closed on incompatible schemas.
-- Existing private `paseo-multi` host registry, with exact labels, expected
+- Existing private `ps-multi` host registry, with exact labels, expected
   server IDs and working connections. No host connections are created/imported.
 - Destination profiles named `git-sync`, `coding-hard`, `refactor-bulk`,
   `gpt-task`; their notes/configuration are read from each host, never guessed.
@@ -96,7 +96,7 @@ commands appropriate for that machine and safe without production secrets.
   an authenticated GitHub CLI for determining whether the branch has an open PR
   against a github.com `origin`; other forges leave branch cleanup unconfirmed.
 
-`paseo-multi` runtime discovery and private registry parsing are reused directly;
+`ps-multi` runtime discovery and private registry parsing are reused directly;
 there are no new npm/pip runtime dependencies. Packaged Electron and npm CLI
 installations use the same detection as the existing adapter.
 
@@ -391,7 +391,7 @@ text (scrubbed of known secret patterns) to the service's stderr, for example
 
 Task agents receive `PASEO_BOT_PROTECTED_HOSTS` with the registry label and
 aliases of the controller (the `owner.json` label) and an instruction not to
-update, reinstall, stop or restart Paseo there. `paseo-multi` enforces it: on
+update, reinstall, stop or restart Paseo there. `ps-multi` enforces it: on
 those hosts, and on its own computer while a live active bot heartbeat exists,
 `restart` and `exec` scripts that install, replace, stop or restart Paseo are
 refused with a request to update manually. Read-only version checks still run.
@@ -607,7 +607,7 @@ activation, including actual worktree files, gates, independent review and final
 result retrieval through PowerShell.
 
 For Tailscale-only fleet routing, put explicit verified SSH-over-Tailscale
-endpoints into the destination's existing private `paseo-multi` registry. Endpoint
+endpoints into the destination's existing private `ps-multi` registry. Endpoint
 selection precedes saved relay connections; a failed tunnel does not silently
 fall back to relay. Verify SSH host keys through an already authenticated control
 path, preserve existing registry/known-host backups, and use strict host-key

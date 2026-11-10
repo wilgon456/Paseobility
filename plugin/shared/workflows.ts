@@ -1,6 +1,15 @@
 export const WORKFLOWS = [
   {
-    id: "paseo-browser",
+    id: "ps",
+    icon: "FolderSearch",
+    glyph: "S",
+    en: { title: "Local skill catalog", hint: "Choose a specialist for your task" },
+    title: "로컬 스킬 목록",
+    hint: "작업에 맞는 전문 스킬 선택",
+    placeholder: "예: 이 작업에 맞는 로컬 스킬을 골라줘…",
+  },
+  {
+    id: "ps-browser",
     icon: "Globe",
     glyph: "B",
     en: { title: "Browser tasks", hint: "Check sites, fill forms, verify pages" },
@@ -9,7 +18,7 @@ export const WORKFLOWS = [
     placeholder: "예: https://example.com에서 요금제를 비교해줘…",
   },
   {
-    id: "paseo-cua",
+    id: "ps-cua",
     icon: "MousePointerClick",
     glyph: "C",
     en: { title: "Desktop apps", hint: "Operate Mac and Windows apps" },
@@ -18,7 +27,7 @@ export const WORKFLOWS = [
     placeholder: "예: 열려 있는 앱에서 설정 상태를 확인해줘…",
   },
   {
-    id: "paseo-project",
+    id: "ps-project",
     icon: "FolderSearch",
     glyph: "P",
     en: { title: "Understand a project", hint: "Structure, setup, run steps" },
@@ -27,7 +36,7 @@ export const WORKFLOWS = [
     placeholder: "예: 현재 프로젝트 구조와 실행 방법을 정리해줘…",
   },
   {
-    id: "paseo-design",
+    id: "ps-design",
     icon: "Palette",
     glyph: "D",
     en: { title: "Build and review UI", hint: "Implement and verify layouts" },
@@ -36,7 +45,25 @@ export const WORKFLOWS = [
     placeholder: "예: 설정 화면을 모바일에서도 편하게 바꿔줘…",
   },
   {
-    id: "paseo-share",
+    id: "ps-plan",
+    icon: "Target",
+    glyph: "P",
+    en: { title: "Write a plan", hint: "Explicit request: evidence and testable phases" },
+    title: "계획서 작성",
+    hint: "명시 요청으로 근거와 검증 가능한 단계 정리",
+    placeholder: "예: /ps-plan 서비스 개선 계획서를 써줘…",
+  },
+  {
+    id: "ps-write",
+    icon: "FolderSearch",
+    glyph: "W",
+    en: { title: "Draft and revise documents", hint: "Explicit request: sources and reader checks" },
+    title: "문서 작성·다듬기",
+    hint: "명시 요청으로 출처와 독자 기준 점검",
+    placeholder: "예: /ps-write 이 자료로 고객 안내문을 써줘…",
+  },
+  {
+    id: "ps-share",
     icon: "Share2",
     glyph: "S",
     en: { title: "Share files", hint: "Share through your private repository" },
@@ -45,7 +72,7 @@ export const WORKFLOWS = [
     placeholder: "예: /경로/보고서.pdf를 공유해줘…",
   },
   {
-    id: "paseo-research",
+    id: "ps-research",
     icon: "FolderSearch",
     glyph: "R",
     en: { title: "Research with sources", hint: "Answers with citations" },
@@ -54,7 +81,7 @@ export const WORKFLOWS = [
     placeholder: "예: 이 기능이 Paseo 0.13에서 어떻게 동작하는지 조사해줘…",
   },
   {
-    id: "paseo-spyware-check",
+    id: "ps-spyware-check",
     icon: "ShieldCheck",
     glyph: "!",
     en: { title: "Repository safety check", hint: "Inspect before running" },
@@ -63,7 +90,7 @@ export const WORKFLOWS = [
     placeholder: "예: https://github.com/owner/repo를 검사해줘…",
   },
   {
-    id: "paseo-toss",
+    id: "ps-toss",
     icon: "Smartphone",
     glyph: "T",
     en: { title: "Toss mini app", hint: "Plan, build and test on device" },
@@ -72,7 +99,7 @@ export const WORKFLOWS = [
     placeholder: "예: 만들고 싶은 미니앱의 기획을 도와줘…",
   },
   {
-    id: "paseo-multi",
+    id: "ps-multi",
     icon: "MonitorSmartphone",
     glyph: "M",
     en: { title: "Several computers", hint: "Work across chosen PCs" },
@@ -81,7 +108,7 @@ export const WORKFLOWS = [
     placeholder: "예: 맥미니와 윈도우 PC의 상태를 확인해줘…",
   },
   {
-    id: "paseo-agent-cleanup",
+    id: "ps-agent-cleanup",
     icon: "Archive",
     glyph: "A",
     en: { title: "Clean up agents", hint: "Preview and archive candidates" },
@@ -90,7 +117,7 @@ export const WORKFLOWS = [
     placeholder: "예: 완료된 테스트 에이전트의 정리 후보를 보여줘…",
   },
   {
-    id: "paseo-god",
+    id: "ps-god",
     icon: "Target",
     glyph: "G",
     en: { title: "Run to completion", hint: "Clear scope and done criteria" },
@@ -99,7 +126,7 @@ export const WORKFLOWS = [
     placeholder: "목표, 작업 범위, 완료 조건을 적어주세요…",
   },
   {
-    id: "paseo-orchestration",
+    id: "ps-orchestration",
     icon: "Users",
     glyph: "O",
     en: { title: "Multi-agent work", hint: "Split roles, compare, debate" },

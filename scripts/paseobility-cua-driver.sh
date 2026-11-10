@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ensure the trycua Cua Driver exists for the paseo-cua skill.
+# Ensure the trycua Cua Driver exists for the ps-cua skill.
 #
 # Idempotent: reuses an existing working cua-driver and never auto-upgrades it.
 # A candidate that exists but fails `cua-driver --version` is reported as broken

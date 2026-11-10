@@ -65,13 +65,13 @@ a claim that every workflow or operating system was exercised. The
 ## Baseline change
 
 - The stated local compatibility baseline moves from `0.9.0-beta.2` to
-  `0.10.2` in `AGENTS.md` and `skills/paseo-orchestration/SKILL.md`; older
+  `0.10.2` in `AGENTS.md` and `skills/ps-orchestration/SKILL.md`; older
   baseline references remain only as dated history in the README files and the
   prior compatibility record.
 - `paseo-browser` no longer states a Paseo baseline in its default path: its
   default backend is now CloakBrowser, and the Paseo `browser_*` tools are an
   optional backend documented in
-  [`skills/paseo-browser/references/paseo.md`](../skills/paseo-browser/references/paseo.md).
+  [`skills/ps-browser/references/paseo.md`](../skills/ps-browser/references/paseo.md).
   The `0.10.2` contract checks here still apply to that optional Paseo backend
   (same `browser_*` family, `create_agent` without a `profile` argument, and the
   archive shapes).

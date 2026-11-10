@@ -62,7 +62,7 @@ memory / skills / search [새로 만듦] 프로젝트별 메모리, 학습 제�
 | D4 | 실시간 관찰: herdr pane 대신 Paseo 앱 에이전트 링크와 `/peek`(에이전트 로그 끝부분) | 슬래시 명령 | P3 |
 | D5 | 작업별 pause/resume. 멈춤이 확인될 때만 paused로 기록하고, 확인 못 하면 `PAUSE_UNVERIFIED` | `agent stop` + 상태 확인 + `send`로 재개 | P3 |
 | D6 | 무응답 감시: 10/20/40분 nudge, 마지막 보고를 쓰레드에 게시 | 큐 러너 tick (H 시리즈 watchdog과 통합) | P6 |
-| D7 | 기기 상태 확인: 부하, 메모리, 디스크를 dispatch 전에 확인하고, 넘으면 대기 | `paseo-multi health` 결과 캐시 | P6 |
+| D7 | 기기 상태 확인: 부하, 메모리, 디스크를 dispatch 전에 확인하고, 넘으면 대기 | `ps-multi health` 결과 캐시 | P6 |
 | D8 | 승인 대기 알림: 2분 넘게 blocked면 알림. 이번엔 **버튼으로 바로 승인/거절**(Paseo `permit allow/deny`) | 게이트웨이 | P4 |
 | D9 | 워커 선택 폭: omo(오래 끝까지 밀어붙이는 작업) 프로필 추가 검토 | 기기별 프로필 | P6 (선택) |
 

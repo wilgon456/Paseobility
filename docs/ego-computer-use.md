@@ -1,15 +1,15 @@
 # Ego browser and native desktop workflow
 
-`paseo-browser` operates web pages through the installed Ego runtime guide;
-`paseo-cua` handles exact native app windows when required. One task retains its
+`ps-browser` operates web pages through the installed Ego runtime guide;
+`ps-cua` handles exact native app windows when required. One task retains its
 Ego space ID/Page label and authorized artifact paths across the boundary.
 Cua does not attach another browser controller or bypass Ego user takeover,
 permission prompts, or device choosers. Native output is verified independently
 before resuming the same Ego Page.
 
-- [Browser observations, artifacts, and recovery](../skills/paseo-browser/references/interaction.md)
-- [Native companion workflow](../skills/paseo-cua/references/ego-companion.md)
-- [Ego ownership and completion](../skills/paseo-browser/references/ego.md)
+- [Browser observations, artifacts, and recovery](../skills/ps-browser/references/interaction.md)
+- [Native companion workflow](../skills/ps-cua/references/ego-companion.md)
+- [Ego ownership and completion](../skills/ps-browser/references/ego.md)
 
 ## Verification on 2026-10-24
 
@@ -33,7 +33,7 @@ OS-process-kill recovery was exercised. Those remain separate verification layer
 ## Repeatable diagnostics
 
 ```bash
-python3 skills/paseo-browser/scripts/ego-smoke.py --live --out /absolute/new/report-dir
+python3 skills/ps-browser/scripts/ego-smoke.py --live --out /absolute/new/report-dir
 ```
 
 Windows uses `python` or `py -3`; real Windows/Linux Ego GUI behavior is not

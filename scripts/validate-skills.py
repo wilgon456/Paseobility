@@ -64,4 +64,5 @@ if __name__ == '__main__':
     if problems:
         print('\n'.join(problems), file=sys.stderr)
         sys.exit(1)
-    print('OK: catalog, version and skill frontmatter agree')
+    count = len(json.loads((args.root / 'paseobility.json').read_text(encoding='utf-8'))['skills'])
+    print(f'OK: {count} skills; catalog, version and skill frontmatter agree')
