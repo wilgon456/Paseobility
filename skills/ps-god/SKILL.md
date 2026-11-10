@@ -164,6 +164,23 @@ Per-task overhead repeats on every small change, so size it to the change.
   `blocked` with evidence and a concrete resume step only when nothing left in
   scope can advance the task. No unbounded retries or background schedules.
 
+## Independent review for explicit durable runs
+
+Only an explicitly invoked `ps-god` durable run adds this step. Compact runs
+skip it; ordinary requests never start it. It costs a full extra agent run,
+which is why it is limited to explicit durable runs.
+
+After your own verification passes and before reporting completion, obtain one
+independent review through a separate Paseo agent on a different provider and
+model family. Follow [independent review](references/independent-review.md) for
+profile selection, the read-only brief and handling findings. Reproduce each
+finding before changing code, fix confirmed defects and re-run verification.
+Use at most two review rounds with the same reviewer; report remaining findings
+as open instead of looping. Record the reviewer identity, findings, confirmed
+fixes, unconfirmed claims with reasons and final checks in `RUN.md`, and report
+the review outcome. If no eligible reviewer is available, state that in one
+line and finish with your own verification and that limitation.
+
 ## Finish and hand back
 
 Mark `complete` only when every required criterion has current supporting
