@@ -16,6 +16,23 @@ autonomously inside the user's request and project instructions. Read relevant
 project context, not every skill, session or memory file. Load a reference
 below only when it helps.
 
+Always state the goal, scope, observable acceptance criteria and a short plan
+before changes; inspect check results and report evidence and limits at the end.
+Read every skill or reference you choose to apply completely, including any
+remaining lines after truncated output, before applying it.
+
+Use a compact run only when all are true: one session, at most three task-output
+files, at most two local check commands, no delegation, and no external writes,
+release, credentials, permissions or persisted user-data changes. Otherwise use
+the durable record below; switch to it if any condition stops being true.
+For a compact run, keep criteria, TODO and results in the conversation; skip
+helper/record creation, record status and guidance digests. Read playbooks only
+for a durable run; other references apply at their stated triggers. State any
+conditional step you skip and its reason in one concise line (grouping is fine),
+including record creation, catalog discovery and reference procedures.
+All instructions below to write or update RUN.md apply to conversation notes
+in a compact run; they do not require creating a file.
+
 Check for a specialist only when the task needs domain knowledge, a procedure
 or a tool you lack. Skip this check for ordinary work you already know how to do
 or when an installed skill already covers the task. If needed and `ps` is installed,
@@ -27,7 +44,7 @@ Never install or copy skills; retain this harness's verification.
 
 1. State the goal, scope and observable acceptance criteria. Infer routine
    details; ask only for missing information that blocks work.
-2. Create or find the run record with the installed skill's helper (Node 18+):
+2. For a durable run, create or find the run record with the installed skill's helper (Node 18+):
 
    ```text
    node <skill-dir>/scripts/god-run.mjs init   --root <project-root> --goal "<goal>"
@@ -55,7 +72,7 @@ overlap, its own worktree. Do not rewrite another run to resolve a conflict.
 After reading enough context to choose an approach, briefly state the plan to
 the user and put its TODO in `RUN.md` before substantive changes. For an
 investigation, bug fix, change or shipping task, start the TODO from the
-matching [playbook](references/playbooks.md). Choose
+matching [playbook](references/playbooks.md) for a durable run. Choose
 concrete actions that advance the criteria, order dependencies and include the
 checks that establish the outcome. A small correction needs only one or two
 steps; a larger task needs meaningful stages, not an exhaustive task graph.
