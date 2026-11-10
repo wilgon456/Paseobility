@@ -16,12 +16,14 @@ autonomously inside the user's request and project instructions. Read relevant
 project context, not every skill, session or memory file. Load a reference
 below only when it helps.
 
-Required specialist check before task work: if `ps` is installed, execute
-`node <ps-skill-dir>/scripts/skill-catalog.js list --names` once and read its output.
+Check for a specialist only when the task needs domain knowledge, a procedure
+or a tool you lack. Skip this check for ordinary work you already know how to do
+or when an installed skill already covers the task. If needed and `ps` is installed,
+execute `node <ps-skill-dir>/scripts/skill-catalog.js list --names` once and read its output.
 Report the number listed and the chosen name, or "none fits" only after that read.
 For a clear fit, run `path <name>` with the same script and read at most one specialist
-in place. If absent or the command fails, explicitly report that limitation; do not
-silently skip. Never install or copy skills; retain this harness's verification.
+in place. If `ps` is absent or the command fails, explicitly report that limitation.
+Never install or copy skills; retain this harness's verification.
 
 1. State the goal, scope and observable acceptance criteria. Infer routine
    details; ask only for missing information that blocks work.

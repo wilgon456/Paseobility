@@ -22,12 +22,14 @@ code at a known commit, an official statement for a specific version. Note the
 versions, platforms and dates that matter. If the question is really several,
 answer them separately.
 
-Required specialist check before task work: if `ps` is installed, execute
-`node <ps-skill-dir>/scripts/skill-catalog.js list --names` once and read its output.
+Check for a specialist only when the task needs domain knowledge, a procedure
+or a tool you lack. Skip this check for ordinary work you already know how to do
+or when an installed skill already covers the task. If needed and `ps` is installed,
+execute `node <ps-skill-dir>/scripts/skill-catalog.js list --names` once and read its output.
 Report the number listed and the chosen name, or "none fits" only after that read.
 For a clear fit, run `path <name>` with the same script and read at most one specialist
-in place. If absent or the command fails, explicitly report that limitation; do not
-silently skip. Never install or copy skills; retain this harness's verification.
+in place. If `ps` is absent or the command fails, explicitly report that limitation.
+Never install or copy skills; retain this harness's verification.
 
 ## 2. Read sources in trust order
 
