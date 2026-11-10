@@ -75,10 +75,10 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Paseo Multi offline adapter suite
-        run: python skills/paseo-multi/scripts/test_hosts.py
+        run: python skills/ps-multi/scripts/test_hosts.py
 
       - name: Paseo Multi adapter syntax
-        run: node --check skills/paseo-multi/scripts/rpc.mjs
+        run: node --check skills/ps-multi/scripts/rpc.mjs
 
       - name: Paseo bot bridge contracts
         run: node --test tools/paseo-bot/bridge.test.mjs
@@ -90,44 +90,47 @@ jobs:
         run: python scripts/validate-skills.py
 
       - name: Verify pinned Toss Harness resources
-        run: python skills/paseo-toss/scripts/verify.py
+        run: python skills/ps-toss/scripts/verify.py
 
       - name: Test Toss bundle integrity
-        run: python -B skills/paseo-toss/scripts/test_verify.py
+        run: python -B skills/ps-toss/scripts/test_verify.py
 
       - name: Vendored design data
-        run: python skills/paseo-design/vendor/ui-ux-pro-max/scripts/validate_data.py
+        run: python skills/ps-design/vendor/ui-ux-pro-max/scripts/validate_data.py
 
       - name: Vendored design runtime tests
-        run: python -m unittest discover -s skills/paseo-design/vendor/ui-ux-pro-max/scripts/tests -p "test_*.py"
+        run: python -m unittest discover -s skills/ps-design/vendor/ui-ux-pro-max/scripts/tests -p "test_*.py"
 
       - name: Cleanup complete-snapshot adapter
-        run: node --test skills/paseo-agent-cleanup/scripts/snapshot.test.mjs
+        run: node --test skills/ps-agent-cleanup/scripts/snapshot.test.mjs
 
       - name: Node cleanup suite
-        run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js
+        run: node skills/ps-agent-cleanup/scripts/agent-cleanup.test.js
 
       - name: God run records
-        run: node --test skills/paseo-god/scripts/god-run.test.mjs
+        run: node --test skills/ps-god/scripts/god-run.test.mjs
 
       - name: Existing Chrome tab lifecycle
-        run: python -B -m unittest discover -s skills/paseo-browser/scripts -p "test_*.py" -v
+        run: python -B -m unittest discover -s skills/ps-browser/scripts -p "test_*.py" -v
 
       - name: Browser leftover sweep
-        run: node --test skills/paseo-browser/scripts/browser-sweep.test.mjs
+        run: node --test skills/ps-browser/scripts/browser-sweep.test.mjs
 
       - name: Node share suite
-        run: node skills/paseo-share/scripts/paseo-share.test.js
+        run: node skills/ps-share/scripts/paseo-share.test.js
+
+      - name: Local skill catalog
+        run: node skills/ps/scripts/skill-catalog.test.js
 
       # Shared discovery runs the repeated, isolated scanner-helper fixtures.
       # No optional scanner from the runner's PATH may enter a fixture run.
       - name: Scanner classification suite
-        run: python skills/paseo-spyware-check/scripts/spyware-check.test.py
+        run: python skills/ps-spyware-check/scripts/spyware-check.test.py
 
       - name: design-check selftest (headless Chrome)
         env:
           DESIGN_CHECK_REQUIRE_BROWSER: "1"
-        run: node skills/paseo-design/scripts/design-check.mjs --selftest
+        run: node skills/ps-design/scripts/design-check.mjs --selftest
 
   windows:
     name: Windows (PowerShell + shared Python + Node)
@@ -202,10 +205,10 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Paseo Multi offline adapter suite
-        run: python skills/paseo-multi/scripts/test_hosts.py
+        run: python skills/ps-multi/scripts/test_hosts.py
 
       - name: Paseo Multi adapter syntax
-        run: node --check skills/paseo-multi/scripts/rpc.mjs
+        run: node --check skills/ps-multi/scripts/rpc.mjs
 
       - name: Paseo bot bridge contracts
         run: node --test tools/paseo-bot/bridge.test.mjs
@@ -217,42 +220,45 @@ jobs:
         run: python scripts/validate-skills.py
 
       - name: Verify pinned Toss Harness resources
-        run: python skills/paseo-toss/scripts/verify.py
+        run: python skills/ps-toss/scripts/verify.py
 
       - name: Test Toss bundle integrity
-        run: python -B skills/paseo-toss/scripts/test_verify.py
+        run: python -B skills/ps-toss/scripts/test_verify.py
 
       - name: Vendored design data
-        run: python skills/paseo-design/vendor/ui-ux-pro-max/scripts/validate_data.py
+        run: python skills/ps-design/vendor/ui-ux-pro-max/scripts/validate_data.py
 
       - name: Vendored design runtime tests
-        run: python -m unittest discover -s skills/paseo-design/vendor/ui-ux-pro-max/scripts/tests -p "test_*.py"
+        run: python -m unittest discover -s skills/ps-design/vendor/ui-ux-pro-max/scripts/tests -p "test_*.py"
 
       - name: Cleanup complete-snapshot adapter
-        run: node --test skills/paseo-agent-cleanup/scripts/snapshot.test.mjs
+        run: node --test skills/ps-agent-cleanup/scripts/snapshot.test.mjs
 
       - name: Node cleanup suite
-        run: node skills/paseo-agent-cleanup/scripts/agent-cleanup.test.js
+        run: node skills/ps-agent-cleanup/scripts/agent-cleanup.test.js
 
       - name: God run records
-        run: node --test skills/paseo-god/scripts/god-run.test.mjs
+        run: node --test skills/ps-god/scripts/god-run.test.mjs
 
       - name: Existing Chrome tab lifecycle
-        run: python -B -m unittest discover -s skills/paseo-browser/scripts -p "test_*.py" -v
+        run: python -B -m unittest discover -s skills/ps-browser/scripts -p "test_*.py" -v
 
       - name: Browser leftover sweep
-        run: node --test skills/paseo-browser/scripts/browser-sweep.test.mjs
+        run: node --test skills/ps-browser/scripts/browser-sweep.test.mjs
 
       - name: Node share suite
-        run: node skills/paseo-share/scripts/paseo-share.test.js
+        run: node skills/ps-share/scripts/paseo-share.test.js
+
+      - name: Local skill catalog
+        run: node skills/ps/scripts/skill-catalog.test.js
 
       - name: Scanner suite (cross-platform)
-        run: python skills/paseo-spyware-check/scripts/spyware-check.test.py
+        run: python skills/ps-spyware-check/scripts/spyware-check.test.py
 
       - name: design-check selftest (headless Chrome)
         env:
           DESIGN_CHECK_REQUIRE_BROWSER: "1"
-        run: node skills/paseo-design/scripts/design-check.mjs --selftest
+        run: node skills/ps-design/scripts/design-check.mjs --selftest
 
       - name: Windows Cua installer runtime tests (pwsh)
         shell: pwsh

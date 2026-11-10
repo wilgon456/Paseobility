@@ -526,7 +526,7 @@ try {
       Assert-True (-not (Test-Path -LiteralPath (Join-Path $m.Home "$base\skills\$name"))) "retired $name removed ($base)"
       Assert-Equal 1 (Test-RetiredBackupCount -TargetHomePath $m.Home -Name $name -Base $base) "backup kept for $name ($base)"
     }
-    foreach ($name in @("paseo-cua", "paseo-project", "paseo-share")) {
+    foreach ($name in @("ps-cua", "ps-project", "ps-share")) {
       $dest = Join-Path $m.Home "$base\skills\$name\SKILL.md"
       $src = Join-Path $RepoSkills "$name\SKILL.md"
       Assert-True (Test-Path -LiteralPath $dest) "$name installed ($base)"
@@ -545,7 +545,7 @@ try {
   Set-CaseEnv -Case $m.Case
   try {
     $result = Invoke-ChildScript -Path $Install -Arguments @(
-      "-TargetHome", $m.Home, "-Skill", "paseo-project", "-MigrateSkills", "-NoPaseoCheck")
+      "-TargetHome", $m.Home, "-Skill", "ps-project", "-MigrateSkills", "-NoPaseoCheck")
   } finally {
     Set-TestEnv @{}
   }
@@ -583,7 +583,7 @@ try {
     Set-TestEnv @{}
   }
   Assert-NotEqual 0 $result.Code "unknown ownership fails"
-  Assert-True (-not (Test-Path -LiteralPath (Join-Path $m.Home ".agents\skills\paseo-project"))) "no replacement installed"
+  Assert-True (-not (Test-Path -LiteralPath (Join-Path $m.Home ".agents\skills\ps-project"))) "no replacement installed"
   Assert-True (Test-Path -LiteralPath $skillFile) "unrecognized skill left in place"
 
   Write-Case "native linked retired skill aborts without touching its target"
@@ -627,7 +627,7 @@ try {
   Set-CaseEnv -Case $case
   try {
     $result = Invoke-ChildScript -Path $Install -Arguments @(
-      "-Skill", "paseo-share", "-TargetHome", $TargetHomePath, "-NoPaseoCheck")
+      "-Skill", "ps-share", "-TargetHome", $TargetHomePath, "-NoPaseoCheck")
   } finally {
     Set-TestEnv @{}
   }
@@ -635,13 +635,13 @@ try {
   Assert-Contains $result.Output "not requested" "runtime not requested"
   Assert-Equal "" (Get-LogText $case).Trim() "driver helper not invoked"
 
-  Write-Case "custom -TargetHome with paseo-cua skips the host runtime by default"
+  Write-Case "custom -TargetHome with ps-cua skips the host runtime by default"
   $case = New-Case
   $TargetHomePath = Join-Path $case.Dir "home"
   Set-CaseEnv -Case $case
   try {
     $result = Invoke-ChildScript -Path $Install -Arguments @(
-      "-Skill", "paseo-cua", "-TargetHome", $TargetHomePath, "-NoPaseoCheck")
+      "-Skill", "ps-cua", "-TargetHome", $TargetHomePath, "-NoPaseoCheck")
   } finally {
     Set-TestEnv @{}
   }

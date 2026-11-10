@@ -13,7 +13,7 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-RELATIVE = Path('skills/paseo-toss')
+RELATIVE = Path('skills/ps-toss')
 SPEC = importlib.util.spec_from_file_location('toss_verify', ROOT / RELATIVE / 'scripts/verify.py')
 VERIFY = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VERIFY)
@@ -110,20 +110,20 @@ class TossCheckoutTests(unittest.TestCase):
         if os.name == 'nt':
             command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
                        '-File', str(clone / 'scripts/paseobility-install.ps1'),
-                       '-TargetHome', str(home), '-Skill', 'paseo-toss',
+                       '-TargetHome', str(home), '-Skill', 'ps-toss',
                        '-WithClaude', '-SkipCuaDriver', '-NoPaseoCheck']
         else:
             command = ['bash', str(clone / 'scripts/paseobility-init.sh'),
-                       '--target-home', str(home), '--skill', 'paseo-toss',
+                       '--target-home', str(home), '--skill', 'ps-toss',
                        '--with-claude', '--skip-cua-driver', '--no-paseo-check', '--no-context']
         for cycle in range(3):
             result = subprocess.run(command, cwd=clone, env=self.env,
                                     capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             for provider in ['.agents', '.claude']:
-                errors, _ = VERIFY.verify(home / provider / 'skills/paseo-toss')
+                errors, _ = VERIFY.verify(home / provider / 'skills/ps-toss')
                 self.assertEqual(errors, [])
-                backups = list((home / provider / 'skills-backups').glob('*/paseo-toss'))
+                backups = list((home / provider / 'skills-backups').glob('*/ps-toss'))
                 self.assertEqual(len(backups), cycle)
                 for backup in backups:
                     self.assertEqual(VERIFY.verify(backup)[0], [])

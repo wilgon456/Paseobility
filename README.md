@@ -4,7 +4,7 @@
 
 # Paseobility
 
-Twelve reusable skills for projects, browsers, artifacts and computers connected through Paseo.
+Fifteen reusable skills for projects, browsers, artifacts and computers connected through Paseo.
 
 **English** · [한국어](README.ko.md)
 
@@ -22,7 +22,25 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v2.12.13.** The plugin supports Paseo 0.12.x–0.15.x, fixing the rejection of 0.14+ in v2.12.11. The [0.15.2 check](docs/compatibility-0.15.2.md) records the reproduction, compiler/SDK matrix, live RPC and adapter results, and remaining UI limits. `/paseo-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all twelve skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v3.0.0.** Existing skills are now named `ps-<name>` instead of `paseo-<name>`, with `ps` added as the catalog and explicit `ps-plan`/`ps-write` harnesses; [release history](docs/release-history.md) explains how to move an existing installation. The plugin supports Paseo 0.12.x–0.15.x, fixing the rejection of 0.14+ in v2.12.11. The [0.15.2 check](docs/compatibility-0.15.2.md) records the reproduction, compiler/SDK matrix, live RPC and adapter results, and remaining UI limits. `/ps-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all fifteen skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+
+> **Upgrading from v2.x — every installation needs this once.** The update
+> button in a v2 plugin cannot install v3.0.0: it stops with "Invalid skill
+> name" and leaves the old skills in place. From a checkout of this repository:
+>
+> ```bash
+> ./scripts/paseobility-init.sh --migrate-skills --with-claude --no-context   # macOS, Linux
+> ```
+>
+> ```powershell
+> .\scripts\paseobility-install.ps1 -MigrateSkills -WithClaude                # Windows
+> ```
+>
+> Old `paseo-<name>` folders move to the backup folder the installer prints.
+> Then replace the plugin with `paseo plugin remove paseobility` followed by
+> `paseo plugin add git:wilgon456/Paseobility:plugin`, start a new agent
+> session, and rename any skill you mention in your own prompts or settings
+> (`/paseo-god` is now `/ps-god`).
 
 ## One-line summary
 
@@ -36,6 +54,8 @@ This repo is a **skill package for reproducibly composing Paseo's built-in tools
 
 ---
 
+`/ps <task>` reads the local skill catalog across agent homes, chooses a fitting specialist and reads its original `SKILL.md`. `/ps list` only shows the list. Requires Node 20+; it creates no cache or usage log and copies no skills.
+
 ## Quick start
 
 Install one skill first. This example needs Git and Bash on macOS/Linux, or Git
@@ -44,26 +64,26 @@ and PowerShell on Windows; it does not install the optional Cua Driver.
 ```bash
 git clone https://github.com/wilgon456/Paseobility.git
 cd Paseobility
-./scripts/paseobility-init.sh --skill paseo-research --no-context
-test -f ~/.agents/skills/paseo-research/SKILL.md && echo 'Skill file installed'
+./scripts/paseobility-init.sh --skill ps-research --no-context
+test -f ~/.agents/skills/ps-research/SKILL.md && echo 'Skill file installed'
 ```
 
 ```powershell
 git clone https://github.com/wilgon456/Paseobility.git
 cd Paseobility
-.\scripts\paseobility-install.ps1 -Skill paseo-research
-Test-Path (Join-Path $env:USERPROFILE '.agents\skills\paseo-research\SKILL.md')
+.\scripts\paseobility-install.ps1 -Skill ps-research
+Test-Path (Join-Path $env:USERPROFILE '.agents\skills\ps-research\SKILL.md')
 ```
 
 Open a new agent session or reload integrations, then try
-`/paseo-research Explain how this project works using its source code.` File
+`/ps-research Explain how this project works using its source code.` File
 presence confirms the copy, not that the current session loaded it. See
 [installation](#install) for the full pack, optional Claude support and driver
 requirements, and [verification](#verification-status) for tested platforms.
 
 ---
 
-## `/paseo-god` — explicit task mode (v0)
+## `/ps-god` — explicit task mode (v0)
 
 Define observable completion criteria, use only the needed debugging/review/spike
 procedure, and retain a separate TODO, evidence and resume point for each run.
@@ -71,15 +91,15 @@ Learning is proposed for review; native memory and skills are not automatically
 rewritten. The optional Node helper creates/resumes records, not autonomous jobs.
 
 ```bash
-./scripts/paseobility-init.sh --skill paseo-god --no-context
+./scripts/paseobility-init.sh --skill ps-god --no-context
 ```
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-god
+.\scripts\paseobility-install.ps1 -Skill ps-god
 ```
 
 ```text
-/paseo-god Fix this bug, verify the original trigger, and save a resume point if blocked.
+/ps-god Fix this bug, verify the original trigger, and save a resume point if blocked.
 ```
 
 See [the God guide](docs/paseo-god.md) for scope, local records and validation
@@ -93,12 +113,12 @@ limits. Existing version and platform reports retain their original scope.
 
 The primary user of this project is not someone installing from a shell directly, but **someone who gives an AI agent the GitHub URL and delegates installation and verification**.
 
-To install only `paseo-share`, send the following sentence verbatim to Codex or Claude.
+To install only `ps-share`, send the following sentence verbatim to Codex or Claude.
 
 ```text
 https://github.com/wilgon456/Paseobility
 
-Read the instructions in this repository, install only paseo-share on this computer, and verify it.
+Read the instructions in this repository, install only ps-share on this computer, and verify it.
 Back up any existing install and do not restart the Paseo daemon.
 When it is done, tell me how to start a new session/reload and how to make the first share request.
 ```
@@ -108,7 +128,7 @@ https://github.com/wilgon456/Paseobility
 
 Read this repo and install into my local Paseo skills directory following AGENTS.md.
 First test the install with a temporary --target-home/-TargetHome path, and install into the real skills directory once it passes.
-After installation, also check that /paseo-project is recognized in a new Paseo session.
+After installation, also check that /ps-project is recognized in a new Paseo session.
 ```
 
 The agent reads [AGENTS.md](./AGENTS.md) in Codex/Paseo and [CLAUDE.md](./CLAUDE.md) in Claude Code, then follows the OS-specific paths and install procedure. This Paseobility repository is the install source. Actual shared artifacts live in the private `paseo_share` repository of the authenticated account; installing never creates a repository by itself.
@@ -132,18 +152,21 @@ When you explicitly request these tasks, you can use the following capabilities:
 
 | Skill | Role | Strong at requests like |
 | --- | --- | --- |
-| `/paseo-toss` | Apps in Toss mini-app workflow | Planning, scaffolding, browser debugging, phone testing and pre-launch review; authenticated console tools required for uploads |
-| `/paseo-god` | Explicit task execution and resumption | Bounded work, acceptance evidence, debugging/review/spike and learning proposals |
-| `/paseo-multi` | Operate selected Paseo computers | Named hosts or `all` (every registered host, in parallel), remote status/agents, inline or file Bash/PowerShell commands (`exec --command`, `--wait` up to 300 s), verified updates, `restart --force` only when you asked for an immediate restart, merging `import-saved` |
-| `/paseo-design` | Web and app frontend workflow | Project design rules, existing components and frontend review |
-| `/paseo-browser` | Browser workflow | Default to one Ego Lite TaskSpace; Chrome requires an explicit user choice. Preserve user tabs and verify completion |
-| `/paseo-cua` | Native desktop GUI driving | App window manipulation/snapshot/verification with the trycua Cua Driver, whenever a task needs a native app GUI |
-| `/paseo-orchestration` | Multi-agent coordination and comparison | Explicitly requested coordination or tournament, mode-specific guidance |
-| `/paseo-project` | Project summary and setup | Requested brief (writes or refreshes stale `.paseobility` context) or environment/context setup |
-| `/paseo-share` | Computer/mobile artifact sharing | Auto-prepare private `paseo_share`, any file type up to 50 MiB (several per publish), clickable preview/download links, share-ID-based verification and fetch |
-| `/paseo-research` | Research with primary sources | Code at a pinned commit, history, official versioned docs; each claim graded observed/documented/inferred/unknown |
-| `/paseo-spyware-check` | Pre-install security/spyware static check | Checking GitHub URLs, local repos, install scripts, secrets, exfiltration, supply-chain risk |
-| `/paseo-agent-cleanup` | Inactive agent/workspace cleanup | Preview by default, preserve ordinary idle, archive named or test-marked candidates directly, protect active agents, archive workspaces only with `--yes` |
+| `/ps` | On-demand local skill catalog | `/ps <task>` chooses one fitting specialist; `/ps list` shows skills across agent homes. Reads originals without copying or installing |
+| `/ps-plan` | Explicit planning harness | One Markdown plan: graded current state, options, testable criteria, independently verifiable phases and risks |
+| `/ps-write` | Explicit writing harness | Reader-facing documents with source tracing, cold-reader checks and conditional Korean style guidance |
+| `/ps-toss` | Apps in Toss mini-app workflow | Planning, scaffolding, browser debugging, phone testing and pre-launch review; authenticated console tools required for uploads |
+| `/ps-god` | Explicit task execution and resumption | Bounded work, acceptance evidence, debugging/review/spike and learning proposals |
+| `/ps-multi` | Operate selected Paseo computers | Named hosts or `all` (every registered host, in parallel), remote status/agents, inline or file Bash/PowerShell commands (`exec --command`, `--wait` up to 300 s), verified updates, `restart --force` only when you asked for an immediate restart, merging `import-saved` |
+| `/ps-design` | Web and app frontend workflow | Project design rules, existing components and frontend review |
+| `/ps-browser` | Browser workflow | Default to one Ego Lite TaskSpace; Chrome requires an explicit user choice. Preserve user tabs and verify completion |
+| `/ps-cua` | Native desktop GUI driving | App window manipulation/snapshot/verification with the trycua Cua Driver, whenever a task needs a native app GUI |
+| `/ps-orchestration` | Multi-agent coordination and comparison | Explicitly requested coordination or tournament, mode-specific guidance |
+| `/ps-project` | Project summary and setup | Requested brief (writes or refreshes stale `.paseobility` context) or environment/context setup |
+| `/ps-share` | Computer/mobile artifact sharing | Auto-prepare private `paseo_share`, any file type up to 50 MiB (several per publish), clickable preview/download links, share-ID-based verification and fetch |
+| `/ps-research` | Research with primary sources | Code at a pinned commit, history, official versioned docs; each claim graded observed/documented/inferred/unknown |
+| `/ps-spyware-check` | Pre-install security/spyware static check | Checking GitHub URLs, local repos, install scripts, secrets, exfiltration, supply-chain risk |
+| `/ps-agent-cleanup` | Inactive agent/workspace cleanup | Preview by default, preserve ordinary idle, archive named or test-marked candidates directly, protect active agents, archive workspaces only with `--yes` |
 
 ---
 
@@ -157,7 +180,7 @@ Read this repo and install into my local Paseo skills directory.
 Copy skills/* for my Windows/Mac environment and tell me how to reload afterward.
 ```
 
-The agent checks the Mac/Windows skills paths based on [AGENTS.md](./AGENTS.md) in Codex/Paseo and [CLAUDE.md](./CLAUDE.md) in Claude Code. A `paseo-share` request installs only that skill instead of the full pack.
+The agent checks the Mac/Windows skills paths based on [AGENTS.md](./AGENTS.md) in Codex/Paseo and [CLAUDE.md](./CLAUDE.md) in Claude Code. A `ps-share` request installs only that skill instead of the full pack.
 
 You can also install manually.
 
@@ -169,9 +192,9 @@ cd Paseobility
 ./scripts/paseobility-init.sh --no-context
 
 # Update just one skill
-./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
-./scripts/paseobility-init.sh --skill paseo-spyware-check --no-context
-./scripts/paseobility-init.sh --skill paseo-share --no-context
+./scripts/paseobility-init.sh --skill ps-agent-cleanup --no-context
+./scripts/paseobility-init.sh --skill ps-spyware-check --no-context
+./scripts/paseobility-init.sh --skill ps-share --no-context
 
 # Also install for Claude Code
 ./scripts/paseobility-init.sh --with-claude --no-context
@@ -190,9 +213,9 @@ cd Paseobility
 .\scripts\paseobility-install.ps1
 
 # Update just one skill
-.\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
-.\scripts\paseobility-install.ps1 -Skill paseo-spyware-check
-.\scripts\paseobility-install.ps1 -Skill paseo-share
+.\scripts\paseobility-install.ps1 -Skill ps-agent-cleanup
+.\scripts\paseobility-install.ps1 -Skill ps-spyware-check
+.\scripts\paseobility-install.ps1 -Skill ps-share
 
 # Test-install into a temporary home first
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
@@ -203,28 +226,28 @@ cd Paseobility
 
 ### Cua Driver runtime
 
-Selecting `paseo-cua`, or installing the full package, also ensures the trycua Cua Driver runtime. Other skill selections have no driver side effects. The runtime step is idempotent: an existing working driver is reused and never auto-upgraded.
+Selecting `ps-cua`, or installing the full package, also ensures the trycua Cua Driver runtime. Other skill selections have no driver side effects. The runtime step is idempotent: an existing working driver is reused and never auto-upgraded.
 
 ```bash
-# paseo-cua selected -> driver auto-ensured
-./scripts/paseobility-init.sh --skill paseo-cua --no-context
+# ps-cua selected -> driver auto-ensured
+./scripts/paseobility-init.sh --skill ps-cua --no-context
 
 # Skills only, no runtime (docs-only / offline)
-./scripts/paseobility-init.sh --skill paseo-cua --skip-cua-driver --no-context
+./scripts/paseobility-init.sh --skill ps-cua --skip-cua-driver --no-context
 
 # Custom target homes skip the real-host runtime by default and log why
 ./scripts/paseobility-init.sh --target-home "$tmp" --no-context
 
 # Explicitly allow real host runtime install with a custom target-home
-./scripts/paseobility-init.sh --skill paseo-cua --target-home "$tmp" \
+./scripts/paseobility-init.sh --skill ps-cua --target-home "$tmp" \
   --allow-host-runtime --no-context
 ```
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-cua
-.\scripts\paseobility-install.ps1 -Skill paseo-cua -SkipCuaDriver
+.\scripts\paseobility-install.ps1 -Skill ps-cua
+.\scripts\paseobility-install.ps1 -Skill ps-cua -SkipCuaDriver
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
-.\scripts\paseobility-install.ps1 -Skill paseo-cua -TargetHome $tmp.FullName -AllowHostRuntime
+.\scripts\paseobility-install.ps1 -Skill ps-cua -TargetHome $tmp.FullName -AllowHostRuntime
 ```
 
 The driver helper can also be run directly:
@@ -308,8 +331,8 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 - Paseo Settings -> Agents -> **Enable Paseo tools** enabled
 - One or more AI providers
   - e.g. Codex, Claude Code, etc.
-- `/paseo-share` needs Node.js and Git. Default GitHub auto-onboarding needs an authenticated GitHub CLI (`gh`); Forgejo and custom remotes connect with an explicit repository URL. GitHub Actions is not used.
-- `/paseo-cua` needs the trycua Cua Driver. The installer auto-ensures it for `paseo-cua` or the full package; macOS Accessibility and Screen Recording grants stay manual.
+- `/ps-share` needs Node.js and Git. Default GitHub auto-onboarding needs an authenticated GitHub CLI (`gh`); Forgejo and custom remotes connect with an explicit repository URL. GitHub Actions is not used.
+- `/ps-cua` needs the trycua Cua Driver. The installer auto-ensures it for `ps-cua` or the full package; macOS Accessibility and Screen Recording grants stay manual.
 - Orchestration prefers Paseo's `list_profiles`. The legacy `~/.paseo/orchestration-preferences.json` is read only as optional extra guidance.
 - Install target skills path
   - macOS/Linux: `~/.agents/skills`
@@ -322,12 +345,12 @@ Copy-Item -Recurse -Force ".\skills\*" "$env:USERPROFILE\.agents\skills\"
 ## Verification status
 
 The CLI/MCP compatibility record for the existing six skills is the v2.7.0
-[compatibility report](docs/compatibility-0.9.0-beta.2.md), which **does not cover `paseo-cua`**.
+[compatibility report](docs/compatibility-0.9.0-beta.2.md), which **does not cover `ps-cua`**.
 The six-skill record must not be read as covering all seven skills. The current
 package compatibility baseline is Paseo **0.10.2**; its re-verification record
 is [`docs/compatibility-0.10.2.md`](docs/compatibility-0.10.2.md).
 
-`paseo-cua` is **preview / limited validation** — not broad stable Mac and Windows support.
+`ps-cua` is **preview / limited validation** — not broad stable Mac and Windows support.
 Current dated status (**2026-09-22**):
 
 | Environment | Native GUI (Cua) | Browser result and limits |
@@ -385,7 +408,7 @@ macOS and Windows jobs. Exact scope:
   fixture server was terminated with no listener left on the port. The current
   browser host could not register the tab, so no GUI pass is claimed. The
   historical device rows above are unchanged.
-- The updated `paseo-cua` skill was installed locally for this release into both
+- The updated `ps-cua` skill was installed locally for this release into both
   the Codex/Paseo and Claude skill directories, with backups; all seven source
   trees match, the other twelve installed trees were untouched, and the Cua
   runtime stayed at 0.28.2.
@@ -418,13 +441,13 @@ Details, including the optional Playwright fallback and per-host probes, are in 
 | Apple Silicon macOS | Tested | Paseo CLI 0.2.5 detected `Darwin/arm64`, temporary HOME install, real `~/.agents/skills` install, context generation, package script detection, `/paseo-session-brief` recognized by a new Paseo agent |
 | Intel macOS | Tested | Paseo CLI 0.2.5 detected `Darwin/x86_64`, temporary HOME install, real `~/.agents/skills` install, context generation, package script detection, `/paseo-session-brief` recognized by a new Paseo agent |
 | Windows | Tested | Windows 11 x64, Windows PowerShell 5.1, Paseo CLI 0.2.5: PowerShell installer, `-TargetHome` temporary install, real `%USERPROFILE%\.agents\skills` install, `/paseo-session-brief` recognized by a new Paseo agent. Native bash context script not verified |
-| `/paseo-spyware-check` on Apple Silicon macOS | Tested | On Paseo 0.3.0: temp HOME install, helper script run, fixture risk-pattern detection, recognition by a new Paseo agent, scanner dry-run. Required report I/O fail-closed and optional scanner failure continuation regression tests passed |
-| `/paseo-spyware-check` on Intel macOS | Tested | On Darwin x86_64 / Paseo 0.3.0: install, helper script run, fixture risk-pattern detection, recognition by a new Paseo agent, Gitleaks secret scan no finding |
-| `/paseo-spyware-check` on Windows | Tested | On Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0: native PowerShell static-search workflow regex compile, fixture risk-pattern detection, recognition by a new Paseo agent. Bash helper not verified on native Windows |
-| `/paseo-agent-cleanup` helper | Tested locally | Node regression tests covering bare dry-run, ordinary idle preservation, disposable marker/explicit ID/user-pattern restriction, running/initializing protection, Paseo 0.6 archive acknowledgement and post-archive list verification, workspace approval gate, no dangerous command execution |
-| `/paseo-agent-cleanup` on Windows | Previous install verified | On Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0: `%USERPROFILE%\.agents\skills` install and dry-run JSON. v2.5.2 policy regression verified by cross-platform Node unit tests |
-| `/paseo-share` on Apple Silicon macOS | Tested | Official skill validator, Node security/onboarding/help and `--help` regression tests, private repo create/reuse and public/irrelevant repo rejection, real private GitHub publish/read/auto-fetch/original SHA-256 comparison, isolated Codex/Claude install |
-| `/paseo-share` on Windows | Tested | Windows private checkout, PowerShell install, private GitHub connection, real TXT publish and remote file read, mobile GitHub preview |
+| `/ps-spyware-check` on Apple Silicon macOS | Tested | On Paseo 0.3.0: temp HOME install, helper script run, fixture risk-pattern detection, recognition by a new Paseo agent, scanner dry-run. Required report I/O fail-closed and optional scanner failure continuation regression tests passed |
+| `/ps-spyware-check` on Intel macOS | Tested | On Darwin x86_64 / Paseo 0.3.0: install, helper script run, fixture risk-pattern detection, recognition by a new Paseo agent, Gitleaks secret scan no finding |
+| `/ps-spyware-check` on Windows | Tested | On Windows 11 x64 / PowerShell 5.1 / Paseo 0.3.0: native PowerShell static-search workflow regex compile, fixture risk-pattern detection, recognition by a new Paseo agent. Bash helper not verified on native Windows |
+| `/ps-agent-cleanup` helper | Tested locally | Node regression tests covering bare dry-run, ordinary idle preservation, disposable marker/explicit ID/user-pattern restriction, running/initializing protection, Paseo 0.6 archive acknowledgement and post-archive list verification, workspace approval gate, no dangerous command execution |
+| `/ps-agent-cleanup` on Windows | Previous install verified | On Windows 10.0.26200 x64 / Node v24.14.0 / Paseo 0.3.0: `%USERPROFILE%\.agents\skills` install and dry-run JSON. v2.5.2 policy regression verified by cross-platform Node unit tests |
+| `/ps-share` on Apple Silicon macOS | Tested | Official skill validator, Node security/onboarding/help and `--help` regression tests, private repo create/reuse and public/irrelevant repo rejection, real private GitHub publish/read/auto-fetch/original SHA-256 comparison, isolated Codex/Claude install |
+| `/ps-share` on Windows | Tested | Windows private checkout, PowerShell install, private GitHub connection, real TXT publish and remote file read, mobile GitHub preview |
 
 Intel Mac testing observed no install failure, agent recognition failure, or Intel-specific error.
 Windows testing passed the PowerShell installer, `-TargetHome` temporary home install, and real skill recognition. Temporary home installs isolate on `-TargetHome` or `$env:USERPROFILE` instead of `$HOME`.
@@ -439,7 +462,7 @@ On the first share request, GitHub connectivity is checked and the authenticated
 account's private `paseo_share` repository is prepared automatically.
 
 ```text
-/paseo-share Share this report so I can view it on my phone.
+/ps-share Share this report so I can view it on my phone.
 ```
 
 If GitHub authentication is missing, it first guides you to
@@ -449,9 +472,9 @@ use `setup <repo-url>` explicitly.
 Then publish or fetch in natural language.
 
 ```text
-/paseo-share Share this report so I can view it on my phone.
-/paseo-share Show me the file I just shared from another computer.
-/paseo-share Fetch the latest shared file into the current project and summarize it.
+/ps-share Share this report so I can view it on my phone.
+/ps-share Show me the file I just shared from another computer.
+/ps-share Fetch the latest shared file into the current project and summarize it.
 ```
 
 The publish result includes a share ID and clickable preview/download links. Private repository links require GitHub/Forgejo login in the mobile browser.
@@ -459,7 +482,7 @@ The publish result includes a share ID and clickable preview/download links. Pri
 ### Driving a web UI directly
 
 ```text
-/paseo-browser
+/ps-browser
 Open the login page at https://example.com, inspect the form structure,
 then verify with a screenshot whether a test account logs in.
 ```
@@ -474,7 +497,7 @@ Open a new tab -> page snapshot -> find input fields -> enter values
 ### Commanding several agents
 
 ```text
-/paseo-orchestration
+/ps-orchestration
 Split this feature into implementation, testing, and review, run them in parallel,
 and have a review agent decide pass/fail at the end.
 ```
@@ -489,7 +512,7 @@ Decompose task -> create worker agents -> run in parallel
 ### Comparing answers from several models
 
 ```text
-/paseo-orchestration
+/ps-orchestration
 On this README direction, have GPT argue for it, OpenCode DeepSeek against it,
 and Grok compare the two and produce a final judgment.
 ```
@@ -505,7 +528,7 @@ Define participant roles -> run agents in parallel
 ### Making a session brief
 
 ```text
-/paseo-project
+/ps-project
 Assume I'm seeing this project for the first time and produce a brief I can work from.
 ```
 
@@ -519,7 +542,7 @@ Project -> Current State -> Instructions -> Commands
 ### Setting up new project context
 
 ```text
-/paseo-project
+/ps-project
 Assume I'm seeing this repo for the first time; read docs, CLAUDE.md, AGENTS.md,
 and package scripts to build working context.
 ```
@@ -544,7 +567,7 @@ Generated files:
 ### Pre-install spyware check
 
 ```text
-/paseo-spyware-check
+/ps-spyware-check
 Is it safe to install https://github.com/owner/repo?
 Focus on install scripts, secret access, remote code execution, and data exfiltration risk.
 ```
@@ -563,7 +586,7 @@ Core principles:
 ### Cleaning up test agents
 
 ```text
-/paseo-agent-cleanup
+/ps-agent-cleanup
 First show a dry-run of inactive agents with disposable/test markers and test workspace candidates.
 Preserve ordinary idle sessions and do not archive agents outside the IDs or patterns I specify.
 Do not touch running agents, and only show workspace candidates before approval.
@@ -579,7 +602,7 @@ Core principles:
 
 ---
 
-## `/paseo-share`
+## `/ps-share`
 
 Publishes files of any type up to 50 MiB as immutable artifacts to a dedicated private Git repository. Without GitHub Actions or a background daemon, each computer only runs local `git fetch`, `rebase`, `commit`, and `push`.
 
@@ -597,7 +620,7 @@ Auto-onboarding aborts without attempting to change visibility, rename, delete, 
 
 ---
 
-## `/paseo-orchestration` comparison mode
+## `/ps-orchestration` comparison mode
 
 This skill gives the same problem independently to several agents, then a separate judge compares them and picks the final answer.
 
@@ -617,7 +640,7 @@ Key rules:
 
 ---
 
-## `/paseo-project`
+## `/ps-project`
 
 Selects project summary and environment setup from a single entry point.
 
@@ -627,11 +650,11 @@ Selects project summary and environment setup from a single entry point.
 - Queries version/daemon/workspace only when the Paseo runtime is relevant. If a `--cwd` lookup fails due to a path alias, it uses the existing workspace ID.
 - A summary installs no dependencies and starts no servers. `.paseobility/` is local state; if the repo does not ignore it, it is added to `.git/info/exclude`, not `.gitignore`.
 
-The procedure for the mode you need is in the [skill](skills/paseo-project/SKILL.md) and its linked references.
+The procedure for the mode you need is in the [skill](skills/ps-project/SKILL.md) and its linked references.
 
 ---
 
-## `/paseo-spyware-check`
+## `/ps-spyware-check`
 
 Before installing a GitHub URL or local repo, statically inspects for spyware, malicious install scripts, secret theft, remote code execution, and supply-chain risk signals.
 
@@ -657,31 +680,31 @@ Key rules:
 
 Third-party scanner note:
 
-- `/paseo-spyware-check` calls external open-source scanner CLIs installed locally.
+- `/ps-spyware-check` calls external open-source scanner CLIs installed locally.
 - Paseobility does not bundle or redistribute those scanners' binaries or rule sets.
 
 Bundled helpers:
 
 ```bash
 # Cross-platform JSON security receipt
-python skills/paseo-spyware-check/scripts/spyware-check.py https://github.com/owner/repo --json
+python skills/ps-spyware-check/scripts/spyware-check.py https://github.com/owner/repo --json
 ```
 
 ```bash
 # macOS/Linux
-skills/paseo-spyware-check/scripts/spyware-check.sh --target https://github.com/owner/repo
-skills/paseo-spyware-check/scripts/install-scanners.sh --dry-run
+skills/ps-spyware-check/scripts/spyware-check.sh --target https://github.com/owner/repo
+skills/ps-spyware-check/scripts/install-scanners.sh --dry-run
 ```
 
 ```powershell
 # Windows PowerShell
-.\skills\paseo-spyware-check\scripts\spyware-check.ps1 -Target https://github.com/owner/repo
-.\skills\paseo-spyware-check\scripts\install-scanners.ps1 -DryRun
+.\skills\ps-spyware-check\scripts\spyware-check.ps1 -Target https://github.com/owner/repo
+.\skills\ps-spyware-check\scripts\install-scanners.ps1 -DryRun
 ```
 
 ---
 
-## `/paseo-agent-cleanup`
+## `/ps-agent-cleanup`
 
 Safely cleans up Paseo's inactive agents and test workspaces.
 
@@ -705,21 +728,21 @@ Key rules:
 Bundled helper:
 
 ```bash
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --dry-run --pattern 'cleanup-validation|fixture'
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --agent <agent-id>
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --auto --pattern 'cleanup-validation|fixture'
-node skills/paseo-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --dry-run --pattern 'cleanup-validation|fixture'
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --agent <agent-id> --archive
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --auto --agent <agent-id>
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --auto --pattern 'cleanup-validation|fixture'
+node skills/ps-agent-cleanup/scripts/agent-cleanup.js --workspace <workspace-id> --archive --yes
 ```
 
 ---
 
-## `/paseo-browser`
+## `/ps-browser`
 
 Default: **Ego Lite → one TaskSpace → reuse its `p1` → finish**.
 Read `ego-browser skill` for the installed API contract; see the
-[Ego reference](skills/paseo-browser/references/ego.md) for multi-round reuse,
+[Ego reference](skills/ps-browser/references/ego.md) for multi-round reuse,
 completion receipts, user control, and shell portability. Do not run Chrome's
 helper against Ego. Failed tasks retain their space for recovery rather than
 opening a replacement space or silently switching browsers.
@@ -736,10 +759,10 @@ records tab ownership and Chrome incarnation, and recovers a lost creation
 reply without making another tab/window. Cleanup is verified by re-listing.
 
 ```bash
-python3 ~/.agents/skills/paseo-browser/scripts/chrome-tabs.py list
-python3 ~/.agents/skills/paseo-browser/scripts/chrome-tabs.py open --task '<unique-task-id>' --window '<existing-window-id>' --url 'https://example.com/'
+python3 ~/.agents/skills/ps-browser/scripts/chrome-tabs.py list
+python3 ~/.agents/skills/ps-browser/scripts/chrome-tabs.py open --task '<unique-task-id>' --window '<existing-window-id>' --url 'https://example.com/'
 # Bind the returned tabId through the installed Chrome integration for page work.
-python3 ~/.agents/skills/paseo-browser/scripts/chrome-tabs.py close --task '<unique-task-id>'
+python3 ~/.agents/skills/ps-browser/scripts/chrome-tabs.py close --task '<unique-task-id>'
 ```
 
 User tabs, login state and other agents' work are preserved. An unhandled
@@ -749,14 +772,14 @@ connection failure never silently launches another browser.
 
 CloakBrowser, Paseo workspace browser and Playwright CLI are requested
 alternatives for isolation/headless work, or required by a specific workflow
-such as `paseo-design` verification. Installation starts no browser or daemon.
-See the [skill](skills/paseo-browser/SKILL.md), [Chrome lifecycle reference](skills/paseo-browser/references/chrome.md),
-[CloakBrowser recipes](skills/paseo-browser/references/cloakbrowser.md) and
-[Playwright CLI recipes](skills/paseo-browser/references/playwright.md).
+such as `ps-design` verification. Installation starts no browser or daemon.
+See the [skill](skills/ps-browser/SKILL.md), [Chrome lifecycle reference](skills/ps-browser/references/chrome.md),
+[CloakBrowser recipes](skills/ps-browser/references/cloakbrowser.md) and
+[Playwright CLI recipes](skills/ps-browser/references/playwright.md).
 
 ---
 
-## `/paseo-cua`
+## `/ps-cua`
 
 Drives a native desktop GUI through the trycua Cua Driver (`cua-driver` CLI or MCP) when the user asks to operate a native app or a task can only be done through a desktop app's GUI; a CLI, API or file edit that reaches the same result is preferred. **Preview / limited validation** — see the [Cua platform validation status](docs/cua-platform-validation.md). Current dependency pins and host checks: [2026-11-06](docs/dependency-validation-2026-11-06.md).
 
@@ -769,7 +792,7 @@ Drives a native desktop GUI through the trycua Cua Driver (`cua-driver` CLI or M
 
 ---
 
-## `/paseo-orchestration`
+## `/ps-orchestration`
 
 A pattern collection where one agent creates several agents, splits roles, and synthesizes results.
 
@@ -824,19 +847,24 @@ In Paseo 0.6, the agent profiles configured in the app are the basis for provide
 
 ```text
 skills/
-├── paseo-agent-cleanup/       # SKILL.md + CLI helper/tests
-├── paseo-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
-├── paseo-cua/                # SKILL.md + implicit-invocation policy
+├── ps/                     # SKILL.md + read-only local catalog/tests
+├── ps-agent-cleanup/       # SKILL.md + CLI helper/tests
+├── ps-browser/            # SKILL.md + references (cloakbrowser, paseo, playwright, screenshots)
+├── ps-cua/                # SKILL.md + implicit-invocation policy
 │   └── references/           # setup.md, workflow.md, recovery.md
-├── paseo-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
-├── paseo-god/                # SKILL.md + explicit-only policy, procedures, run helper/tests
-├── paseo-multi/              # SKILL.md + host adapter/tests + references
-├── paseo-orchestration/      # SKILL.md + explicit-only policy
+├── ps-design/             # SKILL.md + references, templates, scripts/design-check.mjs, vendored guides
+├── ps-god/                # SKILL.md + explicit-only policy, procedures, run helper/tests
+├── ps-multi/              # SKILL.md + host adapter/tests + references
+├── ps-orchestration/      # SKILL.md + explicit-only policy
 │   └── references/           # coordination.md, tournament.md
-├── paseo-project/            # SKILL.md
+├── ps-plan/               # SKILL.md + explicit-only policy
+├── ps-project/            # SKILL.md
 │   └── references/           # brief.md, setup.md
-├── paseo-share/              # SKILL.md + CLI helper/tests
-└── paseo-spyware-check/      # SKILL.md + scanners/tests
+├── ps-research/           # SKILL.md + primary-source workflow
+├── ps-share/              # SKILL.md + CLI helper/tests
+├── ps-spyware-check/      # SKILL.md + scanners/tests
+├── ps-toss/               # SKILL.md + pinned upstream Harness
+└── ps-write/              # SKILL.md + explicit-only policy, Korean style reference
 scripts/                     # installers, doctor (.sh/.ps1/.py), context, cua-driver helpers
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template
@@ -948,11 +976,11 @@ See the [full release history](docs/release-history.md).
 
 See the [full release history](docs/release-history.md).
 
-## 2026-10-11 update — `/paseo-multi` (v2.9.0)
+## 2026-10-11 update — `/ps-multi` (v2.9.0)
 
 See the [full release history](docs/release-history.md).
 
-## 2026-10-05 update — `/paseo-design` with design-check (v2.8.3)
+## 2026-10-05 update — `/ps-design` with design-check (v2.8.3)
 
 See the [full release history](docs/release-history.md).
 
@@ -960,7 +988,7 @@ See the [full release history](docs/release-history.md).
 
 See the [full release history](docs/release-history.md).
 
-### `/paseo-browser` now defaults to CloakBrowser
+### `/ps-browser` now defaults to CloakBrowser
 
 See the [full release history](docs/release-history.md).
 

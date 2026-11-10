@@ -1,15 +1,17 @@
 # Paseobility
 
-Paseobility brings twelve reusable workflows to Paseo, with a searchable skill picker and a screen for installed skills, versions and updates on the selected computer.
+Paseobility brings fifteen reusable workflows to Paseo, with a searchable skill picker and a screen for installed skills, versions and updates on the selected computer.
 
 Open **Paseobility** above an existing conversation's input, search for a skill and select it to append its slash reference to your draft. Your text and attachments stay in place; you send the message yourself. On native mobile clients and new-agent drafts, use **+ → Attach Paseobility** to add a skill reference. The sidebar and Command Center open the version screen.
 
 ## Workflows
 
-- **Design and task execution:** `paseo-design` starts from a brief, reviews the visual result and checks phone, tablet and desktop layouts. Explicit `paseo-god` requests start with a plan and TODO list, track verification evidence and preserve a resume or handoff point when work remains.
-- **Browser and desktop work:** `paseo-browser` reuses an Ego Lite task space or a selected Chrome tab. `paseo-cua` operates native apps through the separately installed Cua Driver.
-- **Projects and computers:** `paseo-project` prepares repository briefs or environments, `paseo-multi` operates configured computers, and `paseo-orchestration` coordinates agents when explicitly requested.
-- **Research, sharing and checks:** `paseo-research` answers how, why and compatibility questions from code, history and official docs with a cited report. `paseo-share` shares files through a private Git repository, `paseo-spyware-check` inspects repository code without executing it, and `paseo-agent-cleanup` previews disposable sessions for archiving. `paseo-toss` wraps the official Apps-in-Toss Harness workflows.
+- **On-demand local skills:** explicit `/ps <task>` lists local skills across agent homes, chooses a fitting specialist and reads its original instructions without installing or copying it. `/ps list` shows the catalog. The plugin picker lists the fifteen bundled entry points; it does not expand into the local catalog.
+- **Planning and writing:** explicit `ps-plan` requests produce one grounded Markdown plan with testable criteria. Explicit `ps-write` requests draft reader-facing documents, trace facts to sources and review clarity; Korean style guidance loads only for Korean output. Both check for a local specialist once and retain their own verification.
+- **Design and task execution:** `ps-design` starts from a brief, reviews the visual result and checks phone, tablet and desktop layouts. Explicit `ps-god` requests start with a plan and TODO list, track verification evidence and preserve a resume or handoff point when work remains.
+- **Browser and desktop work:** `ps-browser` reuses an Ego Lite task space or a selected Chrome tab. `ps-cua` operates native apps through the separately installed Cua Driver.
+- **Projects and computers:** `ps-project` prepares repository briefs or environments, `ps-multi` operates configured computers, and `ps-orchestration` coordinates agents when explicitly requested.
+- **Research, sharing and checks:** `ps-research` answers how, why and compatibility questions from code, history and official docs with a cited report. `ps-share` shares files through a private Git repository, `ps-spyware-check` inspects repository code without executing it, and `ps-agent-cleanup` previews disposable sessions for archiving. `ps-toss` wraps the official Apps-in-Toss Harness workflows.
 
 ## Setup and updates
 

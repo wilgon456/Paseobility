@@ -132,7 +132,9 @@ export async function updatePackage(options, execute = run) {
       JSON.stringify({
         version,
         sha,
-        files: changes.map((x) => ({ path: x.target, digest: x.digest })),
+        files: changes
+          .filter((x) => !x.retired)
+          .map((x) => ({ path: x.target, digest: x.digest })),
       }),
     );
     await state(

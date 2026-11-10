@@ -70,7 +70,7 @@ class SkillMigrationTests(unittest.TestCase):
         unrelated.write_text("unrelated")
         self.assert_success(self.install("--migrate-skills", "--with-claude"))
         expected = json.loads((ROOT / "paseobility.json").read_text())["skills"]
-        self.assertEqual(len(expected), 12)
+        self.assertEqual(len(expected), 15)
         for base in (".agents", ".claude"):
             for name in RETIRED:
                 self.assertFalse((self.home / base / "skills" / name).exists())
@@ -83,9 +83,19 @@ class SkillMigrationTests(unittest.TestCase):
         self.assertEqual(private.read_text(), "untouched")
         self.assertEqual(unrelated.read_text(), "unrelated")
 
+    def test_catalog_only_install_has_no_legacy_predecessor_or_runtime_side_effect(self):
+        old = self.home / ".agents/skills/paseo-/SKILL.md"
+        old.parent.mkdir(parents=True)
+        old.write_text("---\nname: paseo-\n---\nkeep")
+        self.assert_success(self.install("--skill", "ps", "--migrate-skills"))
+        self.assertTrue((self.home / ".agents/skills/ps/scripts/skill-catalog.js").is_file())
+        self.assertEqual(old.read_text(), "---\nname: paseo-\n---\nkeep")
+        self.assertFalse((self.home / ".paseobility").exists())
+        self.assertFalse((self.home / ".cua-driver").exists())
+
     def test_single_skill_migrates_only_its_predecessors(self):
         self.seed()
-        self.assert_success(self.install("--skill", "paseo-project", "--migrate-skills"))
+        self.assert_success(self.install("--skill", "ps-project", "--migrate-skills"))
         for name in RETIRED:
             self.assertEqual((self.home / ".agents/skills" / name).exists(),
                              name not in ("paseo-session-brief", "paseo-project-bootstrap"))
@@ -96,6 +106,49 @@ class SkillMigrationTests(unittest.TestCase):
         self.assert_success(self.install())
         for name in RETIRED:
             self.assertTrue((self.home / ".agents/skills" / name).exists())
+
+    def seed_renamed(self, base=".agents"):
+        """Seed the v2 names that v3.0.0 renamed from paseo-<name> to ps-<name>."""
+        names = [name.replace("ps-", "paseo-", 1) for name in
+                 json.loads((ROOT / "paseobility.json").read_text())["skills"]
+                 if name.startswith("ps-") and name not in ("ps-plan", "ps-write")]
+        for name in names:
+            dest = self.home / base / "skills" / name
+            dest.mkdir(parents=True)
+            (dest / "SKILL.md").write_text(f"---\nname: {name}\n---\n")
+            (dest / "local-note.txt").write_text(f"preserve {name}")
+        return names
+
+    def test_renamed_skills_move_to_backup_when_migrating(self):
+        old_names = []
+        for base in (".agents", ".claude"):
+            old_names = self.seed_renamed(base)
+        self.assertEqual(len(old_names), 12)
+        self.assert_success(self.install("--migrate-skills", "--with-claude"))
+        for base in (".agents", ".claude"):
+            for old in old_names:
+                new = old.replace("paseo-", "ps-", 1)
+                self.assertFalse((self.home / base / "skills" / old).exists())
+                self.assertTrue((self.home / base / "skills" / new / "SKILL.md").is_file())
+                copies = list((self.home / base / "skills-backups").glob(f"*/{old}/local-note.txt"))
+                self.assertEqual(len(copies), 1)
+                self.assertEqual(copies[0].read_text(), f"preserve {old}")
+
+    def test_renamed_skills_stay_with_a_warning_without_migration(self):
+        old_names = self.seed_renamed()
+        result = self.install()
+        self.assert_success(result)
+        for old in old_names:
+            self.assertTrue((self.home / ".agents/skills" / old / "local-note.txt").is_file())
+            self.assertIn(f"{old} still sits beside", result.stderr)
+        self.assertIn("--migrate-skills", result.stderr)
+
+    def test_single_renamed_skill_moves_only_its_old_name(self):
+        old_names = self.seed_renamed()
+        self.assert_success(self.install("--skill", "ps-god", "--migrate-skills"))
+        for old in old_names:
+            self.assertEqual((self.home / ".agents/skills" / old).exists(), old != "paseo-god")
+        self.assertTrue((self.home / ".agents/skills/ps-god/SKILL.md").is_file())
 
     def test_repeated_migration_keeps_original_backup(self):
         self.seed()
@@ -113,27 +166,27 @@ class SkillMigrationTests(unittest.TestCase):
             self.assertEqual(len(list((self.home / ".agents/skills-backups").glob(f"*/{name}/local-note.txt"))), 1)
 
     def test_invalid_selection_aborts_before_replacing_existing_skills(self):
-        skill = self.home / ".agents/skills/paseo-project/SKILL.md"
+        skill = self.home / ".agents/skills/ps-project/SKILL.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("local original")
-        result = self.install("--skill", "paseo-project", "--skill", "missing")
+        result = self.install("--skill", "ps-project", "--skill", "missing")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(skill.read_text(), "local original")
         self.assertFalse((self.home / ".agents/skills-backups").exists())
 
     def test_skill_selection_requires_names_not_paths(self):
-        result = self.install("--skill", "./paseo-project")
+        result = self.install("--skill", "./ps-project")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.home / ".agents").exists())
 
     def test_duplicate_selection_preserves_original_backup_once(self):
-        skill = self.home / ".agents/skills/paseo-project/SKILL.md"
+        skill = self.home / ".agents/skills/ps-project/SKILL.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("local original")
-        self.assert_success(self.install("--skill", "paseo-project",
-                                         "--skill", "paseo-project"))
+        self.assert_success(self.install("--skill", "ps-project",
+                                         "--skill", "ps-project"))
         backups = list((self.home / ".agents/skills-backups").glob(
-            "*/paseo-project/SKILL.md"))
+            "*/ps-project/SKILL.md"))
         self.assertEqual([backup.read_text() for backup in backups], ["local original"])
 
     def test_unknown_ownership_aborts_before_installation(self):
@@ -142,7 +195,7 @@ class SkillMigrationTests(unittest.TestCase):
         old.write_text("---\nname: unrelated\n---\n")
         self.assertNotEqual(self.install("--migrate-skills").returncode, 0)
         self.assertEqual(old.read_text(), "---\nname: unrelated\n---\n")
-        self.assertFalse((self.home / ".agents/skills/paseo-project").exists())
+        self.assertFalse((self.home / ".agents/skills/ps-project").exists())
 
     def test_symlink_aborts_without_touching_target(self):
         outside = self.home / "outside"
@@ -192,19 +245,26 @@ class PowerShellSelectionTests(unittest.TestCase):
                                "-EncodedCommand", encoded],
                               capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
 
+    def test_catalog_only_install_copies_helper_without_runtime_or_config(self):
+        result = self.install("ps")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.home / ".agents/skills/ps/scripts/skill-catalog.js").is_file())
+        self.assertFalse((self.home / ".paseobility").exists())
+        self.assertFalse((self.home / ".cua-driver").exists())
+
     def test_duplicate_selection_preserves_backup_under_literal_home_path(self):
-        skill = self.home / ".agents/skills/paseo-project/SKILL.md"
+        skill = self.home / ".agents/skills/ps-project/SKILL.md"
         skill.parent.mkdir(parents=True)
         skill.write_text("local original")
-        result = self.install("paseo-project", "paseo-project")
+        result = self.install("ps-project", "ps-project")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         backups = list((self.home / ".agents/skills-backups").glob(
-            "*/paseo-project/SKILL.md"))
+            "*/ps-project/SKILL.md"))
         self.assertEqual([backup.read_text() for backup in backups], ["local original"])
-        self.assertEqual(skill.read_bytes(), (ROOT / "skills/paseo-project/SKILL.md").read_bytes())
+        self.assertEqual(skill.read_bytes(), (ROOT / "skills/ps-project/SKILL.md").read_bytes())
 
     def test_path_selection_is_rejected_before_any_writes(self):
-        result = self.install("./paseo-project")
+        result = self.install("./ps-project")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.home.exists())
 

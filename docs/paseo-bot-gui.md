@@ -59,7 +59,7 @@ controller use its tailnet name and an absolute `.../tools/paseo-bot/gui-bridge.
 path as `bridge`.
 
 1. Pin a clean checkout/worktree on VAXPORT that contains these bridge files and
-   the runtime's existing `skills/paseo-multi` imports. Leave its active runtime
+   the runtime's existing `skills/ps-multi` imports. Leave its active runtime
    checkout and resident process alone. The authoritative queue remains
    `C:\Users\maste\.config\paseo-bot`.
 2. On the MacBook daemon host, create private directory

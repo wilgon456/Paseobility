@@ -9,7 +9,7 @@ copying the bundled skills into the local skill directory.
 
 ## Paseo Share fast path
 
-If the user gives this repository URL and asks to install `paseo-share`, share
+If the user gives this repository URL and asks to install `ps-share`, share
 files between Paseo computers, or enable mobile artifact viewing, proceed with
 the single-skill installation without asking them to choose among the bundled
 skills.
@@ -18,7 +18,7 @@ Do not confuse the two repositories involved:
 
 - This Paseobility repository is the **skill source** used for installation.
 - The user's separate private repository is the **artifact repository** used
-  later by `paseo-share`.
+  later by `ps-share`.
 
 Installing the skill does not create the artifact repository. On the first
 actual share request, run `status`; when unconfigured, use `onboard`. If GitHub
@@ -33,24 +33,24 @@ remote.
 Use the convenience installer so an existing installation is backed up:
 
 ```bash
-./scripts/paseobility-init.sh --skill paseo-share --no-context
+./scripts/paseobility-init.sh --skill ps-share --no-context
 ```
 
 On Windows PowerShell:
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-share
+.\scripts\paseobility-install.ps1 -Skill ps-share
 ```
 
 When running under Claude Code or when the user requests Claude support, also
 install the same skill into the Claude directory:
 
 ```bash
-./scripts/paseobility-init.sh --skill paseo-share --with-claude --no-context
+./scripts/paseobility-init.sh --skill ps-share --with-claude --no-context
 ```
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-share -WithClaude
+.\scripts\paseobility-install.ps1 -Skill ps-share -WithClaude
 ```
 
 After installation, verify the installed `SKILL.md` and
@@ -59,7 +59,7 @@ After installation, verify the installed `SKILL.md` and
 new agent session or reload integrations, and give this first-use prompt:
 
 ```text
-/paseo-share 이 파일을 공유해줘.
+/ps-share 이 파일을 공유해줘.
 GitHub 연결이 필요하면 먼저 알려주고, 연결되어 있으면 내 계정의
 private paseo_share 저장소를 안전하게 준비해서 사용해줘.
 ```
@@ -70,13 +70,13 @@ require a package build.
 
 ## Paseo Multi single-skill install
 
-For a request to operate several Paseo computers or install `paseo-multi`, use
-`./scripts/paseobility-init.sh --skill paseo-multi --no-context` (Windows:
-`.\scripts\paseobility-install.ps1 -Skill paseo-multi`). Add `--with-claude`
+For a request to operate several Paseo computers or install `ps-multi`, use
+`./scripts/paseobility-init.sh --skill ps-multi --no-context` (Windows:
+`.\scripts\paseobility-install.ps1 -Skill ps-multi`). Add `--with-claude`
 / `-WithClaude` when Claude support is requested. Installation copies the skill
 only; it does not import private host connections, install or restart Paseo,
 or run commands on another PC. Register trusted host connections locally as
-explained in `skills/paseo-multi/references/connections.md`.
+explained in `skills/ps-multi/references/connections.md`.
 
 The adapter is verified with macOS and Windows controllers using the Paseo
 0.11.2 client and Mac/Windows remote hosts. Linux is unverified. See
@@ -85,19 +85,25 @@ records for other skills.
 
 ## Consolidated skill migration
 
-The package contains twelve skills. `paseo-toss` wraps the official Toss
+The package contains fifteen skills. `ps-plan` and `ps-write` are explicit-only
+planning and writing harnesses; install either with `--skill <name>` (PowerShell:
+`-Skill <name>`). They check the local catalog once when available and retain
+their own evidence checks. `ps` is the explicit, on-demand local
+skill catalog: it lists skills across agent homes and reads a selected skill's
+original `SKILL.md` without installing or copying it. Install it alone with
+`--skill ps` (PowerShell: `-Skill ps`). `ps-toss` wraps the official Toss
 Apps-in-Toss Harness for planning, scaffolding, development, phone testing and
-pre-launch review; install it alone with `--skill paseo-toss`. Console OAuth and
-provider-specific debugger setup remain separate from copying the skill. `paseo-god` is explicit-only task execution,
+pre-launch review; install it alone with `--skill ps-toss`. Console OAuth and
+provider-specific debugger setup remain separate from copying the skill. `ps-god` is explicit-only task execution,
 verification and resumption; install it alone with
-`./scripts/paseobility-init.sh --skill paseo-god --no-context` (Windows:
-`.\scripts\paseobility-install.ps1 -Skill paseo-god`). Its Node helper creates
+`./scripts/paseobility-init.sh --skill ps-god --no-context` (Windows:
+`.\scripts\paseobility-install.ps1 -Skill ps-god`). Its Node helper creates
 local run records only; it does not execute tasks or save native memory.
-`paseo-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Ego Lite (preferred before Chrome; Microsoft Edge is never auto-selected) and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
-in `paseo-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
-are brief/setup modes in `paseo-project`. `paseo-cua` drives native desktop
+`ps-design` is the web and app frontend workflow; its `scripts/design-check.mjs` renders a page at phone, tablet and desktop widths in headless Ego Lite (preferred before Chrome; Microsoft Edge is never auto-selected) and must report zero errors before UI work is called done. `paseo-agent-tournament` is comparison mode
+in `ps-orchestration`; `paseo-session-brief` and `paseo-project-bootstrap`
+are brief/setup modes in `ps-project`. `ps-cua` drives native desktop
 apps through the separately installed trycua Cua Driver when a task needs a
-native app GUI; ordinary web page work stays with `paseo-browser`, which defaults to
+native app GUI; ordinary web page work stays with `ps-browser`, which defaults to
 Ego Lite for ordinary web work: one TaskSpace and its existing task tab, reused
 across rounds, with explicit completion through Ego's current runtime guide.
 An explicitly selected Chrome keeps the existing-window workflow. Missing Ego,
@@ -109,13 +115,17 @@ alternatives. Connection failures never silently switch browsers. No duplicate a
 
 For an authorized update, use `--migrate-skills` (PowerShell: `-MigrateSkills`)
 to move selected predecessors to backup after installing replacements. This
-also handles old `paseo-computer-use` -> `paseo-browser` and retired
+also handles old `paseo-computer-use` -> `ps-browser` and retired
 `paseo-skill-save` on full migration. Without the flag, old directories remain.
+v3.0.0 renamed every skill from `paseo-<name>` to `ps-<name>`; the same flag
+moves a recognized old copy to backup once its `ps-<name>` replacement is
+installed. When the installer warns that an old copy still sits beside the new
+one, tell the user: both would load until they approve the migration.
 Never delete private skill-library/runtime data. Report the backup path.
 
 ## Cua Driver runtime
 
-Selecting `paseo-cua`, or installing the full package, also ensures the trycua
+Selecting `ps-cua`, or installing the full package, also ensures the trycua
 Cua Driver runtime through `scripts/paseobility-cua-driver.sh` (Windows:
 `scripts/paseobility-cua-driver.ps1`). A driver counts as present only when
 `cua-driver --version` succeeds; an existing working driver is reused and never
@@ -202,7 +212,7 @@ Optional Claude Code install target:
 9. If the user also wants Claude Code support, copy the same `skills/*` into
    the Claude skills directory.
 10. If Paseo CLI is available, start a fresh read-only test agent to verify that
-    `/paseo-project` is recognized, then archive the test agent.
+    `/ps-project` is recognized, then archive the test agent.
 11. Tell the user to start a new agent session or reload integrations if the
    skills do not appear immediately.
 
@@ -225,7 +235,7 @@ Convenience installer:
 ```bash
 ./scripts/paseobility-init.sh --no-context
 ./scripts/paseobility-init.sh --with-claude --no-context
-./scripts/paseobility-init.sh --skill paseo-agent-cleanup --no-context
+./scripts/paseobility-init.sh --skill ps-agent-cleanup --no-context
 ```
 
 Existing same-name skills are backed up to
@@ -251,8 +261,8 @@ Convenience installer:
 ```powershell
 .\scripts\paseobility-install.ps1
 .\scripts\paseobility-install.ps1 -WithClaude
-.\scripts\paseobility-install.ps1 -Skill paseo-agent-cleanup
-.\scripts\paseobility-install.ps1 -Skill paseo-share
+.\scripts\paseobility-install.ps1 -Skill ps-agent-cleanup
+.\scripts\paseobility-install.ps1 -Skill ps-share
 
 # Temp-home install test:
 .\scripts\paseobility-install.ps1 -TargetHome $tmp.FullName
@@ -300,7 +310,7 @@ running agents.
 
 ## Project bootstrap
 
-For a target project, use `/paseo-project` after installation, or run
+For a target project, use `/ps-project` after installation, or run
 the bash context helper in Unix-like environments:
 
 ```bash

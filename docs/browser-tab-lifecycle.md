@@ -2,7 +2,7 @@
 
 Historical validation record: the Chrome default described below has been
 superseded. Current ordinary browsing defaults to Ego Lite; Chrome requires
-an explicit user choice. See [the current skill](../skills/paseo-browser/SKILL.md).
+an explicit user choice. See [the current skill](../skills/ps-browser/SKILL.md).
 
 ## Problem and scope
 
@@ -17,7 +17,7 @@ historic native-window creation sequence could not be reconstructed.
 
 ## Implementation
 
-- `skills/paseo-browser/scripts/chrome-tabs.py`: native macOS existing-window
+- `skills/ps-browser/scripts/chrome-tabs.py`: native macOS existing-window
   tab creation, explicit Chrome PID/launch-time identity, one journal per task,
   kernel lock, creation-intent marker, same-tab navigation and verified close.
 - `SKILL.md`: existing Chrome is the default. Page interaction binds the
@@ -52,8 +52,8 @@ historic native-window creation sequence could not be reconstructed.
 
 ## Initial debug installation (before v2.11.0)
 
-Updated local `~/.agents/skills/paseo-browser`, plus Mac mini's existing
-`~/.agents/skills/paseo-browser` and `~/.claude/skills/paseo-browser`. All 11
+Updated local `~/.agents/skills/ps-browser`, plus Mac mini's existing
+`~/.agents/skills/ps-browser` and `~/.claude/skills/ps-browser`. All 11
 skill files matched the source SHA-256 manifest after tests. Remote package
 SHA-256: `9304e16c79d185dbe6eb589800bda47301d3b892981e953831695c6e21bb132f`.
 Mac mini backups are under both skill roots' `skills-backups/`, in

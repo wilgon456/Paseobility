@@ -224,13 +224,13 @@ class DoctorUnitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             (base / "paseobility.json").write_text(json.dumps(
-                {"version": "2.8.1", "skills": ["paseo-cua"]}))
+                {"version": "2.8.1", "skills": ["ps-cua"]}))
             self.assertIsNotNone(self.doctor.load_manifest(str(base)))
             (base / "paseobility.json").write_text(json.dumps(
                 {"version": "2.8.1", "skills": ["not-a-skill"]}))
             self.assertIsNone(self.doctor.load_manifest(str(base)))
             (base / "paseobility.json").write_text(json.dumps(
-                {"version": "latest", "skills": ["paseo-cua"]}))
+                {"version": "latest", "skills": ["ps-cua"]}))
             self.assertIsNone(self.doctor.load_manifest(str(base)))
             (base / "paseobility.json").write_text("{not json")
             self.assertIsNone(self.doctor.load_manifest(str(base)))
@@ -240,8 +240,8 @@ class DoctorUnitTests(unittest.TestCase):
             base = Path(temp)
             source = base / "skills"
             target = base / "target"
-            skill_src = source / "paseo-cua"
-            skill_tgt = target / "paseo-cua"
+            skill_src = source / "ps-cua"
+            skill_tgt = target / "ps-cua"
             (skill_src / "references").mkdir(parents=True)
             (skill_tgt / "references").mkdir(parents=True)
             (skill_src / "SKILL.md").write_text("same")
@@ -264,8 +264,8 @@ class DoctorUnitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             source = base / "skills"
-            (source / "paseo-cua").mkdir(parents=True)
-            (source / "paseo-cua" / "SKILL.md").write_text("x")
+            (source / "ps-cua").mkdir(parents=True)
+            (source / "ps-cua" / "SKILL.md").write_text("x")
             absent = self.doctor.check_skill_install(
                 str(base / "missing"), str(source), False, "ok")
             self.assertEqual(absent["status"], "absent")
@@ -275,11 +275,11 @@ class DoctorUnitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             source = base / "skills"
-            (source / "paseo-cua").mkdir(parents=True)
-            (source / "paseo-cua" / "SKILL.md").write_text("x")
+            (source / "ps-cua").mkdir(parents=True)
+            (source / "ps-cua" / "SKILL.md").write_text("x")
             target = base / "target"
-            (target / "paseo-cua").mkdir(parents=True)
-            (target / "paseo-cua" / "SKILL.md").write_text("x")
+            (target / "ps-cua").mkdir(parents=True)
+            (target / "ps-cua" / "SKILL.md").write_text("x")
             # An empty/absent source pack must never yield a false "ok".
             empty = self.doctor.check_skill_install(
                 str(target), str(source), False, "missing")

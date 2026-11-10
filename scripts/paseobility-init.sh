@@ -31,7 +31,7 @@ Options:
 Install Paseobility skills and generate project context.
 
 Runtime:
-  Selecting paseo-cua or installing the full package also ensures the trycua
+  Selecting ps-cua or installing the full package also ensures the trycua
   Cua Driver exists (reused if present; never auto-upgraded). An ordinary
   --skill <other> install does not. A custom --target-home skips the real host
   runtime by default and logs why; --allow-host-runtime instead installs the
@@ -151,9 +151,15 @@ fi
 # Preflight every retired entry before copying anything. Moving a directory
 # preserves local edits; symlink roots and unknown ownership fail closed.
 retired_entries() {
-  printf '%s\n' 'paseo-agent-tournament:paseo-orchestration' \
-    'paseo-session-brief:paseo-project' 'paseo-project-bootstrap:paseo-project' \
-    'paseo-computer-use:paseo-browser' 'paseo-skill-save:'
+  printf '%s\n' 'paseo-agent-tournament:ps-orchestration' \
+    'paseo-session-brief:ps-project' 'paseo-project-bootstrap:ps-project' \
+    'paseo-computer-use:ps-browser' 'paseo-skill-save:'
+  # v3.0.0 renamed every skill from paseo-<name> to ps-<name>.
+  local renamed
+  for renamed in agent-cleanup browser cua design god multi \
+    orchestration project research share spyware-check toss; do
+    printf 'paseo-%s:ps-%s\n' "$renamed" "$renamed"
+  done
 }
 
 check_retired() {
@@ -235,6 +241,16 @@ copy_skills() {
       backup_count=$((backup_count + 1))
       printf '[migrate] moved %s to %s\n' "$retired" "$backup_root/$old"
     done < <(retired_entries)
+  else
+    # An old copy beside its replacement loads both descriptions and both sets
+    # of instructions. Removal stays opt-in, so say how to finish the rename.
+    local old replacement
+    while IFS=: read -r old replacement; do
+      [ -n "$replacement" ] && selected_skill "$replacement" || continue
+      [ -d "$target/$old" ] && [ -f "$target/$replacement/SKILL.md" ] || continue
+      printf '[warn] %s still sits beside %s in %s; rerun with --migrate-skills to move it to backup\n' \
+        "$old" "$replacement" "$target" >&2
+    done < <(retired_entries)
   fi
 
   if [ "$backup_count" -gt 0 ]; then
@@ -250,11 +266,11 @@ else
   printf '[skip] ~/.claude/skills not touched. Pass --with-claude to install there.\n'
 fi
 
-# Ensure the Cua Driver runtime when the paseo-cua skill (or the full package)
+# Ensure the Cua Driver runtime when the ps-cua skill (or the full package)
 # is selected. Idempotent: an existing driver is reused, never auto-upgraded.
 RUNTIME_STATUS="not-requested"
 wants_runtime=0
-if [ "${#SKILLS[@]}" -eq 0 ] || selected_skill paseo-cua; then
+if [ "${#SKILLS[@]}" -eq 0 ] || selected_skill ps-cua; then
   wants_runtime=1
 fi
 
