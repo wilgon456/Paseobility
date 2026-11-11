@@ -2,7 +2,7 @@ import {existsSync} from 'node:fs';
 // Preference order: an explicit CHROME_PATH, then Ego Lite (macOS only), then Google Chrome.
 // Microsoft Edge is never used. With no match Playwright's bundled Chromium runs.
 // Windows Ego Lite opens the system Default apps settings window on every separate launch,
-// even headless, so test runs never auto-select it there (see paseo-design design-check).
+// even headless, so test runs never auto-select it there (see ps-design design-check).
 export const candidates=(env=process.env,platform=process.platform)=>[
   env.CHROME_PATH,
   '/Applications/ego lite.app/Contents/MacOS/ego lite',

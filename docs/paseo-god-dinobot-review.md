@@ -27,7 +27,7 @@ Source links below are pinned to the inspected revision.
 | [Skill evaluation](https://github.com/dinobot-labs/dinobot/blob/5071c150773140c8fc167e662004668ec90ba55c/src/core/skills/evaluation.ts), [registered runner](https://github.com/dinobot-labs/dinobot/blob/5071c150773140c8fc167e662004668ec90ba55c/src/core/skills/evaluation-runner.ts), [publication policy](https://github.com/dinobot-labs/dinobot/blob/5071c150773140c8fc167e662004668ec90ba55c/src/core/skills/publication-policy.ts) | A measured comparison, a structural decision and permission to publish are distinct. Trusted fixtures, scoring, instrumentation and current baseline checks live outside the candidate. | Carry controlled-comparison principles into spikes and learning proposals. Defer automatic skill evolution, statistical promotion and deployment: a prose workflow cannot replace trusted runtime enforcement, and a trial does not authorize publication. |
 | [Tool search](https://github.com/dinobot-labs/dinobot/blob/5071c150773140c8fc167e662004668ec90ba55c/src/core/tool-search.ts) | Retrieve relevant capability descriptions instead of assuming a fixed tool surface. | Already covered by active-schema discovery and selective reference loading. Do not add a second router, tool index or claimed token saving. |
 
-Design remains in `paseo-design`. God continues to use that skill and record its
+Design remains in `ps-design`. God continues to use that skill and record its
 evidence rather than duplicating creative procedures here.
 
 ## What changed and what did not
@@ -72,7 +72,7 @@ the actual runner when versions differ and explicitly say to edit `- Status:`
 in RUN.md. The evaluator reviewed those clarifications without repeating
 unchanged checks and found no remaining material ambiguity for these requests.
 
-The real local `.agents/skills/paseo-god` was then updated through the
+The real local `.agents/skills/ps-god` was then updated through the
 single-skill installer with its default backup. All 10 installed files matched
 the final source, and the backup matched the previous eight-file installation.
 Digest comparison confirmed the other 29 installed agent skills and the Claude
@@ -145,7 +145,7 @@ synthetic controller does not prove real asynchronous worker cancellation,
 transport delivery, distributed race handling or enforced skill version pins.
 No general success-rate/cost claim or fresh provider-discovery check is made.
 
-After validation, the local `.agents/skills/paseo-god` was updated with the
+After validation, the local `.agents/skills/ps-god` was updated with the
 single-skill installer. All 11 files matched final source, and the default
 backup matched the previous 10-file tree. Digest comparison confirmed the
 other 29 agent skills and the existing Claude God installation were unchanged.

@@ -3,59 +3,71 @@ import { z } from "zod";
 
 export const SKILLS = [
   {
-    id: "paseo-agent-cleanup",
+    id: "ps",
+    summary: "Choose a local specialist skill and read its original instructions on demand.",
+  },
+  {
+    id: "ps-agent-cleanup",
     summary: "Preview and archive disposable Paseo agents and test workspaces.",
   },
   {
-    id: "paseo-browser",
+    id: "ps-browser",
     summary:
       "Reuse an Ego Lite task space or selected Chrome tab, and verify cleanup.",
   },
   {
-    id: "paseo-cua",
+    id: "ps-cua",
     summary: "Operate native desktop apps through the Cua Driver.",
   },
   {
-    id: "paseo-design",
+    id: "ps-design",
     summary:
       "Build and review interfaces, then verify them with screenshots and measured checks.",
   },
   {
-    id: "paseo-god",
+    id: "ps-god",
     summary:
-      "Explicit /paseo-god mode: carry a bounded task to verified completion.",
+      "Explicit /ps-god mode: carry a bounded task to verified completion.",
   },
   {
-    id: "paseo-multi",
+    id: "ps-multi",
     summary: "Operate several computers connected through Paseo in parallel.",
   },
   {
-    id: "paseo-orchestration",
+    id: "ps-orchestration",
     summary:
       "Coordinate multiple agents, tournaments, or debates on explicit request.",
   },
   {
-    id: "paseo-project",
+    id: "ps-plan",
+    summary: "Explicit /ps-plan requests: ground a plan in evidence and testable criteria.",
+  },
+  {
+    id: "ps-project",
     summary: "Summarize a repository or prepare its Paseo environment.",
   },
   {
-    id: "paseo-share",
+    id: "ps-share",
     summary: "Share files through a private Git repository with preview links.",
   },
   {
-    id: "paseo-research",
+    id: "ps-research",
     summary:
       "Answer how, why and compatibility questions from primary sources with a cited report.",
   },
   {
-    id: "paseo-spyware-check",
+    id: "ps-spyware-check",
     summary:
       "Statically inspect a repository for spyware and supply-chain risks.",
   },
   {
-    id: "paseo-toss",
+    id: "ps-toss",
     summary:
       "Plan, build and review Apps in Toss mini-apps with the official Harness workflows.",
+  },
+  {
+    id: "ps-write",
+    summary: "Explicit /ps-write requests: draft documents and verify sources and reader clarity.",
   },
 ] as const;
 

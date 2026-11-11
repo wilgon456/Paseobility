@@ -305,16 +305,16 @@ class CuaDriverRuntimeTests(unittest.TestCase):
     # --- installer selection + isolation ----------------------------------
 
     def test_custom_target_home_skips_runtime_by_default(self):
-        result = self.install("--skill", "paseo-cua")
+        result = self.install("--skill", "ps-cua")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("skipped for custom --target-home", result.stdout)
         self.assertEqual(self.reads(), "")
-        self.assertTrue((self.base / "home/.agents/skills/paseo-cua/SKILL.md").exists())
+        self.assertTrue((self.base / "home/.agents/skills/ps-cua/SKILL.md").exists())
         self.assertFalse((self.bin_dir / "cua-driver").exists())
         self.assertFalse((self.base / "home/.local/bin/cua-driver").exists())
 
     def test_unrelated_skill_does_not_request_runtime(self):
-        result = self.install("--skill", "paseo-share")
+        result = self.install("--skill", "ps-share")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("not requested", result.stdout)
         self.assertEqual(self.reads(), "")
@@ -324,28 +324,28 @@ class CuaDriverRuntimeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("skipped for custom --target-home", result.stdout)
         self.assertEqual(self.reads(), "")
-        self.assertTrue((self.base / "home/.agents/skills/paseo-cua/SKILL.md").exists())
+        self.assertTrue((self.base / "home/.agents/skills/ps-cua/SKILL.md").exists())
 
     def test_skip_cua_driver_flag(self):
-        result = self.install("--skill", "paseo-cua", "--skip-cua-driver")
+        result = self.install("--skill", "ps-cua", "--skip-cua-driver")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("--skip-cua-driver", result.stdout)
         self.assertEqual(self.reads(), "")
 
     def test_allow_host_runtime_installs_on_host_bin(self):
-        result = self.install("--skill", "paseo-cua", "--allow-host-runtime")
+        result = self.install("--skill", "ps-cua", "--allow-host-runtime")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue((self.bin_dir / "cua-driver").exists())
         self.assertFalse((self.base / "home/.local/bin/cua-driver").exists())
         self.assertEqual(len(self.reads().strip().splitlines()), 1)
 
     def test_allow_host_runtime_failure_is_nonzero_but_skills_remain(self):
-        result = self.install("--skill", "paseo-cua", "--allow-host-runtime",
+        result = self.install("--skill", "ps-cua", "--allow-host-runtime",
                               env=self.env(FAKE_EXIT=5))
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("runtime setup failed", result.stdout)
         self.assertIn("partial files possible", result.stdout)
-        self.assertTrue((self.base / "home/.agents/skills/paseo-cua/SKILL.md").exists())
+        self.assertTrue((self.base / "home/.agents/skills/ps-cua/SKILL.md").exists())
         self.assertFalse((self.bin_dir / "cua-driver").exists())
 
 

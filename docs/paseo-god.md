@@ -1,6 +1,6 @@
 # Paseo God v0
 
-`/paseo-god` is an explicitly selected workflow for finishing a bounded task
+`/ps-god` is an explicitly selected workflow for finishing a bounded task
 with observable criteria, proportionate checks and a resumable local record.
 It does not change the model, expand permissions or start background jobs.
 
@@ -18,11 +18,11 @@ rewritten rather than copied.
 Use the existing installer; no new installer or package build is needed.
 
 ```bash
-./scripts/paseobility-init.sh --skill paseo-god --no-context
+./scripts/paseobility-init.sh --skill ps-god --no-context
 ```
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-god
+.\scripts\paseobility-install.ps1 -Skill ps-god
 ```
 
 Add `--with-claude` / `-WithClaude` only when Claude installation is wanted.
@@ -31,8 +31,8 @@ does not install Cua Driver or restart Paseo. Start a new agent session or reloa
 integrations to refresh skill discovery.
 
 ```text
-/paseo-god Fix this bug, verify the original trigger, and save a resume point if blocked.
-/paseo-god 이 버그를 고치고 원래 증상으로 검증해줘. 막히면 재개 지점을 남겨줘.
+/ps-god Fix this bug, verify the original trigger, and save a resume point if blocked.
+/ps-god 이 버그를 고치고 원래 증상으로 검증해줘. 막히면 재개 지점을 남겨줘.
 ```
 
 Both the description and `agents/openai.yaml` restrict use to explicit requests.
@@ -134,7 +134,7 @@ material guidance change, apply current user/project rules and reconsider
 affected work. This is recorded provenance, not runtime version pinning. Older
 records without these fields still resume, with historical identity left unknown.
 The optional detailed procedure is
-[planning and handoff](../skills/paseo-god/references/planning-and-handoff.md).
+[planning and handoff](../skills/ps-god/references/planning-and-handoff.md).
 
 Follow-up validation: all 11 helper tests and both skill validators passed.
 Temporary install/reinstall matched the 11-file skill in both target layouts.
@@ -178,15 +178,15 @@ workflow, a distributed execution guarantee or general task success rates.
 
 ## Playbooks, debugging loop and two-axis review — 2026-10-28
 
-- [Playbooks](../skills/paseo-god/references/playbooks.md) give investigation,
+- [Playbooks](../skills/ps-god/references/playbooks.md) give investigation,
   bug fix, change and ship tasks a starting TODO. Ship covers PR, CI,
   independent verification before merge, deploy or release, a check on the
   real target, and cleanup; it stops before irreversible steps nobody asked for.
-- [Debugging](../skills/paseo-god/references/debugging.md) now starts by
+- [Debugging](../skills/ps-god/references/debugging.md) now starts by
   building one command that fails on the bug, on the surface where it appeared,
   with a ladder of ways to build it and a completion criterion. When two fixes
   share a failed premise, the premise is tested before a third fix.
-- [Review](../skills/paseo-god/references/review.md) pins a fixed point and
+- [Review](../skills/ps-god/references/review.md) pins a fixed point and
   checks the request and the repository's standards as separate axes, keeping
   only findings shown by a run or concrete trace.
 - `SKILL.md` adds a rule for explaining a measured number before acting on it.
@@ -198,7 +198,7 @@ grew by seven lines; the rest lives in references read only when needed.
 
 ## 한국어 요약
 
-`/paseo-god`를 명시 호출하면 완료 조건을 정하고 필요한 디버깅·리뷰·실험
+`/ps-god`를 명시 호출하면 완료 조건을 정하고 필요한 디버깅·리뷰·실험
 절차만 읽으며, 작업별 TODO·검증 근거·재개 지점을 남깁니다. Node 도우미는
 기록 생성·조회만 합니다. 작업마다 반복되는 고정 비용을 줄이기 위해 변경
 등급을 한 번 정해 필요한 검사만 기록하고, 필수 문서는 실행당 한 번 읽어 적용

@@ -1,6 +1,6 @@
 {
   "name": "Paseobility",
-  "version": "2.12.14",
+  "version": "3.0.1",
   "skillPath": "skills",
   "installTargets": {
     "paseo": {
@@ -13,17 +13,20 @@
     }
   },
   "skills": [
-    "paseo-agent-cleanup",
-    "paseo-browser",
-    "paseo-cua",
-    "paseo-design",
-    "paseo-god",
-    "paseo-multi",
-    "paseo-orchestration",
-    "paseo-project",
-    "paseo-research",
-    "paseo-share",
-    "paseo-spyware-check",
-    "paseo-toss"
+    "ps",
+    "ps-agent-cleanup",
+    "ps-browser",
+    "ps-cua",
+    "ps-design",
+    "ps-god",
+    "ps-multi",
+    "ps-orchestration",
+    "ps-plan",
+    "ps-project",
+    "ps-research",
+    "ps-share",
+    "ps-spyware-check",
+    "ps-toss",
+    "ps-write"
   ]
 }

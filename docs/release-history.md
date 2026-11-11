@@ -1,12 +1,12 @@
 # Release history
 
-## 2026-11-09 · Stop Windows Ego from opening Default apps on every check (v2.12.14)
+## 2026-11-11 · Stop Windows Ego from opening Default apps on every check (v3.0.1)
 
 On Windows, Ego Lite opens the system Default apps settings window within about
 a second of every separate launch. `--headless`, `--no-default-browser-check`,
 a pre-seeded `Local State` and a reused profile all failed to prevent it (Ego
 0.6.2.8), and the `SOFTWARE\Policies\Chromium` policy needs administrator
-rights. `paseo-design`'s `design-check` launched Ego first for every run, so an
+rights. `ps-design`'s `design-check` launched Ego first for every run, so an
 agent iterating on a page raised one settings window per check.
 
 `design-check` and the paseo-bot plugin browser tests no longer auto-select Ego
@@ -16,6 +16,42 @@ browser, the error names the reason and the one-time
 `npx playwright install chromium` fix. macOS order is unchanged. The Ego browser
 reference records the rule for future tooling, and tests pin both discovery
 orders. Interactive Ego work through the `ego-browser` CLI is unaffected.
+
+## 2026-11-11 · Korean revision rules for `ps-write`
+
+`ps-write` bundles `humanize-korean`'s `quick-rules.md` and `rewriting-playbook.md` under the upstream MIT license. It applies the rulebook during Korean revision and final review, with the playbook loaded for supplied Korean text or when a flagged pattern needs a clearer fix. [Pinned sources and license](../skills/ps-write/vendor/humanize-korean/SOURCES.md)
+
+## 2026-11-10 · Skills renamed from `paseo-<name>` to `ps-<name>` (v3.0.0)
+
+The package now also includes `ps`, an explicit on-demand catalog. `/ps <task>` lets the agent choose from a compact live list across local agent homes and read one original `SKILL.md`; `/ps list` shows the list. The dependency-free Node 20+ helper reports conflicts, compatibility warnings and frontmatter budgets without copying, installing, caching or logging scanned skills. The plugin registers `ps` as a bundled entry point; expanding its picker to all local skills is outside this release.
+
+Explicit-only `ps-plan` and `ps-write` bring the package to fifteen skills. Planning starts with primary sources and checks every acceptance criterion, phase and decision. Writing checks source traceability and whether a reader can act; its original Korean style reference loads only for Korean output. Both use the same intake, specialist lookup, evidence and handoff order. Research, design and God mode now check the local catalog once for at most one specialist, while retaining their existing verification. No additional runtime or dependency is required.
+
+All twelve skills have shorter names: `/paseo-god` is now `/ps-god`,
+`/paseo-design` is `/ps-design`, and so on. The new prefix also separates these
+skills from Paseo's own (`paseo-advisor`, `paseo-loop` and others), which keep
+their names. Only the skill names changed. Script file names
+(`paseo-share.js`), the private `paseo_share` repository, the commit identity
+used in it, and the `paseo-multi` registry, cache and terminal names stay as
+they were, so existing shares, host registries and running jobs keep working.
+
+Moving an existing installation:
+
+- **Installer:** add `--migrate-skills` (PowerShell: `-MigrateSkills`). Each
+  recognized old `paseo-<name>` directory moves to the backup folder after its
+  `ps-<name>` replacement is installed; local edits are preserved there.
+  Without the flag the old copy stays and the installer warns, because two
+  copies load both descriptions and both sets of instructions.
+- **Plugin update button:** an installation at v2.12.13 or earlier cannot use
+  the button to reach this release. Its updater accepts only names that start
+  with `paseo-`, so it stops with "Invalid skill name" and restores the previous
+  skills. Run the installer once instead; from v3.0.0 on, the button also moves
+  old copies to the backup.
+- **Your own settings:** update anything that names a skill, such as Paseo's
+  `appendSystemPrompt`, saved prompts, or another agent's disabled-skill list.
+
+The Windows installer change was not run locally (no PowerShell on the
+development Mac); the shell installer and the plugin updater have tests.
 
 ## 2026-11-06 · Repair plugin replacement during updates (v2.12.13)
 
@@ -190,7 +226,7 @@ When installed, Ego Lite is preferred for ordinary browser tasks. One user goal
 uses one TaskSpace and its existing `p1`, reused across rounds; successful work
 ends with `finish({ keep: [] })`. The installed runtime guide defines APIs,
 control handoff and error recovery. An explicitly selected Chrome keeps the
-existing-window adapter. [Ego workflow and verified scope](../skills/paseo-browser/references/ego.md).
+existing-window adapter. [Ego workflow and verified scope](../skills/ps-browser/references/ego.md).
 Released in v2.12.0; the v2.11.0 section below records the earlier Chrome default.
 
 Advanced page work and native-app handoff now have a shared workflow: semantic
@@ -325,7 +361,7 @@ Install only this skill:
 ```
 
 Then register trusted connections using the
-[connection guide](../skills/paseo-multi/references/connections.md). Installation
+[connection guide](../skills/ps-multi/references/connections.md). Installation
 itself does not import a host registry or operate/restart a PC. First-use prompt:
 
 ```text
@@ -463,7 +499,7 @@ diagnostics helper plus offline tests. It ships no Cua or Paseo binary change.
   doctor wrappers need Python 3, but diagnostics stay optional for installation.
 - **E2E assets and recovery reference.** `e2e/` holds a static browser fixture
   plus a foreground fixture server for a **manual** runbook (no automated report
-  validator). `skills/paseo-cua/references/recovery.md` documents bounded retry,
+  validator). `skills/ps-cua/references/recovery.md` documents bounded retry,
   the permission flow, and that `verify_state: unknown` is not a pass.
 
 See [Doctor and tests](../README.md#doctor-and-tests) and

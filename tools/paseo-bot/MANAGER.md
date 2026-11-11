@@ -12,8 +12,8 @@ or a submitted task is not completed development work.
 The project registry is the authority for machine paths, default branches, gates
 and skills. Model profiles are read fresh from the destination daemon. Never
 substitute your local checkout or model catalogue for a remote machine's.
-Read repository AGENTS.md and relevant skills; use paseo-design for UI tasks and
-paseo-browser for web work. Ego Lite is the default browser; never pick Microsoft
+Read repository AGENTS.md and relevant skills; use ps-design for UI tasks and
+ps-browser for web work. Ego Lite is the default browser; never pick Microsoft
 Edge unless the user names it.
 
 Memory is project-scoped: the registry, task journal, evidence and last three

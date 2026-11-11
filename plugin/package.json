@@ -1,7 +1,7 @@
 {
   "name": "paseobility-plugin",
   "private": true,
-  "version": "2.12.14",
+  "version": "3.0.1",
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",

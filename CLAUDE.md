@@ -1,31 +1,31 @@
 # Paseobility Claude Install Guide
 
 This repository is an AI-installable skill package. When the user gives this
-repository URL and asks to install `paseo-share`, share Paseo artifacts, enable
+repository URL and asks to install `ps-share`, share Paseo artifacts, enable
 cross-computer/mobile file viewing, install the requested skill instead of
 merely describing the repository.
 
 Read `AGENTS.md` for the complete safety and platform rules. For the common
-`paseo-share` request, use this fast path:
+`ps-share` request, use this fast path:
 
 1. Clone or use the provided checkout and confirm
-   `skills/paseo-share/SKILL.md` exists.
+   `skills/ps-share/SKILL.md` exists.
 2. Detect the operating system.
 3. Run the matching single-skill installer with Claude support:
 
    ```bash
-   ./scripts/paseobility-init.sh --skill paseo-share --with-claude --no-context
+   ./scripts/paseobility-init.sh --skill ps-share --with-claude --no-context
    ```
 
    ```powershell
-   .\scripts\paseobility-install.ps1 -Skill paseo-share -WithClaude
+   .\scripts\paseobility-install.ps1 -Skill ps-share -WithClaude
    ```
 
 4. Preserve the installer's backup path if it replaced an existing copy.
 5. Verify both installed copies contain `SKILL.md` and
    `scripts/paseo-share.js`:
-   - Paseo/Codex: `~/.agents/skills/paseo-share`
-   - Claude Code: `~/.claude/skills/paseo-share`
+   - Paseo/Codex: `~/.agents/skills/ps-share`
+   - Claude Code: `~/.claude/skills/ps-share`
    - On Windows, resolve both paths under `%USERPROFILE%`.
 6. If Node.js is available, run the installed `paseo-share.test.js` once.
 7. Do not restart the Paseo daemon. Tell the user to start a new agent session
@@ -44,24 +44,24 @@ unrelated, or incompletely inspected same-name repositories. Use explicit
 After installation, give the user this first-use prompt:
 
 ```text
-/paseo-share 이 파일을 공유해줘.
+/ps-share 이 파일을 공유해줘.
 GitHub 연결이 필요하면 먼저 알려주고, 연결되어 있으면 내 계정의
 private paseo_share 저장소를 안전하게 준비해서 사용해줘.
 ```
 
 ## Paseo Multi
 
-For `paseo-multi`, install only that skill with Claude support:
+For `ps-multi`, install only that skill with Claude support:
 
 ```bash
-./scripts/paseobility-init.sh --skill paseo-multi --with-claude --no-context
+./scripts/paseobility-init.sh --skill ps-multi --with-claude --no-context
 ```
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-multi -WithClaude
+.\scripts\paseobility-install.ps1 -Skill ps-multi -WithClaude
 ```
 
 Installation does not register PCs or operate them. Keep connection offers and
 keys in the user's private registry, following
-`skills/paseo-multi/references/connections.md`. Do not copy another user's host
+`skills/ps-multi/references/connections.md`. Do not copy another user's host
 registry into the repository or install package.

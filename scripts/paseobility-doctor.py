@@ -51,18 +51,21 @@ VERSION_PATTERN = re.compile(
 # trusted, so a compromised or edited manifest cannot smuggle new strings into
 # the shareable report.
 KNOWN_SKILLS = (
-    "paseo-agent-cleanup",
-    "paseo-browser",
-    "paseo-cua",
-    "paseo-multi",
-    "paseo-orchestration",
-    "paseo-project",
-    "paseo-design",
-    "paseo-god",
-    "paseo-share",
-    "paseo-research",
-    "paseo-spyware-check",
-    "paseo-toss",
+    "ps",
+    "ps-agent-cleanup",
+    "ps-browser",
+    "ps-cua",
+    "ps-multi",
+    "ps-orchestration",
+    "ps-plan",
+    "ps-project",
+    "ps-design",
+    "ps-god",
+    "ps-share",
+    "ps-research",
+    "ps-spyware-check",
+    "ps-toss",
+    "ps-write",
 )
 
 MCP_TIMEOUT_CAP = 30.0
@@ -574,7 +577,7 @@ def check_cua(driver, timeout):
                             "hint": "no cua-driver candidate found"},
             "daemon": {"status": "not_checked",
                        "hint": "no cua-driver candidate found"},
-            "hint": "cua-driver not found; install it for the paseo-cua skill",
+            "hint": "cua-driver not found; install it for the ps-cua skill",
         }
     version_code, version_output = run_command([driver, "--version"], timeout)
     version = extract_semver(version_output) if version_code == 0 else None

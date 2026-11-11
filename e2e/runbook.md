@@ -59,7 +59,7 @@ input/click path.
 
 If a screenshot fails (`screenshot_no_frame`, timeout) or a full-page image
 repeats edges, follow
-[`skills/paseo-browser/references/screenshots.md`](../skills/paseo-browser/references/screenshots.md):
+[`skills/ps-browser/references/screenshots.md`](../skills/ps-browser/references/screenshots.md):
 fix the host-window state, retry **once**, then stop and report.
 
 ## 3. Native layers (Cua)
@@ -84,7 +84,7 @@ fix the host-window state, retry **once**, then stop and report.
 
 Recovery for a native flow (identity/permission relaunch, bounded retry, exact
 target selection) is in
-[`skills/paseo-cua/references/recovery.md`](../skills/paseo-cua/references/recovery.md).
+[`skills/ps-cua/references/recovery.md`](../skills/ps-cua/references/recovery.md).
 
 ## 4. Record honestly
 
@@ -100,5 +100,5 @@ target selection) is in
 - Stop the fixture server (Ctrl+C).
 - Close tabs/apps created only for the run.
 - Archive only the test agents you created, using
-  `/paseo-agent-cleanup` with explicit IDs.
+  `/ps-agent-cleanup` with explicit IDs.
 - Leave unrelated agents, workspaces, and the Paseo daemon untouched.

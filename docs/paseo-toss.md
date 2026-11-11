@@ -1,6 +1,6 @@
 # Paseo Toss
 
-`paseo-toss` provides one discoverable skill for Apps in Toss mini-app work. It
+`ps-toss` provides one discoverable skill for Apps in Toss mini-app work. It
 adapts the eleven official Harness workflows: welcome, plan, new-miniapp, design,
 ux-writing, inject, server, debug, setup-debugger, test-on-device and launch.
 
@@ -16,13 +16,13 @@ relative resource layout are otherwise preserved.
 macOS/Linux:
 
 ```bash
-./scripts/paseobility-init.sh --skill paseo-toss --no-context
+./scripts/paseobility-init.sh --skill ps-toss --no-context
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\scripts\paseobility-install.ps1 -Skill paseo-toss
+.\scripts\paseobility-install.ps1 -Skill ps-toss
 ```
 
 These install only this skill into `~/.agents/skills`, backing up an existing
@@ -33,9 +33,9 @@ the daemon does not need a restart for skill discovery.
 Example prompts:
 
 ```text
-/paseo-toss 기획부터 토스 미니앱을 만들어줘
-/paseo-toss debug 브라우저에서 로그인 버튼이 동작하지 않아
-/paseo-toss launch 검수 전에 현재 프로젝트를 점검해줘
+/ps-toss 기획부터 토스 미니앱을 만들어줘
+/ps-toss debug 브라우저에서 로그인 버튼이 동작하지 않아
+/ps-toss launch 검수 전에 현재 프로젝트를 점검해줘
 ```
 
 ## Runtime boundaries
@@ -69,7 +69,7 @@ boundary explicit rather than assuming Claude MCP settings work in Codex/Paseo.
 
 The Windows failure before v2.11.0 was caused by Git converting pinned LF
 resources to CRLF. The repository's `.gitattributes` sets
-`skills/paseo-toss/upstream/** -text`, preserving exact bytes regardless of
+`skills/ps-toss/upstream/** -text`, preserving exact bytes regardless of
 `core.autocrlf` or `core.eol`. Integrity verification still compares the original
 SHA-256 values; it does not normalize data or accept changed hashes.
 
@@ -83,7 +83,7 @@ restoring the rule and refreshing the checkout.
 
 An existing Windows checkout can retain files already converted to CRLF after
 only `.gitattributes` changes. Before installing from such a checkout, run
-`python skills/paseo-toss/scripts/verify.py`. If it reports changed resources,
+`python skills/ps-toss/scripts/verify.py`. If it reports changed resources,
 preserve local edits and use a fresh checkout or the published release ZIP;
 verify that clean source before reinstalling with the normal backup-enabled
 installer. Do not regenerate `SOURCE.json` hashes to accommodate converted files.
