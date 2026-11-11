@@ -190,12 +190,19 @@ class Browser {
       this.pending.clear();
     };
     this.closed = new Promise((res) => this.proc.once('close', res));
+    // Do not write to the CDP pipe until spawn succeeds or reports its own error.
+    // Otherwise EPIPE can race and hide an actionable EACCES/ENOENT failure.
+    this.ready = new Promise((res) => {
+      this.proc.once('spawn', res);
+      this.proc.once('error', res);
+    });
     this.proc.on('error', fail);
     this.out.on('error', fail);
     this.in.on('error', fail);
     this.proc.on('exit', () => fail(new Error('browser exited: ' + this.err.split('\n').slice(-3).join(' '))));
   }
-  send(method, params = {}, sessionId, timeout = 30000) {
+  async send(method, params = {}, sessionId, timeout = 30000) {
+    await this.ready;
     if (this.failure) return Promise.reject(this.failure);
     const id = ++this.seq; const msg = { id, method, params }; if (sessionId) msg.sessionId = sessionId;
     return new Promise((res, rej) => {

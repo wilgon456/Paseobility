@@ -66,17 +66,22 @@ test('a browser spawn failure is a tool error and removes its temporary profile'
 }, () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'design-check-spawn-test-'));
   try {
-    const binary = path.join(dir, 'non-executable-browser');
-    fs.writeFileSync(binary, '', { mode: 0o600 });
     const script = fileURLToPath(new URL('./design-check.mjs', import.meta.url));
-    const result = spawnSync(process.execPath, [script, 'about:blank', '--widths', '375', '--no-sheet'], {
-      encoding: 'utf8', timeout: 10000,
-      env: { ...process.env, DESIGN_CHECK_BROWSER: binary, TMPDIR: dir },
-    });
-    assert.equal(result.status, 2, result.stderr);
-    assert.match(result.stdout + result.stderr, /EACCES/);
-    assert.ok(!result.stderr.includes("Unhandled 'error' event"), result.stderr);
-    assert.deepEqual(fs.readdirSync(dir).filter(name => name.startsWith('design-check-profile-')), []);
+    for (const [name, content, mode, expected] of [
+      ['non-executable-browser', '', 0o600, /EACCES/],
+      ['missing-interpreter-browser', '#!/nonexistent-design-check-interpreter\n', 0o700, /ENOENT/],
+    ]) {
+      const binary = path.join(dir, name);
+      fs.writeFileSync(binary, content, { mode });
+      const result = spawnSync(process.execPath, [script, 'about:blank', '--widths', '375', '--no-sheet'], {
+        encoding: 'utf8', timeout: 10000,
+        env: { ...process.env, DESIGN_CHECK_BROWSER: binary, TMPDIR: dir },
+      });
+      assert.equal(result.status, 2, result.stderr);
+      assert.match(result.stdout + result.stderr, expected);
+      assert.ok(!result.stderr.includes("Unhandled 'error' event"), result.stderr);
+      assert.deepEqual(fs.readdirSync(dir).filter(name => name.startsWith('design-check-profile-')), []);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

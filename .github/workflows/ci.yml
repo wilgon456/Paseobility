@@ -127,6 +127,9 @@ jobs:
       - name: Scanner classification suite
         run: python skills/ps-spyware-check/scripts/spyware-check.test.py
 
+      - name: Design browser discovery and spawn failure contracts
+        run: node --test skills/ps-design/scripts/design-check-runtime.test.mjs
+
       - name: design-check selftest (headless Chrome)
         env:
           DESIGN_CHECK_REQUIRE_BROWSER: "1"
@@ -254,6 +257,9 @@ jobs:
 
       - name: Scanner suite (cross-platform)
         run: python skills/ps-spyware-check/scripts/spyware-check.test.py
+
+      - name: Design browser discovery and spawn failure contracts
+        run: node --test skills/ps-design/scripts/design-check-runtime.test.mjs
 
       - name: design-check selftest (headless Chrome)
         env:
