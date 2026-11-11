@@ -170,3 +170,27 @@ existing dependencies are already available and rerun `npm test --prefix plugin`
 To assess live harness behavior, separately authorize a new-session exercise with
 synthetic source material. No further repository implementation remains for this
 brief's scoped changes.
+
+## 2026-11-11 · Pinned Korean revision references for `ps-write`
+
+`ps-write` reads the local Korean style guide before drafting. During revision
+it reads `quick-rules.md` and applies the rulebook's self-check to the final
+draft. It reads `rewriting-playbook.md` for supplied Korean text or when a
+flagged pattern needs a clearer fix. Both references and the MIT license match
+the bytes from upstream commit `b37e0206d31fffd9149bf57168d4d62eb2086bee`.
+The local guide defines which upstream pipeline instructions to skip.
+[Sources and license](../skills/ps-write/vendor/humanize-korean/SOURCES.md)
+
+| Check | Result |
+| --- | --- |
+| `python3 scripts/validate-skills.py` | PASS. All 15 skills validated, including the required Korean reference files and their local links. |
+| `python3 -m unittest discover -s tests -p "test_*.py"` | PASS. 431 tests, 14 skipped. The suite checks pinned hashes, missing references, license and provenance, broken links, and Bash installation into a temporary home. |
+| `node skills/ps/scripts/skill-catalog.test.js` | PASS. 20 passed, 0 failed, 0 skipped. |
+| `shasum -a 256` and `cmp` | PASS. Both references and the MIT license match the downloaded upstream files. |
+| Entrypoint size | 99 lines, 38 description words. |
+
+The Bash installer copied all four vendor files byte-for-byte. The PowerShell
+installer's recursive copy was confirmed by reading its source. Its copy test
+was skipped because PowerShell was unavailable. Live Korean revision in a fresh
+agent session remains unverified. This update changes neither the package
+version nor the plugin.

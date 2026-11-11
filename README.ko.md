@@ -153,7 +153,7 @@ https://github.com/wilgon456/Paseobility
 | --- | --- | --- |
 | `/ps` | 필요할 때 읽는 로컬 스킬 목록 | `/ps <작업>`으로 맞는 전문 스킬 선택, `/ps list`로 목록 확인. 여러 에이전트 홈의 원본을 복사·설치 없이 읽기 |
 | `/ps-plan` | 명시 호출 기획·계획 | 현황 등급, 대안, 검증 가능한 수용 기준과 단계, 위험 대응을 담은 Markdown 계획서 한 개 |
-| `/ps-write` | 명시 호출 문서 작성 | 출처 대조, 처음 읽는 독자 기준 점검, 한국어 출력에만 읽는 문체 지침 |
+| `/ps-write` | 명시 호출 문서 작성 | 출처 대조와 처음 읽는 독자 기준 점검. 한국어 초안은 고정 커밋의 `humanize-korean` 규칙집으로 윤문합니다. |
 | `/ps-toss` | 토스 미니앱 개발 | 기획, 구성, 브라우저 디버깅, 휴대폰 테스트와 출시 전 점검. 업로드에는 콘솔 인증이 필요합니다 |
 | `/ps-god` | 명시 호출 실행·검증·재개 | 완료 조건, 디버깅·리뷰·실험, 작업별 기록과 학습 후보 제안 |
 | `/ps-browser` | 브라우저 작업 | 설치된 Ego Lite의 TaskSpace 하나 또는 지정한 기존 Chrome 탭을 재사용하고, 사용자 탭 보존과 완료 정리를 확인 |
@@ -870,7 +870,7 @@ skills/
 ├── ps-share/              # SKILL.md + CLI helper/tests
 ├── ps-spyware-check/      # SKILL.md + scanners/tests
 ├── ps-toss/               # SKILL.md + pinned upstream Harness
-└── ps-write/              # SKILL.md + explicit-only policy, Korean style reference
+└── ps-write/              # SKILL.md, 명시 호출 설정, 한국어 문체 지침과 동봉 규칙집
 scripts/                     # installers, doctor (.sh/.ps1/.py), context helper, cua-driver helper
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template + validator
@@ -890,6 +890,9 @@ paseobility.json
 ## 라이선스
 
 [MIT License](./LICENSE).
+
+- `ps-design`에 동봉한 외부 가이드와 데이터의 라이선스는 [디자인 자료 출처](skills/ps-design/vendor/SOURCES.md)에 기록했습니다.
+- `ps-write`에 동봉한 `humanize-korean` 참조 문서 두 편은 원본의 [MIT 라이선스](skills/ps-write/vendor/humanize-korean/LICENSE)를 따릅니다. [윤문 자료 출처](skills/ps-write/vendor/humanize-korean/SOURCES.md)
 
 ---
 

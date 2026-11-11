@@ -9,6 +9,29 @@ import yaml
 
 
 MAX_DESCRIPTION_WORDS = 80
+KOREAN_VENDOR = Path('vendor/humanize-korean')
+KOREAN_VENDOR_FILES = ('quick-rules.md', 'rewriting-playbook.md', 'LICENSE', 'SOURCES.md')
+
+
+def validate_ps_write(skill):
+    errors = []
+    for filename in KOREAN_VENDOR_FILES:
+        path = KOREAN_VENDOR / filename
+        if not (skill / path).is_file():
+            errors.append(f'ps-write: required file missing: {path.as_posix()}')
+
+    for filename in ('SKILL.md', 'references/korean-style.md'):
+        source = skill / filename
+        if not source.is_file():
+            errors.append(f'ps-write: required file missing: {filename}')
+            continue
+        text = source.read_text(encoding='utf-8')
+        for target in dict.fromkeys(re.findall(r'\]\(([^)\s]+)\)', text)):
+            if re.match(r'^(?:[\w+.-]+:|//|#)', target):
+                continue
+            if not (source.parent / target.split('#', 1)[0]).is_file():
+                errors.append(f'ps-write: broken link in {filename}: {target}')
+    return errors
 
 
 def validate(root):
@@ -51,6 +74,8 @@ def validate(root):
                 errors.append(f"{name}: description has {len(data['description'].split())} words (max {MAX_DESCRIPTION_WORDS})")
             if not text[match.end():].strip():
                 errors.append(name + ': instructions missing')
+            if name == 'ps-write':
+                errors.extend(validate_ps_write(root / 'skills' / name))
     except (OSError, ValueError, KeyError) as error:
         errors.append(type(error).__name__ + ': catalog cannot be validated')
     return errors

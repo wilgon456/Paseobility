@@ -34,6 +34,15 @@ SYMLINK_UNSUPPORTED_ERRNOS = {
 SYMLINK_UNSUPPORTED_WINERRORS = {5, 1314}
 
 
+def assert_ps_write_vendor(test, home):
+    relative = Path("ps-write/vendor/humanize-korean")
+    source = ROOT / "skills" / relative
+    installed = home / ".agents/skills" / relative
+    for filename in ("LICENSE", "SOURCES.md", "quick-rules.md", "rewriting-playbook.md"):
+        with test.subTest(filename=filename):
+            test.assertEqual((installed / filename).read_bytes(), (source / filename).read_bytes())
+
+
 @unittest.skipIf(os.name == "nt",
                  "bash-only: exercises POSIX shell and symlink semantics")
 class SkillMigrationTests(unittest.TestCase):
@@ -92,6 +101,10 @@ class SkillMigrationTests(unittest.TestCase):
         self.assertEqual(old.read_text(), "---\nname: paseo-\n---\nkeep")
         self.assertFalse((self.home / ".paseobility").exists())
         self.assertFalse((self.home / ".cua-driver").exists())
+
+    def test_ps_write_install_copies_vendored_references(self):
+        self.assert_success(self.install("--skill", "ps-write"))
+        assert_ps_write_vendor(self, self.home)
 
     def test_single_skill_migrates_only_its_predecessors(self):
         self.seed()
@@ -251,6 +264,11 @@ class PowerShellSelectionTests(unittest.TestCase):
         self.assertTrue((self.home / ".agents/skills/ps/scripts/skill-catalog.js").is_file())
         self.assertFalse((self.home / ".paseobility").exists())
         self.assertFalse((self.home / ".cua-driver").exists())
+
+    def test_ps_write_install_copies_vendored_references(self):
+        result = self.install("ps-write")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        assert_ps_write_vendor(self, self.home)
 
     def test_duplicate_selection_preserves_backup_under_literal_home_path(self):
         skill = self.home / ".agents/skills/ps-project/SKILL.md"
