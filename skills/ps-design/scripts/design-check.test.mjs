@@ -15,7 +15,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIX = path.join(HERE, 'fixtures');
 const browser = findBrowser();
 if (!browser) {
-  const msg = 'design-check selftest: no Chromium-family browser found (Ego Lite, Chrome, Chromium or a Playwright download)';
+  const msg = 'design-check selftest: no Chromium-family browser found (Chrome, Chromium, a Playwright download, or Ego Lite on macOS)';
   if (process.env.DESIGN_CHECK_REQUIRE_BROWSER) { console.error(msg); process.exit(1); }
   console.log('SKIP ' + msg + ' — set DESIGN_CHECK_REQUIRE_BROWSER=1 to make this fatal');
   process.exit(0);

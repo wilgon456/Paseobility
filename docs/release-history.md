@@ -1,5 +1,22 @@
 # Release history
 
+## 2026-11-11 · Stop Windows Ego from opening Default apps on every check (v3.0.1)
+
+On Windows, Ego Lite opens the system Default apps settings window within about
+a second of every separate launch. `--headless`, `--no-default-browser-check`,
+a pre-seeded `Local State` and a reused profile all failed to prevent it (Ego
+0.6.2.8), and the `SOFTWARE\Policies\Chromium` policy needs administrator
+rights. `ps-design`'s `design-check` launched Ego first for every run, so an
+agent iterating on a page raised one settings window per check.
+
+`design-check` and the paseo-bot plugin browser tests no longer auto-select Ego
+on Windows; Chrome or an installed Playwright Chromium is used instead, and an
+explicit `DESIGN_CHECK_BROWSER` or `CHROME_PATH` still wins. When Ego is the only
+browser, the error names the reason and the one-time
+`npx playwright install chromium` fix. macOS order is unchanged. The Ego browser
+reference records the rule for future tooling, and tests pin both discovery
+orders. Interactive Ego work through the `ego-browser` CLI is unaffected.
+
 ## 2026-11-11 · Korean revision rules for `ps-write`
 
 `ps-write` bundles `humanize-korean`'s `quick-rules.md` and `rewriting-playbook.md` under the upstream MIT license. It applies the rulebook during Korean revision and final review, with the playbook loaded for supplied Korean text or when a flagged pattern needs a clearer fix. [Pinned sources and license](../skills/ps-write/vendor/humanize-korean/SOURCES.md)

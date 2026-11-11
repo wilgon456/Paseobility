@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // design-check: render pages at phone/tablet/desktop widths in a headless
-// Chromium (Ego Lite preferred, then Chrome/Chromium or a Playwright download), measure layout
+// Chromium (Ego Lite preferred on macOS; Chrome, Chromium or a Playwright download; Ego is never
+// auto-selected on Windows, see findBrowser), measure layout
 // and typography in the page, save clean + marked screenshots and a report.
 // Zero npm dependencies: talks to the browser over --remote-debugging-pipe.
 //
@@ -116,6 +117,21 @@ function globChromium(root, sub) {
       .flatMap((d) => sub.map((s) => path.join(root, d, s))).filter(exists);
   } catch { return []; }
 }
+// Windows Ego Lite opens the system "Default apps" settings window within a second of every
+// separate launch, even with --headless and --no-default-browser-check and whether the profile is
+// new or reused (measured on Ego 0.6.2.8). design-check launches a browser on every run, so an
+// agent iterating on a page raised one settings window per run. Ego is therefore never
+// auto-selected on Windows; an explicit DESIGN_CHECK_BROWSER (or CHROME_PATH) still wins.
+export function windowsEgoPaths() {
+  const pf = process.env.PROGRAMFILES || 'C:\\Program Files';
+  const la = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return [path.join(pf, 'Citro Labs/ego lite/Application/ego.exe'), path.join(la, 'Citro Labs/ego lite/Application/ego.exe')];
+}
+export function noBrowserMessage() {
+  if (process.platform === 'win32' && windowsEgoPaths().some(exists))
+    return 'no Chromium-family browser found. Ego Lite is installed but is not used on Windows: every launch opens the Default apps settings window. Run `npx playwright install chromium` once, install Chrome, or set DESIGN_CHECK_BROWSER=<path to chrome>.';
+  return 'no Chromium-family browser found. Install Chrome (or Ego Lite on macOS), run `npx playwright install chromium`, or set DESIGN_CHECK_BROWSER=<path to chrome>.';
+}
 export function findBrowser() {
   const env = process.env.DESIGN_CHECK_BROWSER || process.env.CHROME_PATH;
   if (env) return exists(env) ? env : null;
@@ -125,8 +141,7 @@ export function findBrowser() {
     const pf = process.env.PROGRAMFILES || 'C:\\Program Files';
     const pfx = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
     const la = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    // Ego Lite is the Paseobility browser; its Chromium runs headless with a throwaway profile.
-    c.push(path.join(pf, 'Citro Labs/ego lite/Application/ego.exe'), path.join(la, 'Citro Labs/ego lite/Application/ego.exe'));
+    // No Ego here: see windowsEgoPaths().
     c.push(path.join(pf, 'Google/Chrome/Application/chrome.exe'), path.join(pfx, 'Google/Chrome/Application/chrome.exe'), path.join(la, 'Google/Chrome/Application/chrome.exe'));
     c.push(...globChromium(path.join(la, 'ms-playwright'), ['chrome-win64/chrome.exe', 'chrome-win/chrome.exe']));
   } else if (process.platform === 'darwin') {
@@ -433,7 +448,7 @@ export async function run(args, opts = {}) {
   if (!Number.isFinite(cfg.timeout) || cfg.timeout <= 0) throw new Error('invalid --timeout: use positive seconds');
   if (!Number.isFinite(cfg.wait) || cfg.wait < 0) throw new Error('invalid --wait: use milliseconds >= 0');
   const exe = findBrowser();
-  if (!exe) { const e = new Error('no Chromium-family browser found. Install Ego Lite (or Chrome) or set DESIGN_CHECK_BROWSER=<path to chrome>.'); e.code = 'NO_BROWSER'; throw e; }
+  if (!exe) { const e = new Error(noBrowserMessage()); e.code = 'NO_BROWSER'; throw e; }
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
   const b = new Browser(exe);
   const results = [];
