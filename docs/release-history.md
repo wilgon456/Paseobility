@@ -1,5 +1,9 @@
 # Release history
 
+## 2026-11-11 · Korean revision rules for `ps-write`
+
+`ps-write` bundles `humanize-korean`'s `quick-rules.md` and `rewriting-playbook.md` under the upstream MIT license. It applies the rulebook during Korean revision and final review, with the playbook loaded for supplied Korean text or when a flagged pattern needs a clearer fix. [Pinned sources and license](../skills/ps-write/vendor/humanize-korean/SOURCES.md)
+
 ## 2026-11-10 · Skills renamed from `paseo-<name>` to `ps-<name>` (v3.0.0)
 
 The package now also includes `ps`, an explicit on-demand catalog. `/ps <task>` lets the agent choose from a compact live list across local agent homes and read one original `SKILL.md`; `/ps list` shows the list. The dependency-free Node 20+ helper reports conflicts, compatibility warnings and frontmatter budgets without copying, installing, caching or logging scanned skills. The plugin registers `ps` as a bundled entry point; expanding its picker to all local skills is outside this release.

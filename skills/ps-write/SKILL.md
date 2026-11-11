@@ -59,6 +59,10 @@ Retain source traceability with citations or a short source note; when inline
 citations would hinder an email or announcement, keep the map in review notes.
 Do not silently turn an unverified claim into an assertion during revision.
 
+Once a Korean draft exists, follow the revision steps in
+[references/korean-style.md](references/korean-style.md). When the user supplies
+Korean text to revise, use that text as the draft for this step.
+
 Honor the requested output path and format. Without a requested path, use an
 authorized existing notes folder or the system temporary folder (`$TMPDIR` or
 `/tmp` on macOS and Linux, `$env:TEMP` on Windows). Do not add repository files
@@ -79,8 +83,9 @@ Run these checks on the actual final draft and revise what they reveal:
   prose where appropriate; record any deliberate exception and its reason.
 - **Length:** check the requested limit. Otherwise justify the length by what
   the reader needs to act, and cut passages that add no usable information.
-- **Language and format:** apply the Korean checklist only for Korean output;
-  use the chosen specialist's rendering checks for a formatted artifact.
+- **Language and format:** for Korean output, run the Korean style and rulebook
+  self-checks on the final draft. Record unresolved items in the `ps-write`
+  report. Use the chosen specialist's rendering checks for a formatted artifact.
 
 Keep brief review evidence beside the artifact or in the reply, as appropriate
 to its format. A missing check stays **unverified**, not done. Do not equate

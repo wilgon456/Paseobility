@@ -154,7 +154,7 @@ When you explicitly request these tasks, you can use the following capabilities:
 | --- | --- | --- |
 | `/ps` | On-demand local skill catalog | `/ps <task>` chooses one fitting specialist; `/ps list` shows skills across agent homes. Reads originals without copying or installing |
 | `/ps-plan` | Explicit planning harness | One Markdown plan: graded current state, options, testable criteria, independently verifiable phases and risks |
-| `/ps-write` | Explicit writing harness | Reader-facing documents with source tracing, cold-reader checks and conditional Korean style guidance |
+| `/ps-write` | Explicit writing harness | Reader-facing documents with source tracing and cold-reader checks. Korean drafts are revised using a pinned `humanize-korean` rulebook. |
 | `/ps-toss` | Apps in Toss mini-app workflow | Planning, scaffolding, browser debugging, phone testing and pre-launch review; authenticated console tools required for uploads |
 | `/ps-god` | Explicit task execution and resumption | Bounded work, acceptance evidence, debugging/review/spike and learning proposals |
 | `/ps-multi` | Operate selected Paseo computers | Named hosts or `all` (every registered host, in parallel), remote status/agents, inline or file Bash/PowerShell commands (`exec --command`, `--wait` up to 300 s), verified updates, `restart --force` only when you asked for an immediate restart, merging `import-saved` |
@@ -864,7 +864,7 @@ skills/
 ├── ps-share/              # SKILL.md + CLI helper/tests
 ├── ps-spyware-check/      # SKILL.md + scanners/tests
 ├── ps-toss/               # SKILL.md + pinned upstream Harness
-└── ps-write/              # SKILL.md + explicit-only policy, Korean style reference
+└── ps-write/              # SKILL.md + explicit-only policy, Korean style reference and vendored rules
 scripts/                     # installers, doctor (.sh/.ps1/.py), context, cua-driver helpers
 tests/                       # test_doctor.py, test_e2e_assets.py, test_cua_driver_runtime.py/.ps1, test_skill_migration.py
 e2e/                         # browser fixture, fixture server, runbook, report template
@@ -884,6 +884,9 @@ paseobility.json
 ## License
 
 [MIT License](./LICENSE).
+
+- `ps-design` bundles third-party guides and data under the licenses recorded in [design sources](skills/ps-design/vendor/SOURCES.md).
+- `ps-write` bundles two `humanize-korean` references under the upstream [MIT license](skills/ps-write/vendor/humanize-korean/LICENSE). [Writing sources](skills/ps-write/vendor/humanize-korean/SOURCES.md)
 
 ---
 
