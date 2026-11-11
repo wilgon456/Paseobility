@@ -6,6 +6,11 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const bridge=fileURLToPath(new URL('./bridge.mjs',import.meta.url));
+// The bridge waits on purpose: `stop` polls an agent that never settles for 4.8 s
+// (24 sleeps of 200 ms) before it reports the last status it saw. A 5 s limit left
+// about 0.1 s for Node to start, so slow runners killed the child and the test read
+// empty output. The real caller (paseo_bot.py) allows 65 s; stay well clear here too.
+const BRIDGE_TIMEOUT_MS=30000;
 function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=false,errorText='',agentStatus='idle',sibling=false,timeline=null,permissions=[]}={}) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'bot-bridge-test-'));
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
@@ -40,7 +45,8 @@ function fixture(t,{wrongIdentity=false,features=false,noMode=false,warming=fals
  }};`);
  fs.writeFileSync(path.join(dir,'index.js'),`import fs from 'node:fs';fs.writeFileSync(process.env.ARGV_FILE,JSON.stringify({argv:process.argv.slice(2),host:process.env.PASEO_HOST,home:process.env.PASEO_HOME,caller:process.env.PASEO_AGENT_ID,workspace:process.env.PASEO_WORKSPACE_ID}));console.log(JSON.stringify({agentId:'owned',cwd:'/worktree'}));`);
  return {dir,call(req){
-  const r=spawnSync(process.execPath,[bridge],{input:JSON.stringify({host:{endpoint:'tcp://fixture.invalid:1234?password=DO_NOT_PRINT_SECRET',serverId:'srv-fixture'},...req}),env:{...process.env,PASEO_MULTI_HOST_CLIENT_MODULE:module,PASEO_HOME:'conflicting-home',PASEO_AGENT_ID:'parent',PASEO_WORKSPACE_ID:'parent-workspace',ARGV_FILE:path.join(dir,'argv.json'),PERMIT_FILE:path.join(dir,'permit.json')},encoding:'utf8',timeout:5000});
+  const r=spawnSync(process.execPath,[bridge],{input:JSON.stringify({host:{endpoint:'tcp://fixture.invalid:1234?password=DO_NOT_PRINT_SECRET',serverId:'srv-fixture'},...req}),env:{...process.env,PASEO_MULTI_HOST_CLIENT_MODULE:module,PASEO_HOME:'conflicting-home',PASEO_AGENT_ID:'parent',PASEO_WORKSPACE_ID:'parent-workspace',ARGV_FILE:path.join(dir,'argv.json'),PERMIT_FILE:path.join(dir,'permit.json')},encoding:'utf8',timeout:BRIDGE_TIMEOUT_MS});
+  assert.equal(r.error,undefined,`bridge did not finish within ${BRIDGE_TIMEOUT_MS} ms or failed to start: ${r.error?.message}`);
   assert.ok(!r.stdout.includes('DO_NOT_PRINT_SECRET'));
   return JSON.parse(r.stdout);
  }};
