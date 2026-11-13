@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        paseo: ["0.13.2", "0.14.0", "0.15.2", "0.16.0-beta.1"]
+        paseo: ["0.13.2", "0.14.0", "0.15.2", "0.16.0-beta.1", "0.16.0-beta.2"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
