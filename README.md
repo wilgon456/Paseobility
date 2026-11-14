@@ -18,7 +18,7 @@ Fifteen reusable skills for projects, browsers, artifacts and computers connecte
 
 ---
 
-A first resident **Paseo bot** manager is available under `tools/paseo-bot`: project registry across connected machines, durable task intake, worktree dispatch and independent review. See [Paseo bot v1](docs/paseo-bot.md).
+The resident Paseo bot and its console are maintained as a separate project. Paseobility contains the skill pack and skill-picker plugin; see the [separation notice](docs/paseo-bot.md) for historical bot documentation.
 
 ## At a glance
 

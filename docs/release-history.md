@@ -1,5 +1,13 @@
 # Release history
 
+## Unreleased · Separate the resident Paseo bot
+
+The resident bot, Discord gateway, optional console and their tests/docs are
+maintained in a separate private project. Public CI now checks the skill pack
+and skill-picker plugin independently. Existing runtime deployments and private
+state are unchanged; the multi-host adapter retains its resident-bot protection.
+Historical bot documentation links remain as separation notices.
+
 ## 2026-11-11 · Stop Windows Ego from opening Default apps on every check (v3.0.1)
 
 On Windows, Ego Lite opens the system Default apps settings window within about
