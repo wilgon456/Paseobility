@@ -22,7 +22,7 @@ A first resident **Paseo bot** manager is available under `tools/paseo-bot`: pro
 
 ## At a glance
 
-**Current package: v3.0.1.** Existing skills are now named `ps-<name>` instead of `paseo-<name>`, with `ps` added as the catalog and explicit `ps-plan`/`ps-write` harnesses; [release history](docs/release-history.md) explains how to move an existing installation. The plugin supports Paseo 0.12.x–0.15.x and the checked 0.16.0-beta.1 prerelease, fixing the rejection of 0.14+ in v2.12.11. The [0.15.2 check](docs/compatibility-0.15.2.md) records the reproduction, compiler/SDK matrix, live RPC and adapter results, and remaining UI limits. `/ps-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all fifteen skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
+**Current package: v3.0.1.** Existing skills are now named `ps-<name>` instead of `paseo-<name>`, with `ps` added as the catalog and explicit `ps-plan`/`ps-write` harnesses; [release history](docs/release-history.md) explains how to move an existing installation. The plugin supports Paseo 0.12.x–0.15.x and the checked 0.16.0-beta.1 and beta.2 prereleases, fixing the rejection of 0.14+ in v2.12.11. The [0.15.2 check](docs/compatibility-0.15.2.md) records the reproduction, compiler/SDK matrix, live RPC and adapter results, and remaining UI limits. `/ps-multi` was exercised with Paseo 0.11.2 on the listed Mac/Windows combinations. The existing package compatibility baseline is 0.10.2; this is not a claim that all fifteen skills were verified on 0.11.2. The 0.12.0 report is a static source/CLI check. The 0.13.0 report adds live runs of the plugin install and the cleanup/multi adapters against throwaway 0.12.0 and 0.13.0 daemons, not a package-wide runtime certification. [Multi validation](docs/paseo-multi-validation.md) · [Package baseline](docs/compatibility-0.10.2.md) · [0.12.0 static check](docs/compatibility-0.12.0.md) · [0.13.0 check](docs/compatibility-0.13.0.md).
 
 > **Upgrading from v2.x — every installation needs this once.** The update
 > button in a v2 plugin cannot install v3.0.0: it stops with "Invalid skill
@@ -169,6 +169,8 @@ When you explicitly request these tasks, you can use the following capabilities:
 | `/ps-agent-cleanup` | Inactive agent/workspace cleanup | Preview by default, preserve ordinary idle, archive named or test-marked candidates directly, protect active agents, archive workspaces only with `--yes` |
 
 ---
+
+New stable and beta releases are checked hourly; successful compatibility probes produce a support-update PR. See [release compatibility automation](docs/paseo-release-automation.md).
 
 ## Install
 
