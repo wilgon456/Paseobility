@@ -4,3 +4,6 @@ __pycache__
 .DS_Store
 .paseobility/
 .omo/
+
+# Preserve local leftovers from the separated bot without including them in this package.
+tools/paseo-bot/
