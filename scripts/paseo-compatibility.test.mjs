@@ -4,7 +4,7 @@ import {mkdtemp, mkdir, writeFile, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {ROOT, CHECKS, version, validatePolicy, rangeFor, withVersions, plan, readState, applyVersions, provenVersions} from './paseo-compatibility.mjs';
+import {ROOT, CHECKS, version, validatePolicy, rangeFor, matrixVersions, withVersions, plan, readState, applyVersions, provenVersions} from './paseo-compatibility.mjs';
 
 const fixturePolicy = () => ({schemaVersion: 1, baseRange: '>=0.12.0 <0.16.0', remoteBaseline: '0.15.4', verifiedVersions: ['0.15.4', '0.16.0-beta.1', '0.16.0-beta.2']});
 const sourceSha = 'a'.repeat(40);
@@ -26,6 +26,14 @@ test('discovery skips verified releases and force rechecks both current channels
 test('new stable, patch and beta releases all require an explicit proof', () => {
   assert.deepEqual(plan(fixturePolicy(), {latest: '0.15.5', beta: '0.16.0-beta.3'}).versions, ['0.15.5', '0.16.0-beta.3']);
   assert.deepEqual(plan(fixturePolicy(), {latest: '0.16.0', beta: '0.16.0'}).versions, ['0.16.0']);
+});
+
+test('the recurring CI matrix stays bounded while retaining old API anchors and the newest releases', () => {
+  const policy = {...fixturePolicy(), verifiedVersions: ['0.13.2', '0.14.0', '0.15.2', '0.15.4', ...Array.from({length: 40}, (_, n) => `0.16.0-beta.${n + 1}`)]};
+  const matrix = matrixVersions(policy);
+  assert.equal(matrix.length, 12);
+  for (const v of ['0.13.2', '0.14.0', '0.15.2', '0.15.4', '0.16.0-beta.40']) assert(matrix.includes(v));
+  assert(!matrix.includes('0.16.0-beta.1'));
 });
 
 test('discovery rejects malformed versions, shell text and a prerelease on latest', () => {

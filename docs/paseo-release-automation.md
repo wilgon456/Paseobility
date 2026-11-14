@@ -10,7 +10,9 @@ changes this automation.
 
 `config/paseo-compatibility.json` is the source of truth for verified versions,
 the bounded legacy range and the older remote-daemon baseline. Normal CI reads
-its compiler/SDK matrix from this file. The plugin regression suite verifies
+its compiler/SDK matrix from this file: old API anchors, the remote baseline and
+the eight most recent verified versions, at most twelve jobs. The full verified
+history remains in the policy. The plugin regression suite verifies
 that the manifest's range agrees with the policy.
 
 An unseen release is prepared only in the verification job's checkout. The

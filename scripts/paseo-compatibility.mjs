@@ -42,6 +42,13 @@ export function rangeFor(policy) {
   return [policy.baseRange, ...policy.verifiedVersions.filter(v => !coveredByBase(v, policy.baseRange))].join(' || ');
 }
 
+export function matrixVersions(policy) {
+  validatePolicy(policy);
+  // Preserve old API anchors without growing the Actions matrix on every release.
+  const anchors = ['0.13.2', '0.14.0', '0.15.2'].filter(v => policy.verifiedVersions.includes(v));
+  return [...new Set([...anchors, policy.remoteBaseline, ...policy.verifiedVersions.slice(-8)])].sort(semver.compare);
+}
+
 export function withVersions(policy, versions) {
   validatePolicy(policy);
   assert(Array.isArray(versions) && versions.length <= 2, 'Only stable and beta candidates are allowed');
@@ -113,8 +120,9 @@ export async function main(args) {
   const [command, ...rest] = args;
   if (command === 'matrix') {
     const {policy} = await readState();
-    await output('versions', policy.verifiedVersions);
-    console.log(JSON.stringify(policy.verifiedVersions));
+    const versions = matrixVersions(policy);
+    await output('versions', versions);
+    console.log(JSON.stringify(versions));
   } else if (command === 'detect') {
     assert(rest.length === 0 || (rest.length === 1 && rest[0] === '--force'));
     const {policy} = await readState();
