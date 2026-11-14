@@ -1,12 +1,18 @@
 # Release history
 
-## Unreleased · Separate the resident Paseo bot
+## 2026-11-14 · Public v3.0.1 release
 
 The resident bot, Discord gateway, optional console and their tests/docs are
 maintained in a separate private project. Public CI now checks the skill pack
 and skill-picker plugin independently. Existing runtime deployments and private
 state are unchanged; the multi-host adapter retains its resident-bot protection.
 Historical bot documentation links remain as separation notices.
+
+The release also includes the fifteen-skill `ps` catalog and renamed entry
+points, exact checked Paseo prerelease allowances, and hourly compatibility
+monitoring. The [release validation](release-validation-3.0.1.md) records the
+actual 0.16.0-beta.2 desktop picker check, fresh-agent skill recognition,
+repeatable v2-to-v3 migration and remaining platform limits.
 
 ## 2026-11-11 · Stop Windows Ego from opening Default apps on every check (v3.0.1)
 
