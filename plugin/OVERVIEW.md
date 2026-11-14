@@ -15,7 +15,7 @@ Open **Paseobility** above an existing conversation's input, search for a skill 
 
 ## Setup and updates
 
-The plugin supports Paseo **0.12.x through 0.15.x**, plus the checked **0.16.0-beta.1** prerelease. Later 0.16 prereleases and stable releases remain outside the declared range. The interface is in English, or in Korean when the app language is Korean (on 0.12, the device language). Screenshots show the skill picker in the Paseo web app. Native mobile behavior has not been visually verified.
+The plugin supports Paseo **0.12.x through 0.15.x**, plus explicitly checked prereleases. The [plugin manifest](paseo-plugin.json) declares the current range; the [compatibility policy](../config/paseo-compatibility.json) lists verified versions. [Release monitoring](../docs/paseo-release-automation.md) proposes range updates only after its automated checks pass. The interface is in English, or in Korean when the app language is Korean (on 0.12, the device language). Screenshots show the skill picker in the Paseo web app. Native mobile behavior has not been visually verified.
 
 Installing the plugin and installing the skill files are separate steps; the repository README explains skill setup. An existing agent may need a new session to discover newly installed skills. Some workflows need their own tools or connections: design checks require Node.js 20+ and a Chromium-family browser, native app control requires Cua Driver and OS permissions, and multi-host operation requires configured hosts.
 
