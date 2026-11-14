@@ -4,19 +4,35 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  compatibility-policy:
+    name: Compatibility policy
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci --prefix plugin --ignore-scripts
+      - id: matrix
+        run: node scripts/paseo-compatibility.mjs matrix
+
   plugin-compatibility:
     name: Plugin on Paseo ${{ matrix.paseo }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: compatibility-policy
     strategy:
       fail-fast: false
       matrix:
-        paseo: ["0.13.2", "0.14.0", "0.15.2", "0.16.0-beta.1", "0.16.0-beta.2"]
+        paseo: ${{ fromJSON(needs.compatibility-policy.outputs.versions) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

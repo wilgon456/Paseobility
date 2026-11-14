@@ -1,0 +1,158 @@
+name: Paseo release compatibility
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  pull_request:
+    paths:
+      - '.github/workflows/paseo-release-compatibility.yml'
+      - 'config/paseo-compatibility.json'
+      - 'scripts/paseo-compatibility*'
+      - 'scripts/verify-paseo-release.mjs'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Recheck current stable and beta even when already verified
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paseo-release-compatibility
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      versions: ${{ steps.detect.outputs.versions }}
+      baseline: ${{ steps.detect.outputs.baseline }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix plugin --ignore-scripts
+      - id: detect
+        env:
+          FORCE: ${{ inputs.force || github.event_name == 'pull_request' }}
+        run: |
+          args=()
+          if [ "$FORCE" = true ]; then args+=(--force); fi
+          node scripts/paseo-compatibility.mjs detect "${args[@]}"
+
+  verify:
+    needs: detect
+    if: needs.detect.outputs.versions != '[]'
+    name: Verify Paseo ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.detect.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix plugin --ignore-scripts
+      - name: Prepare an uncommitted candidate requirement
+        env:
+          VERSION: ${{ matrix.version }}
+        run: node scripts/paseo-compatibility.mjs prepare "$VERSION"
+      - name: Install exact published compiler and SDK packages
+        env:
+          VERSION: ${{ matrix.version }}
+          BASELINE: ${{ needs.detect.outputs.baseline }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/candidate" --no-audit --no-fund --ignore-scripts "@getpaseo/cli@$VERSION" "@getpaseo/plugin@$VERSION"
+          npm install --prefix "$RUNNER_TEMP/baseline" --no-audit --no-fund --ignore-scripts "@getpaseo/cli@$BASELINE" "@getpaseo/plugin@$BASELINE"
+      - name: Verify types, regression, both runtime pairings and isolated live RPCs
+        env:
+          VERSION: ${{ matrix.version }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/verify-paseo-release.mjs "$VERSION" "$RUNNER_TEMP/candidate" "$RUNNER_TEMP/baseline" "$SOURCE_SHA" "$RUNNER_TEMP/proof-$VERSION.json"
+      - name: Upload successful proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: paseo-proof-${{ matrix.version }}
+          path: ${{ runner.temp }}/proof-${{ matrix.version }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  propose:
+    needs: [detect, verify]
+    # Candidate jobs have no write token. Publish only after the entire batch passes.
+    if: github.ref_name == github.event.repository.default_branch && needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix plugin --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: paseo-proof-*
+          path: ${{ runner.temp }}/paseo-proofs
+      - name: Refuse proofs if the default branch changed during verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: test "$(gh api "repos/$GH_REPO/commits/$DEFAULT_BRANCH" --jq .sha)" = "$SOURCE_SHA"
+      - name: Require complete proofs for this exact checkout
+        env:
+          PASEO_CANDIDATES: ${{ needs.detect.outputs.versions }}
+          PASEO_SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/paseo-compatibility.mjs promote "$RUNNER_TEMP/paseo-proofs"
+      - name: Open or update the compatibility PR
+        id: pr
+        # Official v7 tag resolved and pinned; this is a dedicated automation branch.
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676
+        with:
+          token: ${{ github.token }}
+          base: ${{ github.event.repository.default_branch }}
+          branch: automation/paseo-compatibility
+          delete-branch: false
+          add-paths: |
+            config/paseo-compatibility.json
+            plugin/paseo-plugin.json
+          commit-message: 'fix(plugin): allow newly verified Paseo releases'
+          title: 'fix(plugin): allow newly verified Paseo releases'
+          body: |
+            Add only Paseo versions that passed the release compatibility probe.
+
+            Candidates: `${{ needs.detect.outputs.versions }}`.
+            Checks: types, regression tests, published compiler/SDK, both older/newer runtime pairings, isolated daemon plugin loading and live RPCs.
+
+            Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Full repository CI is dispatched separately because PRs created with GITHUB_TOKEN do not automatically trigger it. This PR does not deploy to PCs or claim native UI validation.
+      - name: Run full CI for the generated PR
+        if: steps.pr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_HEAD: ${{ steps.pr.outputs.pull-request-head-sha }}
+        run: |
+          existing=$(gh run list --workflow ci.yml --branch automation/paseo-compatibility --commit "$PR_HEAD" --event workflow_dispatch --json status,conclusion --jq '[.[] | select(.status != "completed" or .conclusion == "success")] | length')
+          if [ "$existing" = 0 ]; then
+            gh workflow run ci.yml --ref automation/paseo-compatibility
+          fi

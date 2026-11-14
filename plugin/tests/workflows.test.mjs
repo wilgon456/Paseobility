@@ -733,13 +733,16 @@ test("server text and update progress follow the chosen language", async () => {
 
 test("host compatibility accepts checked releases on daemon and app, rejects the next minor", async () => {
   const { assertPluginCompatibility } = await import("@getpaseo/protocol/plugin-requirements");
+  const { readState, rangeFor } = await import("../../scripts/paseo-compatibility.mjs");
+  const { policy } = await readState();
   const manifest = JSON.parse(
     await readFile(new URL("../paseo-plugin.json", import.meta.url), "utf8"),
   );
+  assert.equal(manifest.requirements.paseo, rangeFor(policy));
   for (const runtime of ["daemon", "app"]) {
-    for (const version of ["0.12.0", "0.13.2", "0.14.0", "0.15.1", "0.15.2", "0.15.4", "0.16.0-beta.1", "0.16.0-beta.2"])
+    for (const version of ["0.12.0", "0.15.1", ...policy.verifiedVersions])
       assert.doesNotThrow(() => assertPluginCompatibility({ ...manifest, version, runtime }));
-    for (const version of ["0.11.4", "0.16.0-beta.3", "0.16.0", "1.0.0"])
+    for (const version of ["0.11.4", "999.0.0"])
       assert.throws(() => assertPluginCompatibility({ ...manifest, version, runtime }), /requires Paseo/);
     // Reproduce the release bug with the host's real guard, not a local semver imitation.
     assert.throws(() => assertPluginCompatibility({
