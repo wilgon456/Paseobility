@@ -22,6 +22,17 @@ checker report is not evidence of good design.
 
 Paths are relative to this skill's directory. When your working directory is the project, prefix them with the skill's absolute location (Claude Code: `~/.claude/skills/ps-design/`; Codex and OpenCode: `~/.agents/skills/ps-design/`). Windows PowerShell passes `~` to `node` literally, so there write `$HOME\.claude\skills\ps-design\` or `$HOME\.agents\skills\ps-design\` instead. Scripts need Node 20+ and, for step 4, an installed Chromium-family browser. `design-check` prefers Ego Lite on macOS, then Chrome, then other supported Chromium builds or an existing Playwright download; Microsoft Edge is never auto-selected. On Windows Ego Lite is never auto-selected, because every separate Ego launch, even headless, opens the system Default apps settings window and an agent repeating the check would raise one window per run; there, run `npx playwright install chromium` once when Chrome is absent. Ego Lite's standard paths are `/Applications/ego lite.app` on macOS and `C:\Program Files\Citro Labs\ego lite\Application\ego.exe` on Windows. `DESIGN_CHECK_BROWSER` (or `CHROME_PATH`) selects an explicit executable. Nothing is installed by this skill.
 
+Before rendering on macOS, check the current worker's execution boundary.
+`design-check` stops with a tool error before launching a browser when Codex
+reports `CODEX_SANDBOX=seatbelt`. This prevents repeated startup crashes;
+it does not count as a passed layout check. When delegating file changes to
+`codex exec -s workspace-write`, keep browser verification in the already
+authorized controller workflow and pass the worker an explicit no-browser
+constraint. Do not expand worker permissions, unset the marker or change
+browsers to evade a restriction. Use the host's normal approval flow when a
+browser command needs permission. A blocked render leaves the required UI
+verification pending.
+
 ## 0. The project's own rules win
 
 Before anything else, look for design rules the project already has:

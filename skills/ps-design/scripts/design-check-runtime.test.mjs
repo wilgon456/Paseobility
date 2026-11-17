@@ -5,7 +5,37 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { findBrowser, noBrowserMessage, run } from './design-check.mjs';
+import { browserLaunchRestriction, findBrowser, noBrowserMessage, run } from './design-check.mjs';
+
+test('the known macOS Seatbelt marker blocks rendering without treating other platforms as restricted', () => {
+  assert.match(browserLaunchRestriction('darwin', { CODEX_SANDBOX: 'seatbelt' }), /No browser was launched; UI verification is incomplete/);
+  for (const host of ['linux', 'win32']) assert.equal(browserLaunchRestriction(host, { CODEX_SANDBOX: 'seatbelt' }), null);
+  assert.equal(browserLaunchRestriction('darwin', {}), null);
+  assert.equal(browserLaunchRestriction('darwin', { CODEX_SANDBOX_NETWORK_DISABLED: '1' }), null);
+});
+
+test('a restricted macOS worker stops before browser discovery, profile creation or output', async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const previous = process.env.CODEX_SANDBOX;
+  const stat = fs.statSync;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'design-check-sandbox-test-'));
+  let probes = 0;
+  try {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    process.env.CODEX_SANDBOX = 'seatbelt';
+    fs.statSync = () => { probes++; throw new Error('browser discovery must not run'); };
+    await assert.rejects(run(['about:blank', '--out', path.join(dir, 'output')]), error =>
+      error.code === 'BROWSER_SANDBOX_RESTRICTED' && /Stop retrying/.test(error.message));
+    assert.equal(probes, 0);
+    assert.deepEqual(fs.readdirSync(dir), []);
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    fs.statSync = stat;
+    if (previous === undefined) delete process.env.CODEX_SANDBOX;
+    else process.env.CODEX_SANDBOX = previous;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('discovery prefers Ego on macOS, never auto-selects Ego on Windows, and never Edge', () => {
   const platform = Object.getOwnPropertyDescriptor(process, 'platform');

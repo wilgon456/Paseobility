@@ -110,6 +110,14 @@ const FOCUS_JS = `((ignore) => {
 })`;
 
 // ---------------- browser discovery ----------------
+export function browserLaunchRestriction(platform = process.platform, env = process.env) {
+  // Codex sets this marker on commands running under macOS Seatbelt. These
+  // launches can abort in LaunchServices before Chromium reaches its own
+  // headless runtime; selecting another Chromium executable does not fix that.
+  if (platform === 'darwin' && env.CODEX_SANDBOX === 'seatbelt')
+    return 'macOS browser rendering is unavailable inside the Codex Seatbelt sandbox (CODEX_SANDBOX=seatbelt). No browser was launched; UI verification is incomplete. Stop retrying in this worker and use the host\'s normal approval flow for browser verification. Do not change global permissions, unset the sandbox marker or switch browser executables as a workaround.';
+  return null;
+}
 function exists(p) { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } }
 function globChromium(root, sub) {
   try {
@@ -454,6 +462,8 @@ export async function run(args, opts = {}) {
   if (!Number.isSafeInteger(cfg.maxHeight) || cfg.maxHeight <= 0) throw new Error('invalid --max-height: use positive pixels');
   if (!Number.isFinite(cfg.timeout) || cfg.timeout <= 0) throw new Error('invalid --timeout: use positive seconds');
   if (!Number.isFinite(cfg.wait) || cfg.wait < 0) throw new Error('invalid --wait: use milliseconds >= 0');
+  const restriction = browserLaunchRestriction();
+  if (restriction) { const e = new Error(restriction); e.code = 'BROWSER_SANDBOX_RESTRICTED'; throw e; }
   const exe = findBrowser();
   if (!exe) { const e = new Error(noBrowserMessage()); e.code = 'NO_BROWSER'; throw e; }
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');

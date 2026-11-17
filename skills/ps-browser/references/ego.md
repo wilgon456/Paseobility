@@ -45,6 +45,48 @@ installed copies or instructions already loaded by a running agent. After an
 authorized backed-up skill update, use a new agent session or reload
 integrations; preserve active agents and do not restart the daemon.
 
+## macOS execution boundary and startup crashes
+
+Before invoking the CLI, including `ego-browser skill`, check the current
+agent/tool's effective execution restrictions. A macOS sandbox can prevent a
+CLI from reaching the browser's bootstrap/Mach service; a subsequent browser
+child launch may also fail during LaunchServices registration. The normal
+browser can remain healthy while those children crash. Do not infer an absent
+installation from that combination.
+
+- If the current command is sandboxed, use the host's supported approval flow
+  for just that browser command outside the sandbox, when policy permits it.
+  Otherwise stop browser execution and describe the required user action.
+  Do not disable the sandbox globally, change a permission mode, add permanent
+  command exclusions or use another executor to evade a denied permission.
+  Approval mode and sandbox isolation are separate; changing one is not proof
+  that the other changed. Claude Code documents its
+  [command-specific retry and sandbox boundaries](https://code.claude.com/docs/en/sandboxing).
+- On `Sandbox restriction`, a denied `ego_cli`/bootstrap connection or an
+  unexpected-quit dialog, stop identical CLI retries and direct app launches.
+  Keep the existing TaskSpace ID if one was created. Do not switch browsers,
+  upgrade/reinstall Ego, clear profiles or restart Paseo as recovery guesses.
+- Read only the relevant `ego lite*.ips` entries under
+  `~/Library/Logs/DiagnosticReports/`. Record the installed version, crash time,
+  parent/responsible process and faulting frames. `SIGABRT` with
+  `___RegisterApplication_block_invoke`, `_RegisterApplication` and
+  `TransformProcessType` identifies a startup-registration failure, not a
+  complete diagnosis. Confirm sandbox involvement from the execution context
+  or an explicit denial; do not label every registration crash as sandboxed.
+- Once the authorized execution boundary is established, verify one owned
+  TaskSpace and its `p1` across separate CLI rounds, then finish it after the
+  observed result succeeds. Preserve existing browser processes and user tabs.
+  Derive selectors from a fresh snapshot rather than assuming a public test
+  page still has a particular heading or DOM layout.
+
+Check nested workers as well as the parent. A Claude session can start
+`codex exec -s workspace-write`; that worker's browser commands remain
+sandboxed even when the parent can use Ego. Plan delegations so restricted
+workers handle files and the already-authorized controller handles browser
+verification, including headless `design-check`. Pass the no-browser constraint
+in the worker brief; do not assume it inherits the parent's instructions or
+permissions. Do not reroute an actual permission denial to another executor.
+
 ## One goal across multiple rounds
 
 Bash/Zsh first round (use a unique stable name for this agent's goal):

@@ -18,8 +18,15 @@ backend once per task and keep it across rounds and recoverable failures:
   Ego workflow below; for personal Chrome, use the existing-window lifecycle.
 - For ordinary web work without an explicit browser, use **Ego Lite**. An
   available Chrome tool, an open Chrome window, or a Chrome login is not a
-  browser choice. Read the installed `ego-browser` skill
-  and run `ego-browser skill`; read through its end-of-guide marker before
+  browser choice. Read the installed `ego-browser` skill. On macOS, check
+  the execution boundary before invoking any Ego command, including `skill`:
+  a sandboxed shell may be unable to reach the browser's bootstrap service.
+  Use the host's normal permission flow for that specific command outside the
+  sandbox when available; otherwise report the restriction and stop browser
+  execution. Do not change global security settings, switch permission modes
+  or use another executor to route around a denied permission. See
+  [macOS startup recovery](references/ego.md#macos-execution-boundary-and-startup-crashes).
+  Then run `ego-browser skill`; read through its end-of-guide marker before
   acting. Use its current documented APIs, not guessed Playwright methods.
 - Check the computer that will run the browser, not the controller computer.
   A missing PATH command or skill entry does not prove Ego is absent. Follow
@@ -31,6 +38,13 @@ backend once per task and keep it across rounds and recoverable failures:
   Playwright. Use another browser only when the user selects it; an earlier
   explicit choice for this task remains valid. Do not install or upgrade a
   browser implicitly, or restart Paseo to refresh its PATH.
+- On `Sandbox restriction`, a denied `ego_cli`/bootstrap connection, or a macOS
+  unexpected-quit report, stop identical retries. An existing healthy browser
+  does not prove its agent-launched child can start. Check the failed process's
+  caller and crash record before claiming a missing or broken installation.
+- A restricted worker keeps its own boundary even when its parent can use Ego.
+  Pass delegated file workers a no-browser constraint; keep browser checks in
+  the already-authorized controller workflow. Do not reroute a denied action.
 - Native desktop tasks belong to `ps-cua`; HTTP/API and filesystem work do
   not require a browser. Explicit headless verification workflows stay explicit.
 
